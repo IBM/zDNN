@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright IBM Corp. 2021
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+srcdir := @srcdir@
+objdir := @objdir@
+
+# The following variables influences the paths used by make install.
+prefix := @prefix@
+exec_prefix := @exec_prefix@
+includedir := @includedir@
+libdir := @libdir@
+
+CC := @CC@
+CXX := @CXX@
+LD := @LD@
+AR := @AR@
+ARFLAGS := @ARFLAGS@
+CFLAGS := @CFLAGS@ "@CFLAGS_QUOTE@"
+CFLAGS_DEBUG := @CFLAGS_DEBUG@
+CFLAGS_SHARED := @CFLAGS_SHARED@
+CXXFLAGS_ASM := @CXXFLAGS_ASM@
+CFLAGS_ASM := @CFLAGS_ASM@
+CXXFLAGS := @CXXFLAGS@
+SODIR := @SODIR@
+LIBNAME := @LIBNAME@
+LIBSONAME := @LIBSONAME@
+LIBNAME_PRIVATE=@LIBNAME_PRIVATE@
+LIBSONAME_PRIVATE=@LIBSONAME_PRIVATE@
+LDFLAGS := @LDFLAGS@
+LDFLAGS_SHARED := @LDFLAGS_SHARED@
+LDFLAGS_SHARED_EXPORTALL := @LDFLAGS_SHARED_EXPORTALL@
+LDFLAGS_TEST := @LDFLAGS_TEST@
+LD_PATH_VAR := @LD_PATH_VAR@
+ECHOFLAGS := "@ECHOFLAGS@"
+AWK := @AWK@
+READELF := @READELF@
+
+INSTALL := install -c
+INSTALL_DATA := $(INSTALL) -m 644
+
+ZDNN_TMAKE_FILES := @ZDNN_TMAKE_FILES@
+ZDNN_MAKE_TARGETS := @ZDNN_MAKE_TARGETS@
+ZDNN_INSTALL_TARGETS := @ZDNN_INSTALL_TARGETS@
+
+# Build options
+
+debug := @zdnn_config_debug@
+no_rpath := @zdnn_config_no_rpath@

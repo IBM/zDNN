@@ -1,0 +1,319 @@
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if defined(__MVS__)
+#include <cvt.h>
+#include <ihaecvt.h>
+#include <ihafacl.h>
+#include <ihapsa.h>
+#endif
+
+#include "zdnn.h"
+#include "zdnn_private.h"
+
+#ifdef __MVS__
+#pragma export(zdnn_is_nnpa_installed)
+#pragma export(zdnn_is_nnpa_function_installed)
+#pragma export(zdnn_is_nnpa_parmblk_fmt_installed)
+#pragma export(zdnn_is_nnpa_datatype_installed)
+#pragma export(zdnn_is_nnpa_layout_fmt_installed)
+#pragma export(zdnn_get_nnpa_max_dim_idx_size)
+#pragma export(zdnn_get_nnpa_max_tensor_size)
+#pragma export(zdnn_refresh_nnpa_query_result)
+#pragma export(zdnn_is_nnpa_conversion_installed)
+#endif
+
+// Cached copy of the NNPA-QAF result.  zdnn_refresh_nnpa_query_result() is
+// responsible for setting and modifying this.  For performance reasons, all
+// query functions that involve NNPA-QAF result read from this cached copy
+nnpa_qaf_parameter_block nnpa_query_result;
+
+// Index of the facility bit for the NNPA facility
+#define STFLE_NNPA 165
+
+/// Query if NNPA functions are installed
+///
+/// \param[in] count, number of NNPA functions to query
+/// \param[in] ... (additional arguments), function numbers defined in
+///                nnpa_function_code enum
+///
+/// \return true if all queried functions are installed, false if any is not
+///
+bool zdnn_is_nnpa_function_installed(int count, ...) {
+  va_list ap;
+  va_start(ap, count);
+  bool result = true;
+
+  uint16_t max_func = BIT_SIZEOF(nnpa_query_result.installed_functions_vector);
+
+  for (uint16_t i = 0; i < count; i++) {
+    uint16_t func_num = va_arg(ap, int);
+    if (func_num >= max_func || // protect ourselves from out-of-range input
+        !is_bitset_256(nnpa_query_result.installed_functions_vector,
+                       func_num)) {
+      result = false;
+      break;
+    }
+  }
+  va_end(ap);
+  return result;
+}
+
+/// Query if NNPA parameter block formats are installed
+///
+/// \param[in] count, number of NNPA parameter block formats to query
+/// \param[in] ... (additional arguments), NNPA parameter block formats defined
+///                in nnpa_parmblk_format enum
+///
+/// \return true if all queried formats are installed, false if any is not
+///
+bool zdnn_is_nnpa_parmblk_fmt_installed(int count, ...) {
+  va_list ap;
+  va_start(ap, count);
+  bool result = true;
+
+  uint8_t max_format =
+      BIT_SIZEOF(nnpa_query_result.installed_parameter_block_formats);
+
+  for (uint8_t i = 0; i < count; i++) {
+    uint8_t func_num = va_arg(ap, int);
+    if (func_num >= max_format || // protect ourselves from out-of-range input
+        !is_bitset_128(nnpa_query_result.installed_parameter_block_formats,
+                       func_num)) {
+      result = false;
+      break;
+    }
+  }
+  va_end(ap);
+  return result;
+}
+
+/// Query if NNPA data types are installed
+///
+/// \param[in] types_bitmask OR'd type numbers as defined in
+/// zdnn_query_datatypes
+///                     enum
+///
+/// \return true if all queried data types are installed, false if any is not
+///
+bool zdnn_is_nnpa_datatype_installed(uint16_t types_bitmask) {
+  return (~nnpa_query_result.installed_data_types & types_bitmask) == 0;
+}
+
+/// Query if NNPA data layout formats are installed
+///
+/// \param[in] layout_bitmask OR'd layout numbers as defined in
+///                        zdnn_query_layout_fmts enum
+///
+/// \return true if all queried data layout formats are installed, false if any
+///          is not
+///
+bool zdnn_is_nnpa_layout_fmt_installed(uint32_t layout_bitmask) {
+  return (~nnpa_query_result.installed_data_layout_formats & layout_bitmask) ==
+         0;
+}
+
+/// Query if NNPA data type to/from BFP format conversions are installed
+///
+/// \param[in] type NNPA data type as defined in nnpa_data_type enum
+/// \param[in] format_bitmask OR'd BFP format numbers as defined in
+///                           zdnn_query_bfpfmts enum
+///
+/// \return true if all queried format conversions are installed, false if any
+///         is not
+///
+bool zdnn_is_nnpa_conversion_installed(nnpa_data_type type,
+                                       uint16_t format_bitmask) {
+
+  switch (type) {
+  case NNPA_DATATYPE_1:
+    return (~nnpa_query_result.installed_dt1_conversions_vector &
+            format_bitmask) == 0;
+  default:
+    // unknown nnp data-type means "not installed" regardless of mask
+    return false;
+  }
+}
+
+/// Query the NNPA maximum supported dimension index size value
+///
+/// \param[in] None
+///
+/// \return maximum dimension index size value supported by NNPA
+///
+uint32_t zdnn_get_nnpa_max_dim_idx_size() {
+  return nnpa_query_result.maximum_dimension_index_size;
+}
+
+/// Query the NNPA maximum supported tensor size (in bytes)
+///
+/// \param[in] None
+///
+/// \return maximum tensor size value supported by NNPA
+///
+uint64_t zdnn_get_nnpa_max_tensor_size() {
+  return nnpa_query_result.maximum_tensor_size;
+}
+
+/// Refresh the nnpa_query_result struct from zAIU
+///
+/// \param[in] result pointer to aiu_parameter_block_nnpa_qaf struct
+///
+/// \return ZDNN_OK
+///         ZDNN_UNAVAILABLE_FUNCTION
+///
+zdnn_status zdnn_refresh_nnpa_query_result() {
+
+  zdnn_status query_status;
+
+#ifndef ZDNN_CONFIG_NO_NNPA
+  query_status = invoke_nnpa_query(&nnpa_query_result);
+#else
+  query_status = ZDNN_STATUS_OK;
+
+#define MAXIMUM_DIMENSION_INDEX_SIZE ((uint32_t)1 << 15) // 32768
+#define MAXIMUM_TENSOR_SIZE ((uint64_t)1 << 32)          // 4294967296
+
+  setbit_128(&nnpa_query_result.installed_parameter_block_formats,
+             NNPA_PARMBLKFORMAT_0);
+
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_QAF);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_ADD);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_SUB);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_MUL);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_DIV);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_MIN);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_MAX);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_LOG);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_EXP);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_RELU);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_TANH);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_SIGMOID);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_SOFTMAX);
+  setbit_256(&nnpa_query_result.installed_functions_vector,
+             NNPA_BATCHNORMALIZATION);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_MAXPOOL2D);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_AVGPOOL2D);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_LSTMACT);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_GRUACT);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_CONVOLUTION);
+  setbit_256(&nnpa_query_result.installed_functions_vector, NNPA_MATMUL_OP);
+  setbit_256(&nnpa_query_result.installed_functions_vector,
+             NNPA_MATMUL_OP_BCAST23);
+
+  nnpa_query_result.installed_data_types |= QUERY_DATATYPE_INTERNAL1;
+  nnpa_query_result.installed_data_layout_formats |=
+      (QUERY_LAYOUTFMT_4DFEATURE | QUERY_LAYOUTFMT_4DKERNEL);
+  nnpa_query_result.installed_dt1_conversions_vector |=
+      (QUERY_BFPFMT_TINY | QUERY_BFPFMT_SHORT);
+  nnpa_query_result.maximum_dimension_index_size = MAXIMUM_DIMENSION_INDEX_SIZE;
+  nnpa_query_result.maximum_tensor_size = MAXIMUM_TENSOR_SIZE;
+#endif
+
+  refresh_aiu_lib_vernum();
+
+  return query_status;
+}
+
+#ifndef __MVS__
+#define STFLE_LENGTH 32
+
+static int invoke_stfle(unsigned char *facility_list) {
+  register uint64_t r0 __asm__("%r0") = STFLE_LENGTH / 8 - 1;
+  int cc;
+  struct facility_list_type {
+    // cppcheck-suppress unusedStructMember
+    unsigned char flist[STFLE_LENGTH];
+  };
+
+  if (precheck_enabled) {
+    // ensure facility_list is on a doubleword boundary.
+    if ((uintptr_t)facility_list & 7)
+      return ZDNN_STATUS_NO_MSG(ZDNN_MISALIGNED_PARMBLOCK);
+  }
+
+  // clang-format off
+  __asm__ __volatile__("stfle   %[flist]"                 "\n\t"
+                       "ipm     %[cc]"                    "\n\t"
+                       "srl     %[cc],28"                 "\n\t"
+                       : [flist] "+Q"(*((struct facility_list_type*)facility_list)),
+			 "+d"(r0), [cc] "=d"(cc)
+                       :
+                       : "memory", "cc");
+  // clang-format on
+  return cc;
+}
+
+static inline int check_bitfield(uint8_t *bitfield, int bitno) {
+  uint8_t mask = (1 << 7) >> (bitno & 7);
+  return !!(bitfield[bitno / 8] & mask);
+}
+#endif
+
+/// Determine if NNPA hardware support is available
+///
+/// The function unconditionally uses the STFLE instruction available
+/// since IBM z9-109.
+///
+/// \param[in] None
+///
+/// \return true
+///         false
+///
+INIT_FUNCTION_ATTRS
+bool zdnn_is_nnpa_installed() {
+#ifndef __MVS__
+  int nnpa_supported;
+  unsigned char *facilities = alloca(STFLE_LENGTH);
+  int cc;
+  memset(facilities, 0, STFLE_LENGTH);
+  cc = invoke_stfle(facilities);
+
+  if (cc) {
+    LOG_ERROR("STFLE failed with %d", cc);
+    return false;
+  }
+
+  nnpa_supported = check_bitfield(facilities, STFLE_NNPA);
+
+  if (nnpa_supported)
+    LOG_INFO("Hardware NNPA support available", NO_ARG);
+  else
+    LOG_INFO("Hardware NNPA support not available", NO_ARG);
+
+  return nnpa_supported;
+#else
+  /***********************************************************************
+   * On z/OS, use system copy of STFLE output ("faclnnpaf").  (LoZ has to
+   * worry about dynamic changes to STFLE.  z/OS does not support that so
+   * using the static system copy is fine.)
+   ***********************************************************************/
+  struct psa *psaptr = (struct psa *)0;
+  // cppcheck-suppress nullPointer
+  struct cvtmap *cvtptr = (struct cvtmap *)psaptr->flccvt;
+  struct ecvt *ecvtptr = (struct ecvt *)cvtptr->cvtecvt;
+  struct facl *faclptr = (struct facl *)ecvtptr->ecvtfacl;
+
+  return faclptr->faclnnpaf;
+
+#endif
+}

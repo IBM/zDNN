@@ -1,0 +1,132 @@
+# This VERSION script controls which symbols in the shared library are exported.
+# NOTE: Ensure that symbols in zdnn.h and zdnn.map are in sync!
+# (see https://sourceware.org/binutils/docs/ld/VERSION.html)
+
+# All global symbols of the library are exported and can be accessed by other
+# programs or libraries.  All symbols not mentioned in this VERSION script are
+# considered internal and are not accessible by other programs or libraries.
+# This is done with help of the wildcard in the local rule.
+
+# Each version node contains the symbols which were introduced in this
+# particular version.
+
+# Task: Introduce a new symbol in a new library version.
+# Add the new function to zdnn.h and provide an implementation. Afterwards, add
+# a new version node above "older" version node:
+# ZDNN_NEW.VERSION {
+#   global:
+#     zdnn_NEW_FUNCTION;
+# };
+#
+# Note:
+# As long as a version is under development, you can add new symbols
+# without an extra version node.
+
+# Task: Provide a second symbol after making an incompatible change of a symbol.
+# Add a new version node above "older" version node, e.g.:
+# ZDNN_NEW.VERSION {
+#   global:
+#     zdnn_refresh_nnpa_query_result;
+# };
+#
+# Change the implementation and provide an old version, e.g.:
+# zdnn_status zdnn_refresh_nnpa_query_result() {
+#   puts ("zdnn_refresh_nnpa_query_result(): NEW.VERSION");
+#   return ZDNN_STATUS_OK;
+# }
+# #ifdef LIBSONAME
+# zdnn_status zdnn_refresh_nnpa_query_result_old() {
+#   puts ("zdnn_refresh_nnpa_query_result(): OLD.VERSION");
+#   return ZDNN_STATUS_OK;
+# }
+# __asm__ (".symver zdnn_refresh_nnpa_query_result_old,zdnn_refresh_nnpa_query_result@ZDNN_OLD.VERSION");
+# #endif
+#
+# => Now existing programs will use the "OLD.VERSION" of
+#    zdnn_refresh_nnpa_query_result.  Programs linked against the new library
+#    will use the "NEW.VERSION".
+#
+# Note:
+# As long as a version is under development and the symbol was introduced in
+# this version, you can adjust the symbol without providing an old version of
+# the symbol.
+
+# Task: Remove a symbol and only provide an old version for usage by existing programs.
+# Remove the symbol in zdnn.h, keep the implementation and use it as old version
+# by specifying the version node where this symbol was introduced with, e.g.:
+# #ifdef LIBSONAME
+# zdnn_status zdnn_refresh_nnpa_query_result_old() {
+#   puts ("zdnn_refresh_nnpa_query_result(): OLD.VERSION");
+#   return ZDNN_STATUS_OK;
+# }
+# __asm__ (".symver zdnn_refresh_nnpa_query_result_old,zdnn_refresh_nnpa_query_result@ZDNN_INTRODUCED.VERSION");
+# #endif
+#
+# zdnn.map is listing symbols introduced in a specific ZDNN_INTRODUCED.VERSION
+# version node.  Thus removed symbols needs to stay in those version nodes.
+# For a better overview, add a comment like:
+# # Removed zdnn_refresh_nnpa_query_result with version ZDNN_X.Y
+#
+# => Now existing programs will still be able to use the "OLD.VERSION" of
+#    zdnn_refresh_nnpa_query_result.  Programs linked against the new library
+#    are not able to call the "OLD.VERSION".  Instead ld will fail due to
+#    undefined reference to ... .
+#
+# Note:
+# As long as a version is under development and the symbol was introduced in
+# this version, you can just remove the symbol without providing an old version
+# of the symbol. Just remove it in the current version node.
+
+
+ZDNN_1.0 {
+  global:
+    zdnn_init;
+    zdnn_init_pre_transformed_desc;
+    zdnn_generate_transformed_desc;
+    zdnn_generate_transformed_desc_concatenated;
+    zdnn_allochelper_ztensor;
+    zdnn_free_ztensor_buffer;
+    zdnn_init_ztensor;
+    zdnn_init_ztensor_with_malloc;
+    zdnn_reset_ztensor;
+    zdnn_getsize_ztensor;
+    zdnn_is_nnpa_installed;
+    zdnn_is_nnpa_function_installed;
+    zdnn_is_nnpa_parmblk_fmt_installed;
+    zdnn_is_nnpa_datatype_installed;
+    zdnn_is_nnpa_layout_fmt_installed;
+    zdnn_is_nnpa_conversion_installed;
+    zdnn_is_version_runnable;
+    zdnn_get_max_runnable_version;
+    zdnn_get_nnpa_max_dim_idx_size;
+    zdnn_get_nnpa_max_tensor_size;
+    zdnn_get_library_version_str;
+    zdnn_get_library_version;
+    zdnn_refresh_nnpa_query_result;
+    zdnn_add;
+    zdnn_sub;
+    zdnn_mul;
+    zdnn_div;
+    zdnn_min;
+    zdnn_max;
+    zdnn_log;
+    zdnn_exp;
+    zdnn_relu;
+    zdnn_tanh;
+    zdnn_sigmoid;
+    zdnn_softmax;
+    zdnn_lstm;
+    zdnn_gru;
+    zdnn_matmul_op;
+    zdnn_matmul_bcast_op;
+    zdnn_batchnorm;
+    zdnn_meanreduce2d;
+    zdnn_avgpool2d;
+    zdnn_maxpool2d;
+    zdnn_conv2d;
+    zdnn_transform_ztensor;
+    zdnn_transform_origtensor;
+    zdnn_reshape_ztensor;
+    zdnn_get_status_message;
+  local: *;
+};
