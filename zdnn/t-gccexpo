@@ -23,5 +23,5 @@ zdnn_exportall.map: zdnn.map
 	awk 'BEGIN { first=1; } /^ZDNN_*/ { print $0; if (first == 1) { print "  global: *;"; first=0; } print "};" }' \
 	zdnn.map > zdnn_exportall.map
 
-$(SODIR)/$(LIBNAME_PRIVATE).so: $(C_OBJFILES) $(CXX_OBJFILES) $(H_FILES) zdnn_exportall.map
-	$(LD) $(LDFLAGS_SHARED_EXPORTALL) -o $(SODIR)/$(LIBNAME_PRIVATE).so $(C_OBJFILES) $(CXX_OBJFILES)
+$(SODIR)/$(LIBNAME_PRIVATE).so: $(INIT_OBJFILE) $(OBJFILES) $(H_FILES) zdnn_exportall.map
+	$(LD) $(LDFLAGS_SHARED_EXPORTALL) -o $(SODIR)/$(LIBNAME_PRIVATE).so $(INIT_OBJFILE) $(OBJFILES)

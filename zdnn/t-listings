@@ -16,7 +16,11 @@
 
 # Generate z/OS style assembler listings for each file compiled
 
-LISTINGS := $(patsubst %.o,%.lst,$(C_OBJFILES) $(CXX_OBJFILES))
+LISTINGS := $(patsubst %.o,%.lst,$(OBJFILES))
+INIT_LISTING := $(patsubst %.o,%.lst,$(INIT_OBJFILE))
+
+$(INIT_LISTING): $(INIT_SRCFILE)
+	$(CC) $(CFLAGS_INIT) $(CFLAGS_SHARED) $(CFLAGS_ASM) -c $< -o /dev/null > $(OBJDIR)/$(LIBNAME).$(*F).lst
 
 $(OBJDIR)/%.lst: %.c
 	$(CC) $(CFLAGS) $(CFLAGS_SHARED) $(CFLAGS_ASM) -c $< -o /dev/null > $(OBJDIR)/$(LIBNAME).$(*F).lst

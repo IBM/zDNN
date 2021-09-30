@@ -26,7 +26,9 @@ case "${target}" in
 	LD=${LD:-g++}
 	AR=${AR:-ar}
 	ARFLAGS="${ARFLAGS:--rc}"
-	CFLAGS="-O3 -march=z14 -mzvector -Wall -std=gnu99 -fstack-protector-all -U_FORTIFY_SOURCE ${CFLAGS:-}"
+	CFLAGS_INIT="-O3 -mzvector -Wall -std=gnu99 -fstack-protector-all ${CFLAGS:-}"
+	CFLAGS_QUOTE_INIT="-Wall" # Not needed on Linux. Just repeat an option to prevent it from being empty.
+	CFLAGS="-O3 -march=z14 -mzvector -Wall -std=gnu99 -fstack-protector-all ${CFLAGS:-}"
 	CFLAGS_QUOTE="-Wall"
 	CFLAGS_DEBUG="-O0 -g3 ${CFLAGS_DEBUG:-}"
 	CFLAGS_SHARED="-fPIC ${CFLAGS_SHARED:-}"
@@ -55,6 +57,8 @@ case "${target}" in
 	AR=${AR:-ar}
 	ARFLAGS="${ARFLAGS:--rc}"
 	CXXFLAGS="-I /u/mvsbuild/zos25/usr/include/zos/ -Wc,ASM,LP64,INLINE,VECTOR ${CXXFLAGS:-}"
+	CFLAGS_INIT="${CXXFLAGS} -qlanglvl=extc99 ${CFLAGS:-}"
+	CFLAGS_QUOTE_INIT="-Wc,SUPPRESS(CCN4108),STACKPROTECT(ALL)" # The options with () require an extra pair of quotes in config.make.in
 	CFLAGS="${CXXFLAGS} -qlanglvl=extc99 ${CFLAGS:-}"
 	CFLAGS_QUOTE="-Wc,ARCH(12),SUPPRESS(CCN4108),STACKPROTECT(ALL)"
 	CFLAGS_DEBUG="-g3 ${CFLAGS_DEBUG:-}"

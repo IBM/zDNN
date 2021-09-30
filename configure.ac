@@ -40,6 +40,7 @@ AC_ARG_VAR(LD)
 AC_ARG_VAR(AR)
 AC_ARG_VAR(ARFLAGS)
 AC_ARG_VAR(CFLAGS)
+AC_ARG_VAR(CFLAGS_INIT)
 AC_ARG_VAR(CFLAGS_DEBUG)
 AC_ARG_VAR(CFLAGS_SHARED)
 AC_ARG_VAR(CFLAGS_ASM)
@@ -59,6 +60,7 @@ AC_ARG_VAR(AWK)
 AC_ARG_VAR(READELF)
 
 AC_SUBST(CFLAGS_QUOTE)
+AC_SUBST(CFLAGS_QUOTE_INIT)
 
 AC_SUBST(zdnn_config_debug, 0)
 AC_SUBST(zdnn_config_no_rpath, 0)
@@ -82,6 +84,7 @@ AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Enable additional sanit
 AS_IF([test "x$enable_debug" = "xyes"], [
   zdnn_config_debug=1
   CFLAGS="${CFLAGS} ${CFLAGS_DEBUG}"
+  CFLAGS_INIT="${CFLAGS_INIT} ${CFLAGS_DEBUG}"
   CXXFLAGS="${CXXFLAGS} ${CFLAGS_DEBUG}"
   AC_DEFINE(ZDNN_CONFIG_DEBUG, 1, [Enable additional sanity checking, error reporting, disable compiler optimizations, and add debug information])
 ])

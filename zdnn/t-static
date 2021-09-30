@@ -20,8 +20,12 @@
 # variant CFLAGS_SHARED and CXXFLAGS_SHARED will not be used to build
 # a statically linked library.
 
-C_OBJFILES_NONSHARED   := $(patsubst %.o,%.nonshared.o,$(C_OBJFILES))
-CXX_OBJFILES_NONSHARED := $(patsubst %.o,%.nonshared.o,$(CXX_OBJFILES))
+OBJFILES_NONSHARED     := $(patsubst %.o,%.nonshared.o,$(OBJFILES))
+INIT_OBJFILE_NONSHARED := $(patsubst %.o,%.nonshared.o,$(INIT_OBJFILE))
+
+
+$(INIT_OBJFILE_NONSHARED): $(INIT_SRCFILE)
+	$(CC) $(CFLAGS_INIT) -c $< -o $@
 
 $(OBJDIR)/%.nonshared.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -29,7 +33,7 @@ $(OBJDIR)/%.nonshared.o: %.c
 $(OBJDIR)/%.nonshared.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(SODIR)/$(LIBNAME).a: $(C_OBJFILES_NONSHARED) $(CXX_OBJFILES_NONSHARED)
+$(SODIR)/$(LIBNAME).a: $(INIT_OBJFILE_NONSHARED) $(OBJFILES_NONSHARED)
 	$(AR) $(ARFLAGS) $(SODIR)/$(LIBNAME).a $^
 
 .PHONY: install_static

@@ -25,15 +25,20 @@ _dummy2 := $(shell mkdir -p $(SODIR))
 CFLAGS := $(CFLAGS) $(INCDIR)
 CXXFLAGS := $(CXXFLAGS) $(INCDIR)
 
-H_FILES      := $(filter-out $(wildcard convert*.h), $(wildcard *.h))
-C_SRCFILES   := $(wildcard *.c)
-CXX_SRCFILES := $(wildcard *.cpp)
+H_FILES        := $(filter-out $(wildcard convert*.h), $(wildcard *.h))
+INIT_SRCFILE := zdnn_init.c
+SRCFILES     := $(filter-out $(INIT_SRCFILE), $(wildcard *.c) $(wildcard *.cpp))
 
 # Add the configure generated header
 H_FILES += ../config.h
 
-C_OBJFILES          := $(patsubst %.c,$(OBJDIR)/%.o,$(C_SRCFILES))
-CXX_OBJFILES        := $(patsubst %.cpp,$(OBJDIR)/%.o,$(CXX_SRCFILES))
+OBJFILES          := $(patsubst %.c,$(OBJDIR)/%.o,$(patsubst %.cpp,$(OBJDIR)/%.o,$(SRCFILES)))
+INIT_OBJFILE      := $(patsubst %.c,$(OBJDIR)/%.o,$(INIT_SRCFILE))
+
+all: $(SODIR)/$(LIBNAME).so $(SODIR)/$(LIBNAME_PRIVATE).so $(ZDNN_MAKE_TARGETS)
+
+$(INIT_OBJFILE): $(INIT_SRCFILE)
+	$(CC) $(CFLAGS_INIT) $(CFLAGS_SHARED) -c $< -o $@
 
 $(OBJDIR)/%.o: %.c
 	$(CC) $(CFLAGS) $(CFLAGS_SHARED) -c $< -o $@
@@ -41,13 +46,11 @@ $(OBJDIR)/%.o: %.c
 $(OBJDIR)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CFLAGS_SHARED) -c $< -o $@
 
-all: $(SODIR)/$(LIBNAME).so $(SODIR)/$(LIBNAME_PRIVATE).so $(ZDNN_MAKE_TARGETS)
-
 include $(ZDNN_TMAKE_FILES)
 
 
-$(SODIR)/$(LIBNAME).so: $(C_OBJFILES) $(CXX_OBJFILES) $(H_FILES)
-	$(LD) $(LDFLAGS_SHARED) -o $(SODIR)/$(LIBNAME).so $(C_OBJFILES) $(CXX_OBJFILES)
+$(SODIR)/$(LIBNAME).so: $(INIT_OBJFILE) $(OBJFILES) $(H_FILES)
+	$(LD) $(LDFLAGS_SHARED) -o $(SODIR)/$(LIBNAME).so $(INIT_OBJFILE) $(OBJFILES)
 
 .PHONY: clean
 
