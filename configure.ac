@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-AC_INIT([libzdnn], [0.3])
+AC_INIT([libzdnn], [0.3.1])
 
 objdir=`pwd -P`
 

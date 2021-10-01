@@ -38,7 +38,7 @@ distclean: clean
 
 
 .PHONY: install
-install: all
+install: build
 	$(MAKE) install -C zdnn
 
 config.make:
