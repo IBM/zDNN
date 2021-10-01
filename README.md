@@ -758,7 +758,7 @@ bool zdnn_is_nnpa_conversion_installed(nnpa_data_type type,
 NNPA_DATATYPE_1
 ```
 
-- `uint32_t format_bitmask`
+- `uint16_t format_bitmask`
 
   - OR'd BFP format bitmasks as defined in zdnn_query_bfpfmts enum
 

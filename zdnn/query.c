@@ -31,7 +31,6 @@
 #include "zdnn_private.h"
 
 #ifdef __MVS__
-#pragma export(zdnn_is_nnpa_installed)
 #pragma export(zdnn_is_nnpa_function_installed)
 #pragma export(zdnn_is_nnpa_parmblk_fmt_installed)
 #pragma export(zdnn_is_nnpa_datatype_installed)
@@ -46,9 +45,6 @@
 // responsible for setting and modifying this.  For performance reasons, all
 // query functions that involve NNPA-QAF result read from this cached copy
 nnpa_qaf_parameter_block nnpa_query_result;
-
-// Index of the facility bit for the NNPA facility
-#define STFLE_NNPA 165
 
 /// Query if NNPA functions are installed
 ///
@@ -232,88 +228,4 @@ zdnn_status zdnn_refresh_nnpa_query_result() {
   refresh_aiu_lib_vernum();
 
   return query_status;
-}
-
-#ifndef __MVS__
-#define STFLE_LENGTH 32
-
-static int invoke_stfle(unsigned char *facility_list) {
-  register uint64_t r0 __asm__("%r0") = STFLE_LENGTH / 8 - 1;
-  int cc;
-  struct facility_list_type {
-    // cppcheck-suppress unusedStructMember
-    unsigned char flist[STFLE_LENGTH];
-  };
-
-  if (precheck_enabled) {
-    // ensure facility_list is on a doubleword boundary.
-    if ((uintptr_t)facility_list & 7)
-      return ZDNN_STATUS_NO_MSG(ZDNN_MISALIGNED_PARMBLOCK);
-  }
-
-  // clang-format off
-  __asm__ __volatile__("stfle   %[flist]"                 "\n\t"
-                       "ipm     %[cc]"                    "\n\t"
-                       "srl     %[cc],28"                 "\n\t"
-                       : [flist] "+Q"(*((struct facility_list_type*)facility_list)),
-			 "+d"(r0), [cc] "=d"(cc)
-                       :
-                       : "memory", "cc");
-  // clang-format on
-  return cc;
-}
-
-static inline int check_bitfield(uint8_t *bitfield, int bitno) {
-  uint8_t mask = (1 << 7) >> (bitno & 7);
-  return !!(bitfield[bitno / 8] & mask);
-}
-#endif
-
-/// Determine if NNPA hardware support is available
-///
-/// The function unconditionally uses the STFLE instruction available
-/// since IBM z9-109.
-///
-/// \param[in] None
-///
-/// \return true
-///         false
-///
-INIT_FUNCTION_ATTRS
-bool zdnn_is_nnpa_installed() {
-#ifndef __MVS__
-  int nnpa_supported;
-  unsigned char *facilities = alloca(STFLE_LENGTH);
-  int cc;
-  memset(facilities, 0, STFLE_LENGTH);
-  cc = invoke_stfle(facilities);
-
-  if (cc) {
-    LOG_ERROR("STFLE failed with %d", cc);
-    return false;
-  }
-
-  nnpa_supported = check_bitfield(facilities, STFLE_NNPA);
-
-  if (nnpa_supported)
-    LOG_INFO("Hardware NNPA support available", NO_ARG);
-  else
-    LOG_INFO("Hardware NNPA support not available", NO_ARG);
-
-  return nnpa_supported;
-#else
-  /***********************************************************************
-   * On z/OS, use system copy of STFLE output ("faclnnpaf").  (LoZ has to
-   * worry about dynamic changes to STFLE.  z/OS does not support that so
-   * using the static system copy is fine.)
-   ***********************************************************************/
-  struct psa *psaptr = (struct psa *)0;
-  // cppcheck-suppress nullPointer
-  struct cvtmap *cvtptr = (struct cvtmap *)psaptr->flccvt;
-  struct ecvt *ecvtptr = (struct ecvt *)cvtptr->cvtecvt;
-  struct facl *faclptr = (struct facl *)ecvtptr->ecvtfacl;
-
-  return faclptr->faclnnpaf;
-
-#endif
 }

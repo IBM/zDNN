@@ -69,17 +69,6 @@ extern char log_module[LOGMODULE_SIZE];
 #define ENVVAR_STATUS_DIAG "ZDNN_STATUS_DIAG"
 #define ENVVAR_LOGMODULE "ZDNN_LOGMODULE"
 
-#ifdef __MVS__
-#define INIT_FUNCTION_ATTRS
-#else
-/* zDNN needs to be compiled for IBM z14. In order to allow the
-   facility check to be reached also when running on older machines
-   the CPU level is lowered to IBM z196 for just the init function and
-   the facility check itself.  ALL ZDNN FUNCTIONS INVOKED BEFORE THE
-   FACILITY CHECK NEED TO BE FLAGGED THAT WAY TO MAKE IT WORK.  */
-#define INIT_FUNCTION_ATTRS __attribute__((target("arch=z196")))
-#endif
-
 #define STATUS_DIAG_NOT_SET -1
 
 #define DCL_EXTERN_STATUS_STR(a) extern const char *STATUS_STR_##a;

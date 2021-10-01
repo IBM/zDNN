@@ -19,13 +19,12 @@
 # With XLC this means building every file with a different
 # compile-time option.
 
-C_OBJFILES_EXPORTALL   := $(patsubst %.o,%.expo.o,$(C_OBJFILES))
-CXX_OBJFILES_EXPORTALL := $(patsubst %.o,%.expo.o,$(CXX_OBJFILES))
+OBJFILES_EXPORTALL   := $(patsubst %.o,%.expo.o,$(INIT_OBJFILE) $(OBJFILES))
 
 EXPORTALL_FLAG := -Wc,EXPORTALL
 
-$(SODIR)/$(LIBNAME_PRIVATE).so: $(C_OBJFILES_EXPORTALL) $(CXX_OBJFILES_EXPORTALL) $(H_FILES)
-	$(LD) $(LDFLAGS_SHARED) -o $(SODIR)/$(LIBNAME_PRIVATE).so $(C_OBJFILES_EXPORTALL) $(CXX_OBJFILES_EXPORTALL)
+$(SODIR)/$(LIBNAME_PRIVATE).so: $(OBJFILES_EXPORTALL) $(H_FILES)
+	$(LD) $(LDFLAGS_SHARED) -o $(SODIR)/$(LIBNAME_PRIVATE).so $(OBJFILES_EXPORTALL)
 	mv $(LIBNAME_PRIVATE).x  $(SODIR)/.
 
 $(OBJDIR)/%.expo.o: %.c
