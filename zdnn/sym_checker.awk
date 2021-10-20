@@ -283,7 +283,7 @@ fi == fi_dyn && NF >= 8 {
 	else
 	    dbg(1, "Skipping UND symbol: "dyn_name)
 	next
-    } else if ($7 ~ /[0-9]+/) {
+    } else if ($5 == "GLOBAL" && $7 ~ /[0-9]+/) {
 	# 'zdnn_sub@@ZDNN_1.0' => 'zdnn_sub' and return > 0 if "@" was found
 	dyn_sym=dyn_name
 	if (sub("@.*", "", dyn_sym) == 0) {
