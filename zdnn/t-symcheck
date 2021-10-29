@@ -22,10 +22,12 @@
 # useful on z/OS to get notified when things are getting out of sync
 # between Linux and z/OS.
 
-.PHONY: symcheck
-symcheck: $(SODIR)/$(LIBNAME).so
+zdnn.i: zdnn.h
+	$(CC) -E $< -o $@
+
+symcheck: $(SODIR)/$(LIBNAME).so zdnn.i
 ifneq ($(READELF),)
-	$(CC) -E -c ../zdnn/zdnn.h -o zdnn_preprocessed.h
 	$(READELF) -W --dyn-syms $(SODIR)/$(LIBNAME).so > zdnn.dynsyms
-	awk -f sym_checker.awk zdnn_preprocessed.h ../zdnn/zdnn.map zdnn.dynsyms
+	awk -f sym_checker.awk zdnn.i zdnn.map zdnn.dynsyms >symcheck
+	cat symcheck
 endif
