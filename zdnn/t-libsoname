@@ -18,10 +18,14 @@
 # API levels to co-exist in the system.
 # This is only supported on Linux right now.
 
+$(SODIR)/$(LIBSONAME): $(SODIR)/$(LIBNAME).so
+	ln -f -s $(LIBNAME).so $@
+
+$(SODIR)/$(LIBSONAME_PRIVATE): $(SODIR)/$(LIBNAME_PRIVATE).so
+	ln -f -s $(LIBNAME_PRIVATE).so $@
+
 .PHONY: libsoname
-libsoname:
-	ln -f -s $(LIBNAME).so $(SODIR)/$(LIBSONAME)
-	ln -f -s $(LIBNAME_PRIVATE).so $(SODIR)/$(LIBSONAME_PRIVATE)
+libsoname: $(SODIR)/$(LIBSONAME) $(SODIR)/$(LIBSONAME_PRIVATE)
 
 .PHONY: install_libsoname
 install_libsoname: install_shared

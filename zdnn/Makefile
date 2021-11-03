@@ -57,7 +57,7 @@ $(SODIR)/$(LIBNAME).so: $(INIT_OBJFILE) $(OBJFILES) $(H_FILES)
 clean:
 	$(RM) $(OBJDIR)/*.o $(OBJDIR)/*.lst $(OBJDIR)/*.d *~ core $(SODIR)/* \
 	*.so* ../zdnn/zdnn_private.map \
-	zdnn_preprocessed.h zdnn.dynsyms
+	zdnn.i zdnn.dynsyms symcheck
 
 .PHONY: install
 

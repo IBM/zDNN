@@ -19,7 +19,7 @@
 #
 # Usage:
 # awk [ -v debug=<DBG> ] -f <ZDNN_H_PREPROCESSED> <ZDNN_MAP> <ZDNN_DYNSYMS>
-# <ZDNN_H_PREPROCESSED>: gcc -E -c <src>/zdnn/zdnn.h -o zdnn_preprocessed.h
+# <ZDNN_H_PREPROCESSED>: gcc -E <src>/zdnn/zdnn.h -o zdnn.i
 # <ZDNN_MAP>: <src>/zdnn/zdnn.map
 # <ZDNN_DYNSYMS>: readelf -W --dyn-syms libzdnn.so
 # <DBG>: To get debug-output, run with debug > 0
@@ -128,11 +128,11 @@ fi == fi_hdr && /^#/ {
     # # 23 "../zdnn/zdnn.h" 2
     hdr_basename=$3
 
-    # '"/PATH/TO/zdnn.h"' => 'zdnn.h"'
-    sub(".*/", "", hdr_basename)
+    # Strip all double quotes
+    gsub("\"", "", hdr_basename)
 
-    # 'zdnn.h"' => 'zdnn.h'
-    sub("\"$", "", hdr_basename)
+    # '/PATH/TO/zdnn.h' => 'zdnn.h'
+    sub(".*/", "", hdr_basename)
 
     if (hdr_basename == "zdnn.h")
 	hdr_in_zdnn_h=1
