@@ -62,7 +62,7 @@ void verify_ztensor_format() {
   data = create_and_fill_random_fp_data(&ztensor);
 
   // transform the app tensor's data into stickified data
-  LOG_DEBUG("about to transform ztensor", NULL);
+  LOG_DEBUG("about to transform ztensor", NO_ARG);
   status = zdnn_transform_ztensor(&ztensor, data);
   TEST_ASSERT_MESSAGE(ZDNN_OK == status,
                       "zdnn_transform_ztensor did not return OK as expected");
@@ -586,14 +586,13 @@ void test_matmul_bcast_op(
 
   uint32_t feature = 32, batch = 4, spad_x4 = 256, timestep = 4;
 
-  uint32_t lstm_input_shape[ZDNN_MAX_DIMS] = {timestep, 1, batch, feature};
+  uint32_t input_shape[ZDNN_MAX_DIMS] = {timestep, 1, batch, feature};
   uint32_t weights_shape[ZDNN_MAX_DIMS] = {1, 1, feature, spad_x4};
   uint32_t bias_shape[ZDNN_MAX_DIMS] = {1, 1, 1, spad_x4};
 
   // concatenate the 1D arrays into 2D input for test_matmul()
   uint32_t input_shape_lst[MATMUL_NUM_INPUTS][ZDNN_MAX_DIMS];
-  memcpy(input_shape_lst[0], lstm_input_shape,
-         sizeof(uint32_t) * ZDNN_MAX_DIMS);
+  memcpy(input_shape_lst[0], input_shape, sizeof(uint32_t) * ZDNN_MAX_DIMS);
   memcpy(input_shape_lst[1], weights_shape, sizeof(uint32_t) * ZDNN_MAX_DIMS);
   memcpy(input_shape_lst[2], bias_shape, sizeof(uint32_t) * ZDNN_MAX_DIMS);
 

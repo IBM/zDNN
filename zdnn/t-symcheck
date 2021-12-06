@@ -23,7 +23,7 @@
 # between Linux and z/OS.
 
 zdnn.i: zdnn.h
-	$(CC) -E $< -o $@
+	$(CC) $(CPP_SYMCHECK_FLAGS) $<
 
 symcheck: $(SODIR)/$(LIBNAME).so zdnn.i
 ifneq ($(READELF),)

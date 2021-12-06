@@ -155,7 +155,7 @@ aiu_ops_func_specific(uint8_t function_code, const zdnn_ztensor *input1,
                       "Range violation on tensor data", NO_ARG); /*
                                AIU operation returned a RANGE VIOLATION, set as
                                a warning code and continue processing */
-    } else if (ef & !EF_RANGE_VIOLATION_MASK) {
+    } else if (ef & ~EF_RANGE_VIOLATION_MASK) {
       return status = ZDNN_STATUS(ZDNN_UNSUPPORTED_AIU_EXCEPTION,
                                   "Unsupported exception on ZDNN operation",
                                   NO_ARG); /* AIU operation returned an

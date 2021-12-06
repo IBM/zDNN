@@ -89,16 +89,11 @@ void test_stickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
 
   data = create_and_fill_random_fp_data(&ztensor);
 
-  /* Not doing this "scan non-zero entries" thing anymore.  We're now filling
-     "data" with random FP numbers so the chance of residual data in the
-     stick_area[offsets[n]] happen to exactly match the stickified value
-     of input_data[n] is extremely low.  Also FP32 value like 0x3F730000 end up
-     being 0x0000 after vec_pack() and messing up this logic.
-   */
-
   status = zdnn_transform_ztensor(&ztensor, data);
   TEST_ASSERT_MESSAGE_FORMATTED(
-      status == ZDNN_OK, "zdnn_transform_ztensor() failed, status = %08x (%s)",
+      status == ZDNN_OK,
+      "zdnn_transform_ztensor() failed, status = %08x "
+      "(%s)",
       status, zdnn_get_status_message(status));
 
   BEGIN_BLOCK_IF_LOGLEVEL_DEBUG {
@@ -111,7 +106,7 @@ void test_stickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
     dumpdata_ztensor(&ztensor, AS_FLOAT, false);
   }
 
-  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_ALL);
+  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
   size_t *offsets = alloc_offsets(&ztensor, offset_mode, path);
 
   for (uint64_t i = 0; i < num_elements; i++) {
@@ -156,33 +151,109 @@ void test_stickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
  * NHWC
  **************************************************************/
 
+#define NHWC_TEST_BASIC(n, h, w, c)                                            \
+  void test_nhwc_##n##x##h##x##w##x##c() {                                     \
+    test_stickify(n, h, w, c, ZDNN_NHWC, QUICK_OFFSETS, NULL);                 \
+  }
+
 /*
  * Tensor with 16 entries, NHWC
  * 1,4,4,1 NHWC will use one cell per stick, 4 sticks per page and a total of 4
  * pages
+ *
+ *  [0, 128, 256, 384,          (H = 0)
+ *  4096, 4224, 4352, 4480,     (H = 1)
+ *  8192, 8320, 8448, 8576,     (H = 2)
+ *  12288, 12416, 12544, 12672] (H = 3)
  */
-//
-void test_nhwc_1x4x4x1() {
-  /*
-    For 1x4x4x1:
-    [0, 128, 256, 384,          (H = 0)
-    4096, 4224, 4352, 4480,     (H = 1)
-    8192, 8320, 8448, 8576,     (H = 2)
-    12288, 12416, 12544, 12672] (H = 3)
-  */
-  test_stickify(1, 4, 4, 1, ZDNN_NHWC, QUICK_OFFSETS, NULL);
-}
+NHWC_TEST_BASIC(1, 4, 4, 1);
+
+NHWC_TEST_BASIC(1, 4, 4, 2);
+
+NHWC_TEST_BASIC(1, 32, 32, 1);
+NHWC_TEST_BASIC(1, 32, 32, 2);
 
 /*
  * 3K entries in tensor, send to NHWC sticks
  * Each stick uses 3 cells, and all 32 sticks of the page are used.
  * 32 pages are used to store the values.
- *
  */
-//
-void test_nhwc_1x32x32x3() {
-  test_stickify(1, 32, 32, 3, ZDNN_NHWC, QUICK_OFFSETS, NULL);
-}
+NHWC_TEST_BASIC(1, 32, 32, 3);
+
+NHWC_TEST_BASIC(1, 1, 2, 1);
+NHWC_TEST_BASIC(1, 1, 2, 2);
+NHWC_TEST_BASIC(1, 1, 2, 4);
+NHWC_TEST_BASIC(1, 1, 2, 7);
+NHWC_TEST_BASIC(1, 1, 4, 1);
+NHWC_TEST_BASIC(1, 1, 4, 2);
+NHWC_TEST_BASIC(1, 1, 4, 4);
+NHWC_TEST_BASIC(1, 1, 4, 7);
+NHWC_TEST_BASIC(1, 1, 7, 1);
+NHWC_TEST_BASIC(1, 1, 7, 2);
+NHWC_TEST_BASIC(1, 1, 7, 4);
+NHWC_TEST_BASIC(1, 1, 7, 7);
+NHWC_TEST_BASIC(1, 1, 8, 1);
+NHWC_TEST_BASIC(1, 1, 8, 2);
+NHWC_TEST_BASIC(1, 1, 8, 4);
+NHWC_TEST_BASIC(1, 1, 8, 7);
+NHWC_TEST_BASIC(1, 1, 13, 1);
+NHWC_TEST_BASIC(1, 1, 13, 2);
+NHWC_TEST_BASIC(1, 1, 13, 4);
+NHWC_TEST_BASIC(1, 1, 13, 7);
+NHWC_TEST_BASIC(1, 1, 100, 1);
+NHWC_TEST_BASIC(1, 1, 100, 2);
+NHWC_TEST_BASIC(1, 1, 100, 4);
+NHWC_TEST_BASIC(1, 1, 100, 7);
+
+NHWC_TEST_BASIC(2, 3, 2, 1);
+NHWC_TEST_BASIC(2, 3, 2, 2);
+NHWC_TEST_BASIC(2, 3, 2, 4);
+NHWC_TEST_BASIC(2, 3, 2, 7);
+NHWC_TEST_BASIC(2, 3, 4, 1);
+NHWC_TEST_BASIC(2, 3, 4, 2);
+NHWC_TEST_BASIC(2, 3, 4, 4);
+NHWC_TEST_BASIC(2, 3, 4, 7);
+NHWC_TEST_BASIC(2, 3, 7, 1);
+NHWC_TEST_BASIC(2, 3, 7, 2);
+NHWC_TEST_BASIC(2, 3, 7, 4);
+NHWC_TEST_BASIC(2, 3, 7, 7);
+NHWC_TEST_BASIC(2, 3, 8, 1);
+NHWC_TEST_BASIC(2, 3, 8, 2);
+NHWC_TEST_BASIC(2, 3, 8, 4);
+NHWC_TEST_BASIC(2, 3, 8, 7);
+NHWC_TEST_BASIC(2, 3, 13, 1);
+NHWC_TEST_BASIC(2, 3, 13, 2);
+NHWC_TEST_BASIC(2, 3, 13, 4);
+NHWC_TEST_BASIC(2, 3, 13, 7);
+NHWC_TEST_BASIC(2, 3, 100, 1);
+NHWC_TEST_BASIC(2, 3, 100, 2);
+NHWC_TEST_BASIC(2, 3, 100, 4);
+NHWC_TEST_BASIC(2, 3, 100, 7);
+
+NHWC_TEST_BASIC(3, 2, 2, 1);
+NHWC_TEST_BASIC(3, 2, 2, 2);
+NHWC_TEST_BASIC(3, 2, 2, 4);
+NHWC_TEST_BASIC(3, 2, 2, 7);
+NHWC_TEST_BASIC(3, 2, 4, 1);
+NHWC_TEST_BASIC(3, 2, 4, 2);
+NHWC_TEST_BASIC(3, 2, 4, 4);
+NHWC_TEST_BASIC(3, 2, 4, 7);
+NHWC_TEST_BASIC(3, 2, 7, 1);
+NHWC_TEST_BASIC(3, 2, 7, 2);
+NHWC_TEST_BASIC(3, 2, 7, 4);
+NHWC_TEST_BASIC(3, 2, 7, 7);
+NHWC_TEST_BASIC(3, 2, 8, 1);
+NHWC_TEST_BASIC(3, 2, 8, 2);
+NHWC_TEST_BASIC(3, 2, 8, 4);
+NHWC_TEST_BASIC(3, 2, 8, 7);
+NHWC_TEST_BASIC(3, 2, 13, 1);
+NHWC_TEST_BASIC(3, 2, 13, 2);
+NHWC_TEST_BASIC(3, 2, 13, 4);
+NHWC_TEST_BASIC(3, 2, 13, 7);
+NHWC_TEST_BASIC(3, 2, 100, 1);
+NHWC_TEST_BASIC(3, 2, 100, 2);
+NHWC_TEST_BASIC(3, 2, 100, 4);
+NHWC_TEST_BASIC(3, 2, 100, 7);
 
 /*
  * This routine is a generic test routine, allowing various 'e1' values
@@ -268,26 +339,21 @@ void test_2ds_2x2049() {
   test_stickify(9999, 9999, 2, 2049, ZDNN_2DS, QUICK_OFFSETS, NULL);
 }
 
-void test_concat_stickify(zdnn_ztensor_concat_types concat_type, uint32_t dim3,
-                          uint32_t dim2, uint32_t dim1) {
+void test_concat_stickify(zdnn_concat_info info, uint32_t dim3, uint32_t dim2,
+                          uint32_t dim1) {
 
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
-  zdnn_status status = ZDNN_UNAVAILABLE_FUNCTION;
+  zdnn_status status;
   void *data[] = {NULL, NULL, NULL, NULL};
-
   uint8_t num_concats = 0;
-  switch (concat_type) {
-  case CONCAT_LSTM:
+
+  if (CONCAT_RNN_TYPE(info) == RNN_TYPE_LSTM) {
     num_concats = 4;
-    break;
-  case CONCAT_GRU:
+  } else if (CONCAT_RNN_TYPE(info) == RNN_TYPE_GRU) {
     num_concats = 3;
-    break;
-  default:
-    TEST_FAIL_MESSAGE_FORMATTED("%d is not a supported concat_type",
-                                concat_type);
-    break;
+  } else {
+    TEST_FAIL_MESSAGE_FORMATTED("bad concat info: %08x\n", info);
   }
 
   // Fill in pre_transformed_desc. If dim3 is set, we're concatenating a 3DS
@@ -302,21 +368,21 @@ void test_concat_stickify(zdnn_ztensor_concat_types concat_type, uint32_t dim3,
   }
 
   // Fill in transformed_desc.
-  status = zdnn_generate_transformed_desc_concatenated(
-      &pre_tfrmd_desc, concat_type, &tfrmd_desc);
-  TEST_ASSERT_MESSAGE_FORMATTED(status == ZDNN_OK,
-                                "zdnn_generate_transformed_desc_concatenated() "
-                                "failed, status = %08x (%s)",
-                                status, zdnn_get_status_message(status));
+  status = zdnn_generate_transformed_desc_concatenated(&pre_tfrmd_desc, info,
+                                                       &tfrmd_desc);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_generate_transformed_desc_concatenated() failed, status = %08x "
+      "(%s) (concat info = %08x)",
+      status, zdnn_get_status_message(status), info);
 
   // Create ztensor and allocate space for it's buffer
   status =
       zdnn_init_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
-  TEST_ASSERT_MESSAGE_FORMATTED(
-      status == ZDNN_OK,
-      "zdnn_init_ztensor_with_malloc() failed, status = "
-      "%08x (%s)",
-      status, zdnn_get_status_message(status));
+  TEST_ASSERT_MESSAGE_FORMATTED(status == ZDNN_OK,
+                                "zdnn_init_ztensor_with_malloc() failed, "
+                                "status =  %08x (%s) (concat info = %08x)",
+                                status, zdnn_get_status_message(status), info);
 
   // Fill in random data for each gate's original values
   for (uint8_t i = 0; i < num_concats; i++) {
@@ -333,18 +399,21 @@ void test_concat_stickify(zdnn_ztensor_concat_types concat_type, uint32_t dim3,
     status = zdnn_transform_ztensor(&ztensor, data[0], data[1], data[2]);
     break;
   default:
-    TEST_FAIL_MESSAGE_FORMATTED("num_concats of %d is not supported",
-                                num_concats);
+    TEST_FAIL_MESSAGE_FORMATTED("num_concats of %d is not supported (concat "
+                                "info = %08x)",
+                                num_concats, info);
     break;
   }
   TEST_ASSERT_MESSAGE_FORMATTED(
-      status == ZDNN_OK, "dnn_transform_ztensor() failed, status = %08x (%s)",
-      status, zdnn_get_status_message(status));
+      status == ZDNN_OK,
+      "zdnn_transform_ztensor() failed, status = %08x "
+      "(%s) (concat info = %08x)",
+      status, zdnn_get_status_message(status), info);
 
   // Print the original data and stickified buffer
   BEGIN_BLOCK_IF_LOGLEVEL_DEBUG {
-    // Each gate will have it's own input data so dump each one. Each will have
-    // the same dimensions/pre-tfrmd_desc
+    // Each gate will have it's own input data so dump each one. Each will
+    // have the same dimensions/pre-tfrmd_desc
     for (uint8_t i = 0; i < num_concats; i++) {
       printf("%s(): dumpdata_origtensor for gate %d\n", __func__, i);
       dumpdata_origtensor(ztensor.pre_transformed_desc, data[i], AS_HEX);
@@ -358,9 +427,10 @@ void test_concat_stickify(zdnn_ztensor_concat_types concat_type, uint32_t dim3,
   }
 
   uint64_t elements_per_concat =
-      get_num_elements(&ztensor, ELEMENTS_CONCAT_SINGLE);
+      get_num_elements(&ztensor, ELEMENTS_PRE_SINGLE_GATE);
   uint64_t slices_per_concat = ztensor.transformed_desc->dim4;
   uint64_t elements_per_concat_slice = elements_per_concat / slices_per_concat;
+
   LOG_DEBUG("elements_per_concat = %ld, slices_per_concat = %ld, "
             "elements_per_concat_slice = %ld",
             elements_per_concat, slices_per_concat, elements_per_concat_slice);
@@ -368,7 +438,7 @@ void test_concat_stickify(zdnn_ztensor_concat_types concat_type, uint32_t dim3,
   size_t *offsets = alloc_offsets(&ztensor, QUICK_OFFSETS, NULL);
 
   uint16_t input_stickified_value = 0;
-  uint16_t output_stickified_value = 0;
+  uint16_t output_stickified_value;
   uint32_t offset_index = 0;
 
   // Loop through each offset in order and confirm the stickified value there
@@ -420,8 +490,9 @@ void test_concat_stickify(zdnn_ztensor_concat_types concat_type, uint32_t dim3,
               get_data_type_str(test_datatype));
           break;
         default:
-          TEST_FAIL_MESSAGE_FORMATTED("Unsupported data type %d",
-                                      test_datatype);
+          TEST_FAIL_MESSAGE_FORMATTED("Unsupported data type %d (%s)",
+                                      test_datatype,
+                                      get_data_type_str(test_datatype));
           break;
         }
         TEST_ASSERT_MESSAGE_FORMATTED(
@@ -449,21 +520,39 @@ void test_concat_stickify(zdnn_ztensor_concat_types concat_type, uint32_t dim3,
  * Create a FICO bias ztensor with 16 entries:
  * 4 gates each having 1 direction each having 4 elements
  */
-void test_concat_lstm_2ds_1x4() { test_concat_stickify(CONCAT_LSTM, 0, 1, 4); }
+void test_lstm_biases_1x4() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_LSTM | prev_layers[i] | biases_usages[j], 0,
+                           1, 4);
+    }
+  }
+}
 
 /*
  * Create a FICO bias ztensor with 32 entries:
  * 4 gates each having 2 directions each having 4 elements
  */
-void test_concat_lstm_2ds_2x4() { test_concat_stickify(CONCAT_LSTM, 0, 2, 4); }
+void test_lstm_biases_2x4() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_LSTM | prev_layers[i] | biases_usages[j], 0,
+                           2, 4);
+    }
+  }
+}
 
 /*
  * Create a FICO bias ztensor with 520 entries:
  * 4 gates each having 2 directions each having 65 elements
  */
-void test_concat_lstm_2ds_2x65() {
-
-  test_concat_stickify(CONCAT_LSTM, 0, 2, 65);
+void test_lstm_biases_2x65() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_LSTM | prev_layers[i] | biases_usages[j], 0,
+                           2, 65);
+    }
+  }
 }
 
 /*
@@ -472,53 +561,109 @@ void test_concat_lstm_2ds_2x65() {
  * 2049 = 64 max cells per stick * 32 max sticks per page + 1. This means each
  * direction will require two 4K pages to stickify.
  */
-void test_concat_lstm_2ds_2x2049() {
-  test_concat_stickify(CONCAT_LSTM, 0, 2, 2049);
+void test_lstm_biases_2x2049() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_LSTM | prev_layers[i] | biases_usages[j], 0,
+                           2, 2049);
+    }
+  }
 }
 
 /*
- * Create a FICO weights ztensor with 48 entries:
+ * Create a FICO weights ztensor (PREV_LAYER_UNI) with 48 entries:
  * 4 gates each having 1 direction each having 3 rows with 4 elements
  */
-void test_concat_lstm_3ds_1x3x4() {
-  test_concat_stickify(CONCAT_LSTM, 1, 3, 4);
+void test_lstm_no_vconcat_weights_1x3x4() {
+  test_concat_stickify(RNN_TYPE_LSTM | PREV_LAYER_UNI | USAGE_WEIGHTS, 1, 3, 4);
 }
 
 /*
- * Create a FICO weights ztensor with 96 entries:
+ * Create a FICO weights ztensor (PREV_LAYER_UNI) with 96 entries:
  * 4 gates each having 2 directions each having 3 rows with 4 elements
  */
-void test_concat_lstm_3ds_2x3x4() {
-  test_concat_stickify(CONCAT_LSTM, 2, 3, 4);
+void test_lstm_no_vconcat_weights_2x3x4() {
+  test_concat_stickify(RNN_TYPE_LSTM | PREV_LAYER_UNI | USAGE_WEIGHTS, 2, 3, 4);
 }
 
 /*
- * Create a FICO weights ztensor with 17160 entries:
+ * Create a FICO weights ztensor (PREV_LAYER_UNI) with 17160 entries:
  * 4 gates each having 2 directions each having 33 rows with 65 elements
  * Each direction will require two 4k pages to stickify as each cell has a max
  * of 64 elements and each page has a max of 32 sticks.
  */
-void test_concat_lstm_3ds_2x33x65() {
-  test_concat_stickify(CONCAT_LSTM, 2, 33, 65);
+void test_lstm_no_vconcat_weights_2x33x65() {
+  test_concat_stickify(RNN_TYPE_LSTM | PREV_LAYER_UNI | USAGE_WEIGHTS, 2, 33,
+                       65);
+}
+
+/*
+ * Create a FICO weights ztensor (PREV_LAYER_BIDIR) with 96 entries:
+ * 4 gates each having 1 direction each having 6 rows with 4 elements
+ */
+void test_lstm_prev_bidir_weights_1x6x4() {
+  test_concat_stickify(RNN_TYPE_LSTM | PREV_LAYER_BIDIR | USAGE_WEIGHTS, 1, 6,
+                       4);
+}
+
+/*
+ * Create a FICO weights ztensor (PREV_LAYER_BIDIR) with 192 entries:
+ * 4 gates each having 2 directions each having 6 rows with 4 elements
+ */
+void test_lstm_prev_bidir_weights_2x6x4() {
+  test_concat_stickify(RNN_TYPE_LSTM | PREV_LAYER_BIDIR | USAGE_WEIGHTS, 2, 6,
+                       4);
+}
+
+/*
+ * Create a FICO weights ztensor with (PREV_LAYER_BIDIR) 34320 entries:
+ * 4 gates each having 2 directions each having 66 rows with 65 elements
+ * Each direction will require eight 4k pages to stickify as each cell has a max
+ * of 64 elements and each page has a max of 32 sticks.
+ */
+void test_lstm_prev_bidir_weights_2x66x65() {
+  test_concat_stickify(RNN_TYPE_LSTM | PREV_LAYER_BIDIR | USAGE_WEIGHTS, 2, 66,
+                       65);
 }
 
 /*
  * Create a GRU bias ztensor with 12 entries:
  * 3 gates each having 1 direction each having 4 elements
  */
-void test_concat_gru_2ds_1x4() { test_concat_stickify(CONCAT_GRU, 0, 1, 4); }
+void test_gru_biases_1x4() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_GRU | prev_layers[i] | biases_usages[j], 0,
+                           1, 4);
+    }
+  }
+}
 
 /*
  * Create a GRU bias ztensor with 24 entries:
  * 3 gates each having 2 directions each having 4 elements
  */
-void test_concat_gru_2ds_2x4() { test_concat_stickify(CONCAT_GRU, 0, 2, 4); }
+void test_gru_biases_2x4() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_GRU | prev_layers[i] | biases_usages[j], 0,
+                           2, 4);
+    }
+  }
+}
 
 /*
  * Create a GRU bias ztensor with 390 entries:
  * 3 gates each having 2 directions each having 65 elements
  */
-void test_concat_gru_2ds_2x65() { test_concat_stickify(CONCAT_GRU, 0, 2, 65); }
+void test_gru_biases_2x65() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_GRU | prev_layers[i] | biases_usages[j], 0,
+                           2, 65);
+    }
+  }
+}
 
 /*
  * Create a GRU bias ztensor with 12294 entries:
@@ -526,30 +671,163 @@ void test_concat_gru_2ds_2x65() { test_concat_stickify(CONCAT_GRU, 0, 2, 65); }
  * 2049 = 64 max cells per stick * 32 max sticks per page + 1. This means each
  * direction will require two 4K pages to stickify.
  */
-void test_concat_gru_2ds_2x2049() {
-  test_concat_stickify(CONCAT_GRU, 0, 2, 2049);
+void test_gru_biases_2x2049() {
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_concat_stickify(RNN_TYPE_GRU | prev_layers[i] | biases_usages[j], 0,
+                           2, 2049);
+    }
+  }
 }
 
 /*
- * Create a GRU weights ztensor with 36 entries:
+ * Create a ZRH weights ztensor (PREV_LAYER_UNI) with 36 entries:
  * 3 gates each having 1 direction each having 3 rows with 4 elements
  */
-void test_concat_gru_3ds_1x3x4() { test_concat_stickify(CONCAT_GRU, 1, 3, 4); }
+void test_gru_no_vconcat_weights_1x3x4() {
+  test_concat_stickify(RNN_TYPE_GRU | PREV_LAYER_UNI | USAGE_WEIGHTS, 1, 3, 4);
+}
 
 /*
- * Create a GRU weights ztensor with 72 entries:
+ * Create a ZRH weights ztensor (PREV_LAYER_UNI) with 72 entries:
  * 3 gates each having 2 directions each having 3 rows with 4 elements
  */
-void test_concat_gru_3ds_2x3x4() { test_concat_stickify(CONCAT_GRU, 2, 3, 4); }
+void test_gru_no_vconcat_weights_2x3x4() {
+  test_concat_stickify(RNN_TYPE_GRU | PREV_LAYER_UNI | USAGE_WEIGHTS, 2, 3, 4);
+}
 
 /*
- * Create a GRU weights ztensor with 12870 entries:
+ * Create a ZRH weights ztensor (PREV_LAYER_UNI) with 12870 entries:
  * 3 gates each having 2 directions each having 33 rows with 65 elements
  * Each direction will require two 4k pages to stickify as each cell has a max
  * of 64 elements and each page has a max of 32 sticks.
  */
-void test_concat_gru_3ds_2x33x65() {
-  test_concat_stickify(CONCAT_GRU, 2, 33, 65);
+void test_gru_no_vconcat_weights_2x33x65() {
+  test_concat_stickify(RNN_TYPE_GRU | PREV_LAYER_UNI | USAGE_WEIGHTS, 2, 33,
+                       65);
+}
+
+/*
+ * Create a ZRH weights ztensor (PREV_LAYER_BIDIR) with 72 entries:
+ * 3 gates each having 1 direction each having 6 rows with 4 elements
+ */
+void test_gru_prev_bidir_weights_1x6x4() {
+  test_concat_stickify(RNN_TYPE_GRU | PREV_LAYER_BIDIR | USAGE_WEIGHTS, 1, 6,
+                       4);
+}
+
+/*
+ * Create a ZRH weights ztensor (PREV_LAYER_BIDIR) with 144 entries:
+ * 3 gates each having 2 directions each having 6 rows with 4 elements
+ */
+void test_gru_prev_bidir_weights_2x6x4() {
+  test_concat_stickify(RNN_TYPE_GRU | PREV_LAYER_BIDIR | USAGE_WEIGHTS, 2, 6,
+                       4);
+}
+
+/*
+ * Create a ZRH weights ztensor with (PREV_LAYER_BIDIR) 25740 entries:
+ * 3 gates each having 2 directions each having 66 rows with 65 elements
+ * Each direction will require six 4k pages to stickify as each cell has a max
+ * of 64 elements and each page has a max of 32 sticks.
+ */
+void test_gru_prev_bidir_weights_2x66x65() {
+  test_concat_stickify(RNN_TYPE_GRU | PREV_LAYER_BIDIR | USAGE_WEIGHTS, 2, 66,
+                       65);
+}
+
+void test_concat_weights_dim2(zdnn_concat_info info, uint32_t dim3,
+                              uint32_t dim2, uint32_t dim1,
+                              zdnn_status exp_status) {
+
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_ztensor ztensor;
+  zdnn_status status;
+  void *data[] = {NULL, NULL, NULL, NULL};
+  uint8_t num_concats = 0;
+
+  if (CONCAT_RNN_TYPE(info) == RNN_TYPE_LSTM) {
+    num_concats = 4;
+  } else if (CONCAT_RNN_TYPE(info) == RNN_TYPE_GRU) {
+    num_concats = 3;
+  } else {
+    TEST_FAIL_MESSAGE_FORMATTED("bad concat info: %08x\n", info);
+  }
+
+  // if dim2 is odd number coming in, +1 so we create a valid dim2 and create
+  // a valid ztensor with that.  else use it as is
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, test_datatype, &pre_tfrmd_desc, dim3,
+                                 ((dim2 & 1) ? dim2 + 1 : dim2), dim1);
+
+  status = zdnn_generate_transformed_desc_concatenated(&pre_tfrmd_desc, info,
+                                                       &tfrmd_desc);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_generate_transformed_desc_concatenated() failed, status = %08x "
+      "(%s) (concat info = %08x)",
+      status, zdnn_get_status_message(status), info);
+
+  // Create ztensor and allocate space for it's buffer
+  status =
+      zdnn_init_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
+  TEST_ASSERT_MESSAGE_FORMATTED(status == ZDNN_OK,
+                                "zdnn_init_ztensor_with_malloc() failed, "
+                                "status = %08x (%s) (concat info = %08x)",
+                                status, zdnn_get_status_message(status), info);
+
+  // Fill in random data for each gate's original values
+  for (uint8_t i = 0; i < num_concats; i++) {
+    data[i] = create_and_fill_random_fp_data(&ztensor);
+  }
+
+  // put back the incoming dim2 into pre-transformed desc as caller intended
+  ztensor.pre_transformed_desc->dim2 = dim2;
+
+  // Transform the original data values into the stickified ztensor
+  switch (num_concats) {
+  case 4:
+    status =
+        zdnn_transform_ztensor(&ztensor, data[0], data[1], data[2], data[3]);
+    break;
+  case 3:
+    status = zdnn_transform_ztensor(&ztensor, data[0], data[1], data[2]);
+    break;
+  default:
+    TEST_FAIL_MESSAGE_FORMATTED(
+        "num_concats of %d is not supported (concat info = %08x)", num_concats,
+        info);
+    break;
+  }
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == exp_status,
+      "zdnn_transform_origtensor() unexpected status (status = %08x, "
+      "expects = %08x)",
+      status, exp_status);
+
+  for (uint8_t i = 0; i < num_concats; i++) {
+    free(data[i]);
+  }
+  zdnn_free_ztensor_buffer(&ztensor);
+}
+
+void test_lstm_no_vconcat_weights_odd_dim2_pass() {
+  test_concat_weights_dim2(RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_UNI, 3, 9,
+                           10, ZDNN_OK);
+}
+
+void test_lstm_prev_bidir_weights_odd_dim2_fail() {
+  test_concat_weights_dim2(RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_BIDIR, 3,
+                           9, 10, ZDNN_INVALID_SHAPE);
+}
+
+void test_gru_no_vconcat_weights_odd_dim2_pass() {
+  test_concat_weights_dim2(RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_UNI, 3, 9,
+                           10, ZDNN_OK);
+}
+
+void test_gru_prev_bidir_weights_odd_dim2_fail() {
+  test_concat_weights_dim2(RNN_TYPE_GRU | USAGE_WEIGHTS | PREV_LAYER_BIDIR, 3,
+                           9, 10, ZDNN_INVALID_SHAPE);
 }
 
 /**************************************************************
@@ -642,15 +920,15 @@ void nhwc_nchw_comp(uint32_t n, uint32_t h, uint32_t w, uint32_t c) {
               get_data_type_size(pre_tfrmd_desc_nhwc.type), data_nchw);
 
   BEGIN_BLOCK_IF_LOGLEVEL_DEBUG {
-    printf(
-        "NHWC DATA  "
-        "=================================================================\n");
+    printf("NHWC DATA  "
+           "================================================================="
+           "\n");
 
     dumpdata_origtensor(&pre_tfrmd_desc_nhwc, data_nhwc, AS_FLOAT);
 
-    printf(
-        "NCHW DATA  "
-        "=================================================================\n");
+    printf("NCHW DATA  "
+           "================================================================="
+           "\n");
 
     dumpdata_origtensor(&pre_tfrmd_desc_nchw, data_nchw, AS_FLOAT);
   }
@@ -669,17 +947,17 @@ void nhwc_nchw_comp(uint32_t n, uint32_t h, uint32_t w, uint32_t c) {
       status);
 
   BEGIN_BLOCK_IF_LOGLEVEL_DEBUG {
-    printf(
-        "NHWC STICK "
-        "=================================================================\n");
+    printf("NHWC STICK "
+           "================================================================="
+           "\n");
 
     dumpdata_ztensor(&ztensor_nhwc, AS_FLOAT, false);
 
-    printf(
-        "NCHW STICK "
-        "=================================================================\n");
+    printf("NCHW STICK "
+           "================================================================="
+           "\n");
 
-    dumpdata_ztensor(&ztensor_nhwc, AS_FLOAT, false);
+    dumpdata_ztensor(&ztensor_nchw, AS_FLOAT, false);
   }
 
   TEST_ASSERT_MESSAGE(memcmp(ztensor_nchw.buffer, ztensor_nhwc.buffer,
@@ -1068,8 +1346,86 @@ int main(void) {
   UNITY_BEGIN();
 
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x2x3x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x2);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x3);
+
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x7);
+
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x7);
+
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x7);
+
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x4);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x5);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x8);
@@ -1081,7 +1437,7 @@ int main(void) {
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x128);
 
   // NHWC tests that use offset_files
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x33x129);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x2x3x4);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x31x64);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x32x64);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x33x64);
@@ -1093,6 +1449,7 @@ int main(void) {
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x63x4);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x64x4);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x65x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x33x129);
 
   RUN_TEST_ALL_DATATYPES(test_3ds_4x4x1);
   RUN_TEST_ALL_DATATYPES(test_3ds_32x32x3);
@@ -1100,23 +1457,36 @@ int main(void) {
   RUN_TEST_ALL_DATATYPES(test_2ds_4x2);
   RUN_TEST_ALL_DATATYPES(test_2ds_2x2049);
 
-  RUN_TEST_ALL_DATATYPES(test_concat_lstm_2ds_1x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_lstm_2ds_2x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_lstm_2ds_2x65);
-  RUN_TEST_ALL_DATATYPES(test_concat_lstm_2ds_2x2049);
+  RUN_TEST_ALL_DATATYPES(test_lstm_biases_1x4);
+  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x4);
+  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x65);
+  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x2049);
 
-  RUN_TEST_ALL_DATATYPES(test_concat_lstm_3ds_1x3x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_lstm_3ds_2x3x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_lstm_3ds_2x33x65);
+  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_1x3x4);
+  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_2x3x4);
+  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_2x33x65);
 
-  RUN_TEST_ALL_DATATYPES(test_concat_gru_2ds_1x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_gru_2ds_2x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_gru_2ds_2x65);
-  RUN_TEST_ALL_DATATYPES(test_concat_gru_2ds_2x2049);
+  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x6x4);
+  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x6x4);
+  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x66x65);
 
-  RUN_TEST_ALL_DATATYPES(test_concat_gru_3ds_1x3x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_gru_3ds_2x3x4);
-  RUN_TEST_ALL_DATATYPES(test_concat_gru_3ds_2x33x65);
+  RUN_TEST_ALL_DATATYPES(test_gru_biases_1x4);
+  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x4);
+  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x65);
+  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x2049);
+
+  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_1x3x4);
+  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_2x3x4);
+  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_2x33x65);
+
+  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x6x4);
+  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x6x4);
+  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x66x65);
+
+  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_odd_dim2_pass);
+  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_odd_dim2_fail);
+  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_odd_dim2_pass);
+  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_odd_dim2_fail);
 
   RUN_TEST_ALL_DATATYPES(test_nchw_1x1x4x4);
   RUN_TEST_ALL_DATATYPES(test_nchw_1x4x2x3);
@@ -1154,15 +1524,15 @@ int main(void) {
   RUN_TEST_ALL_DATATYPES(test_hwck_1x1x64x4);
   RUN_TEST_ALL_DATATYPES(test_hwck_1x1x65x4);
 
-  RUN_TEST(test_ztensor_reuse_with_reset);
-  RUN_TEST(test_ztensor_reuse_without_reset);
-  RUN_TEST(test_format_after_stickify_4dfeature_success);
-  RUN_TEST(test_format_after_stickify_4dfeature_fail);
-  RUN_TEST(test_ztensor_null_buffer);
-  RUN_TEST(test_ztensor_not_enough_buffersize);
+  RUN_TEST_ALL_DATATYPES(test_ztensor_reuse_with_reset);
+  RUN_TEST_ALL_DATATYPES(test_ztensor_reuse_without_reset);
+  RUN_TEST_ALL_DATATYPES(test_format_after_stickify_4dfeature_success);
+  RUN_TEST_ALL_DATATYPES(test_format_after_stickify_4dfeature_fail);
+  RUN_TEST_ALL_DATATYPES(test_ztensor_null_buffer);
+  RUN_TEST_ALL_DATATYPES(test_ztensor_not_enough_buffersize);
 
-  RUN_TEST(test_ztensor_fp16_bad_values);
-  RUN_TEST(test_ztensor_fp32_bad_values);
+  RUN_TEST_ALL_DATATYPES(test_ztensor_fp16_bad_values);
+  RUN_TEST_ALL_DATATYPES(test_ztensor_fp32_bad_values);
 
   return UNITY_END();
 }

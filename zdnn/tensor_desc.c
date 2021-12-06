@@ -47,6 +47,7 @@ verify_pre_transformed_descriptor(const zdnn_tensor_desc *pre_tfrmd_desc) {
   case ZDNN_3D:
   case ZDNN_3DS:
   case ZDNN_4D:
+  case ZDNN_4DS:
   case ZDNN_NHWC:
   case ZDNN_NCHW:
   case ZDNN_HWCK:
@@ -84,16 +85,17 @@ verify_pre_transformed_descriptor(const zdnn_tensor_desc *pre_tfrmd_desc) {
 ///
 zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc) {
 
-  // First, format has to be valid (defined in the enum)
-  // Then if format doesn't agree with layout, we assume format is correct and
-  // layout is wrong (either can be wrong, but we have to pick one)
+  // First, format must be valid (defined in the enum)
+  // Then if format doesn't agree with layout, we declare format is correct and
+  // layout is wrong (in reality, either can be wrong, but we have to pick one)
   switch (tfrmd_desc->format) {
   case ZDNN_FORMAT_4DFEATURE:
     switch (tfrmd_desc->layout) {
     case ZDNN_NHWC:
     case ZDNN_FICO:
     case ZDNN_ZRH:
-    case ZDNN_BIDIR_OUTPUT:
+    case ZDNN_BIDIR_FICO:
+    case ZDNN_BIDIR_ZRH:
       break;
     default:
       return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Format is %s but layout is %s",
@@ -388,6 +390,25 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
     status = ZDNN_OK;
     break;
+  case (ZDNN_4DS):
+    // ZDNN_4DS is used exclusively as RNN output
+    // shape (a, b, c, d)  -> ZDNN_NHWC
+    //   when b = 1 (uni-dir)     -> dims4-1 (a, 1, c, d)
+    //   otherwise (bi-dir, etc.) -> dims4-1 (a, 1, c, b * PADDED(d))
+    tfrmd_desc->dim4 = pre_tfrmd_desc->dim4;
+    tfrmd_desc->dim3 = 1;
+    tfrmd_desc->dim2 = pre_tfrmd_desc->dim2;
+    if (pre_tfrmd_desc->dim3 == 1) {
+      tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
+    } else {
+      // so when dim3 is 0 for whatever reason, tfrmd_desc->dim1 will become 0
+      // and will fail transform-desc check later
+      tfrmd_desc->dim1 = pre_tfrmd_desc->dim3 * PADDED(pre_tfrmd_desc->dim1);
+    }
+    tfrmd_desc->layout = ZDNN_NHWC;
+    tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
+    status = ZDNN_OK;
+    break;
   case (ZDNN_NCHW):
     // shape (n, c, h, w) -> dims4-1 (n, h, w, c)
     tfrmd_desc->dim4 = pre_tfrmd_desc->dim4;
@@ -427,74 +448,99 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
 /// \param[in] pre_tfrmd_desc
 ///                  Pointer to zdnn_tensor_desc struct with pre-transformed
 ///                  information
-/// \param[in] concat_type
-///                  Concatenation type (CONCAT_LSTM, CONCAT_GRU, etc.)
-///\param[out] tfrmd_desc
+/// \param[in] info
+///                  Concatenation information
+/// \param[out] tfrmd_desc
 ///                  Pointer to zdnn_tensor_desc struct where transformed
 ///                  information will be stored
 ///
 /// \return ZDNN_OK
-///         ZDNN_INVALID_LAYOUT
-///         ZDNN_INVALID_CONCAT_TYPE
+///          ZDNN_INVALID_LAYOUT
+///          ZDNN_INVALID_CONCAT_INFO
+///          ZDNN_INVALID_SHAPE
 ///
 zdnn_status zdnn_generate_transformed_desc_concatenated(
-    const zdnn_tensor_desc *pre_tfrmd_desc,
-    zdnn_ztensor_concat_types concat_type, zdnn_tensor_desc *tfrmd_desc) {
+    const zdnn_tensor_desc *pre_tfrmd_desc, zdnn_concat_info info,
+    zdnn_tensor_desc *tfrmd_desc) {
 
-  // Check passed in concat_type and return an error if we don't support it.
-  // Don't set the trfmd_desc layout here. We don't want to make changes to the
-  // trfmd desc until after we verify the pre_tfrmd_desc layout.
-  zdnn_data_layouts concat_layout;
-  switch (concat_type) {
-  case (CONCAT_LSTM):
-    concat_layout = ZDNN_FICO;
-    break;
-  case (CONCAT_GRU):
-    concat_layout = ZDNN_ZRH;
-    break;
-  case (CONCAT_BIDIR_OUTPUT):
-    concat_layout = ZDNN_BIDIR_OUTPUT;
-    if (pre_tfrmd_desc->layout != ZDNN_3DS) {
+  if ((CONCAT_USAGE(info) == USAGE_WEIGHTS) &&
+      (CONCAT_PREV_LAYER(info) == PREV_LAYER_BIDIR)) {
+    // dim2 can't be odd number
+    if (pre_tfrmd_desc->dim2 & 1) {
       return ZDNN_STATUS(
-          ZDNN_INVALID_LAYOUT,
-          "concatenation type %d requires pretransformed layout %s",
-          concat_type, get_data_layout_str(pre_tfrmd_desc->layout));
+          ZDNN_INVALID_SHAPE,
+          "when PREV_LAYER_BIDIR and USAGE_WEIGHTS, pre-transformed "
+          "dim2 must be multiples of 2 (found: %d)",
+          pre_tfrmd_desc->dim2);
     }
-    break;
-  default:
-    return ZDNN_STATUS(ZDNN_INVALID_CONCAT_TYPE,
-                       "Invalid concatenation type: %d", concat_type);
   }
 
-  // Check the pre_tfrmd_desc is one we support for concatenation. If it is,
-  // start updating the trfmd_desc. Otherwise no changes are made to trfmd_desc.
-  switch (pre_tfrmd_desc->layout) {
-  case ZDNN_2DS:
-    // shape (a, b) --> dims4-1 [a, 1, 1, b_padded]
-    tfrmd_desc->dim4 = pre_tfrmd_desc->dim2;
-    tfrmd_desc->dim3 = 1;
-    tfrmd_desc->dim2 = 1;
-    break;
-  case ZDNN_3DS:
-    // shape (a, b, c) --> dims4-1 [a, 1, b, c_padded]
-    tfrmd_desc->dim4 = pre_tfrmd_desc->dim3;
-    tfrmd_desc->dim3 = 1;
-    tfrmd_desc->dim2 = pre_tfrmd_desc->dim2;
-    break;
-  default:
-    return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Invalid layout: %d (%s)",
-                       pre_tfrmd_desc->layout,
-                       get_data_layout_str(pre_tfrmd_desc->layout));
-    break;
+  // Two kinds of concatenations we need to deal with:
+  //
+  // - (Hidden-)Weights, (hidden)-biases need to be concatenated horizontally,
+  //   new dim1 is calculated via get_rnn_concatenated_dim1()
+  //
+  // - Weights may need to be concatenated vertically also (when output
+  //   from the previous bidir layer is the input), new dim2 is calculated via
+  //   get_rnn_concatenated_dim2()
+
+  if ((CONCAT_USAGE(info) == USAGE_BIASES) ||
+      (CONCAT_USAGE(info) == USAGE_HIDDEN_BIASES)) {
+    if (pre_tfrmd_desc->layout == ZDNN_2DS) {
+      tfrmd_desc->dim4 = pre_tfrmd_desc->dim2;
+      tfrmd_desc->dim3 = 1;
+      tfrmd_desc->dim2 = 1;
+      tfrmd_desc->dim1 = get_rnn_concatenated_dim1(pre_tfrmd_desc->dim1, info);
+    } else {
+      return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
+                         "Pre-transformed layout not ZDNN_2DS (found: %s)",
+                         get_data_layout_str(pre_tfrmd_desc->layout));
+    }
+  } else if ((CONCAT_USAGE(info) == USAGE_WEIGHTS) ||
+             (CONCAT_USAGE(info) == USAGE_HIDDEN_WEIGHTS)) {
+    if (pre_tfrmd_desc->layout == ZDNN_3DS) {
+      tfrmd_desc->dim4 = pre_tfrmd_desc->dim3;
+      tfrmd_desc->dim3 = 1;
+      tfrmd_desc->dim2 = get_rnn_concatenated_dim2(pre_tfrmd_desc->dim2, info);
+      tfrmd_desc->dim1 = get_rnn_concatenated_dim1(pre_tfrmd_desc->dim1, info);
+    } else {
+      return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
+                         "Pre-transformed layout not ZDNN_3DS (found: %s)",
+                         get_data_layout_str(pre_tfrmd_desc->layout));
+    }
+  } else {
+    return ZDNN_STATUS(ZDNN_INVALID_CONCAT_INFO,
+                       "Invalid usage in concatenation info: %08x", info);
   }
-  // dim1_padded = dim1-to-next-multiple-of-64 * # of concats
-  tfrmd_desc->dim1 = CEIL(pre_tfrmd_desc->dim1, AIU_2BYTE_CELLS_PER_STICK) *
-                     AIU_2BYTE_CELLS_PER_STICK *
-                     get_data_layout_num_gates(concat_layout);
+
+  // if USAGE is WEIGHTS and PREV_LAYER is BIDIR then
+  // ZDNN_BIDIR_FICO/ZDNN_BIDIR_ZRH
+  //
+  // everything else ZDNN_FICO/ZDNN_ZRH
+
+  if ((CONCAT_USAGE(info) == USAGE_WEIGHTS) &&
+      (CONCAT_PREV_LAYER(info) == PREV_LAYER_BIDIR)) {
+    if (CONCAT_RNN_TYPE(info) == RNN_TYPE_LSTM) {
+      tfrmd_desc->layout = ZDNN_BIDIR_FICO;
+    } else if (CONCAT_RNN_TYPE(info) == RNN_TYPE_GRU) {
+      tfrmd_desc->layout = ZDNN_BIDIR_ZRH;
+    } else {
+      return ZDNN_STATUS(ZDNN_INVALID_CONCAT_INFO,
+                         "Invalid RNN type in concatenation info: %08x", info);
+    }
+  } else {
+    if (CONCAT_RNN_TYPE(info) == RNN_TYPE_LSTM) {
+      tfrmd_desc->layout = ZDNN_FICO;
+    } else if (CONCAT_RNN_TYPE(info) == RNN_TYPE_GRU) {
+      tfrmd_desc->layout = ZDNN_ZRH;
+    } else {
+      return ZDNN_STATUS(ZDNN_INVALID_CONCAT_INFO,
+                         "Invalid RNN type in concatenation info: %08x", info);
+    }
+  }
 
   tfrmd_desc->type = ZDNN_DLFLOAT16;
   tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-  tfrmd_desc->layout = concat_layout;
 
   return ZDNN_STATUS_OK;
 }

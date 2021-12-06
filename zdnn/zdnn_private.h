@@ -52,9 +52,10 @@ typedef enum log_levels {
 } log_levels;
 
 typedef enum elements_mode {
-  ELEMENTS_ALL,
-  ELEMENTS_CONCAT_SINGLE,
-  ELEMENTS_CONCAT_WO_PAD
+  ELEMENTS_AIU,
+  ELEMENTS_PRE,
+  ELEMENTS_PRE_SINGLE_GATE = ELEMENTS_PRE,
+  ELEMENTS_PRE_ALL_GATES
 } elements_mode;
 
 #define LOGMODULE_SIZE 1024
@@ -79,7 +80,7 @@ DCL_EXTERN_STATUS_STR(ZDNN_INVALID_LAYOUT)
 DCL_EXTERN_STATUS_STR(ZDNN_INVALID_TYPE)
 DCL_EXTERN_STATUS_STR(ZDNN_INVALID_FORMAT)
 DCL_EXTERN_STATUS_STR(ZDNN_INVALID_DIRECTION)
-DCL_EXTERN_STATUS_STR(ZDNN_INVALID_CONCAT_TYPE)
+DCL_EXTERN_STATUS_STR(ZDNN_INVALID_CONCAT_INFO)
 DCL_EXTERN_STATUS_STR(ZDNN_INVALID_STRIDE_PADDING)
 DCL_EXTERN_STATUS_STR(ZDNN_INVALID_STRIDES)
 DCL_EXTERN_STATUS_STR(ZDNN_MISALIGNED_PARMBLOCK)
@@ -348,6 +349,12 @@ zdnn_status verify_tensors(const zdnn_ztensor *input_a,
                            const zdnn_ztensor *input_b,
                            const zdnn_ztensor *input_c,
                            const zdnn_ztensor *output);
+zdnn_status verify_zdnn_lstm_or_gru_tensors(
+    uint8_t function_code, const zdnn_ztensor *input, const zdnn_ztensor *h0,
+    const zdnn_ztensor *c0, const zdnn_ztensor *weights,
+    const zdnn_ztensor *biases, const zdnn_ztensor *hidden_weights,
+    const zdnn_ztensor *hidden_biases, lstm_gru_direction direction,
+    const zdnn_ztensor *hn_output, const zdnn_ztensor *cf_output);
 zdnn_status verify_lstm_or_gru_act_tensors(uint8_t function_code,
                                            const zdnn_ztensor *ts_fused,
                                            const zdnn_ztensor *bias_add_rnn_op,
@@ -702,6 +709,9 @@ const char *get_pool_padding_str(zdnn_pool_padding pad);
 const char *get_conv2d_act_str(zdnn_conv2d_act func);
 uint64_t get_num_elements(const zdnn_ztensor *ztensor, elements_mode mode);
 
+uint32_t get_rnn_concatenated_dim1(uint32_t val, zdnn_concat_info info);
+uint32_t get_rnn_concatenated_dim2(uint32_t val, zdnn_concat_info info);
+
 // -----------------------------------------------------------------------------
 // Print Utilities
 // -----------------------------------------------------------------------------
@@ -727,8 +737,20 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
 #define MAX(a, b) ((a < b) ? b : a)
 #define BIT_SIZEOF(a) (sizeof(a) * 8)
 
+// padded = next multiple of AIU_2BYTE_CELLS_PER_STICK
+#define PADDED(x)                                                              \
+  ((uint32_t)CEIL(x, AIU_2BYTE_CELLS_PER_STICK) * AIU_2BYTE_CELLS_PER_STICK)
+
 // -----------------------------------------------------------------------------
 // Private global variables
 // -----------------------------------------------------------------------------
+
+#define PRINT_DIMS(x)                                                          \
+  printf(#x " pre: %u %u %u %u\n", (x)->pre_transformed_desc->dim4,            \
+         (x)->pre_transformed_desc->dim3, (x)->pre_transformed_desc->dim2,     \
+         (x)->pre_transformed_desc->dim1);                                     \
+  printf(#x ": %u %u %u %u\n", (x)->transformed_desc->dim4,                    \
+         (x)->transformed_desc->dim3, (x)->transformed_desc->dim2,             \
+         (x)->transformed_desc->dim1);
 
 #endif /* ZDNN_ZDNN_PRIVATE_H_ */

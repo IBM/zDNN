@@ -16,6 +16,7 @@
  */
 #include "zdnn.h"
 #include "zdnn_private.h"
+#include <string.h>
 
 #ifdef __MVS__
 #pragma export(zdnn_init_ztensor)
@@ -38,6 +39,7 @@ void zdnn_init_ztensor(zdnn_tensor_desc *pre_tfrmd_desc,
   output->pre_transformed_desc = pre_tfrmd_desc;
   output->transformed_desc = tfrmd_desc;
   output->is_transformed = false;
+  memset(&output->reserved, 0, sizeof(output->reserved));
 }
 
 /// Reset a zTensor for reuse
