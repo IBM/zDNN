@@ -45,7 +45,7 @@ void test_offset(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
   zdnn_init_ztensor(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
 
   uint64_t *offsets_calculated =
-      malloc(sizeof(uint64_t) * get_num_elements(&ztensor, ELEMENTS_ALL));
+      malloc(sizeof(uint64_t) * get_num_elements(&ztensor, ELEMENTS_PRE));
 
   uint64_t c = 0;
 

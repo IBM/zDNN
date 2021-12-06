@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-AC_INIT([libzdnn], [0.3.1])
+AC_INIT([libzdnn], [0.4.0])
 
 objdir=`pwd -P`
 
@@ -44,8 +44,10 @@ AC_ARG_VAR(CFLAGS_INIT)
 AC_ARG_VAR(CFLAGS_DEBUG)
 AC_ARG_VAR(CFLAGS_SHARED)
 AC_ARG_VAR(CFLAGS_ASM)
+AC_ARG_VAR(CFLAGS_NOSEARCH)
 AC_ARG_VAR(CXXFLAGS)
 AC_ARG_VAR(CXXFLAGS_ASM)
+AC_ARG_VAR(CPP_SYMCHECK_FLAGS)
 AC_ARG_VAR(SODIR)
 AC_ARG_VAR(LIBNAME)
 AC_ARG_VAR(LIBSONAME)
@@ -80,13 +82,13 @@ AS_IF([test "x$enable_nnpa" = "xno"], [
   AC_DEFINE(ZDNN_CONFIG_NO_NNPA, 1, [Skip all NNPA facility instructions.])
 ])
 
-AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Enable additional sanity checking, error reporting, disable compiler optimizations, and add debug information]))
+AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Enable additional checking, error reporting, disable compiler optimizations, and add debug information]))
 AS_IF([test "x$enable_debug" = "xyes"], [
   zdnn_config_debug=1
   CFLAGS="${CFLAGS} ${CFLAGS_DEBUG}"
   CFLAGS_INIT="${CFLAGS_INIT} ${CFLAGS_DEBUG}"
   CXXFLAGS="${CXXFLAGS} ${CFLAGS_DEBUG}"
-  AC_DEFINE(ZDNN_CONFIG_DEBUG, 1, [Enable additional sanity checking, error reporting, disable compiler optimizations, and add debug information])
+  AC_DEFINE(ZDNN_CONFIG_DEBUG, 1, [Enable additional checking, error reporting, disable compiler optimizations, and add debug information])
 ])
 
 AC_ARG_ENABLE([listings], AS_HELP_STRING([--enable-listings], [Make 'make all' generate assembler listings]))

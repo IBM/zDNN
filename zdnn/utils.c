@@ -161,14 +161,23 @@ bool is_bitset_256(bit256_t field, uint16_t bit_pos) {
 ///
 /// \param[in] ztensor zDNN tensor to get element count from
 /// \param[in] elements_mode controls how to count elements.
-///     ELEMENTS_ALL - All elements including padding for concatenated tensors
-///                    (ie the tfrmd shape)
-///     ELEMENTS_CONCAT_SINGLE - The number of elements of a single
-///                              concat within the tensor without padding
-///                              (ie the pre_tfrmd shape)
-///     ELEMENTS_CONCAT_WO_PAD - return total number of elements (all concats)
-///                              but do not include the zero padding elements
-///                              between concats (ie pre_tfrmd * num_concats)
+///
+///     ELEMENTS_AIU -
+///         All elements wrt the AIU (ie the tfrmd shape)
+///         For concatenated and RNN output tensors, this includes horizontal
+///         and vertical paddings
+///
+///     ELEMENTS_PRE / ELEMENTS_PRE_SINGLE_GATE -
+///         For non-concatenated tensor, this represents the number of elements
+///         wrt the pre-transformed shape
+///         For concatenated tensor, this represents the number of elements of
+///         a single gate without padding (ie the pre_tfrmd shape)
+///
+///     ELEMENTS_PRE_ALL_GATES -
+///         Total number of elements (all gates) but do not include the zero
+///         padding elements (ie ELEMENTS_PRE_SINGLE_GATE * num_gates)
+///         *** THIS MODE RETURNS ZERO ON NON-CONCATENATED TENSOR! ***
+///
 /// \return number of elements based on desired mode
 ///
 uint64_t get_num_elements(const zdnn_ztensor *ztensor, elements_mode mode) {
@@ -176,18 +185,26 @@ uint64_t get_num_elements(const zdnn_ztensor *ztensor, elements_mode mode) {
   uint32_t *dims_ptr;
   int i;
 
+  // For tensors that have no horizontal/vertical paddings or concatenation etc,
+  // ELEMENTS_PRE, ELEMENTS_PRE_SINGLE_GATE, ELEMENTS_AIU would yield the same
+  // result so they're somewhat interchangeable.
+  //
+  // But for readability should not, for example, use ELEMENTS_PRE_SINGLE_GATE
+  // on (e.g.) a non-concatenated (even though the result is "correct").
+
   // Setup how to loop over the shape based on the mode.
   switch (mode) {
-  case ELEMENTS_ALL:
-    // tfrmd_desc shape accounts for all elements including concat padding.
+  case ELEMENTS_AIU:
+    // tfrmd_desc shape accounts for all elements including both concat
+    // horizontal and vertical paddings.
     dims_ptr = &(ztensor->transformed_desc->dim4);
     // Loop over all dims since tfrmd_dec sets any "unused" dimensions to 1.
     i = 0;
     break;
-  case ELEMENTS_CONCAT_SINGLE:
-  case ELEMENTS_CONCAT_WO_PAD:
+  case ELEMENTS_PRE: // = ELEMENTS_PRE_SINGLE_GATE
+  case ELEMENTS_PRE_ALL_GATES:
     // Use pre_tfrmd_desc as we document that should be the shape of a single
-    // concat/gate and not the combined shape.
+    // horizontal-concat (or gate) and not the combined shape.
     dims_ptr = &(ztensor->pre_transformed_desc->dim4);
     // Loop will start at outermost dimension we expect for the layout.
     // For example: 2D gets dim2 and dim1. 3D gets dim3, dim2, and dim1.
@@ -205,15 +222,10 @@ uint64_t get_num_elements(const zdnn_ztensor *ztensor, elements_mode mode) {
     num_elements *= (uint64_t)dims_ptr[i];
   }
 
-  if (mode == ELEMENTS_CONCAT_WO_PAD) {
-    short num_gates =
+  if (mode == ELEMENTS_PRE_ALL_GATES) {
+    // this will cause the function to return 0 if there's no gates to speak of
+    num_elements *=
         get_data_layout_num_gates(ztensor->transformed_desc->layout);
-    // Non-concatenated layouts return 0 gates. Change to 1 so we don't just
-    // return 0 for non-concatenated tensors.
-    if (!num_gates) {
-      num_gates = 1;
-    }
-    num_elements *= num_gates;
   }
 
   return num_elements;

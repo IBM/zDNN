@@ -15,8 +15,9 @@
 # limitations under the License.
 #
 import glob
+import os
 
-results_path = "obj/testDriver*.txt"
+results_path = "bin/testDriver*.txt"
 
 num_passes = 0
 num_ignores = 0
@@ -34,35 +35,40 @@ notes_txt = ""
 NL = "\\n"
 
 for filename in glob.glob(results_path):
-    for line in open(filename, "r"):
 
-        line = line.strip()
-        if ":PASS" in line or ":IGNORE" in line or ":FAIL" in line:
-            test_file, line_num, test_name, status = line.split(":", 3)
+    if os.stat(filename).st_size == 0:
+        notes_txt = notes_txt + filename + " is a 0 byte file.  Likely crashed." + NL
+    else:
+        for line in open(filename, "r"):
 
-            test_file = test_file.strip()
-            line_num = line_num.strip()
-            test_name = test_name.strip()
-            status = status.strip()
+            line = line.strip()
+            if ":PASS" in line or ":IGNORE" in line or ":FAIL" in line:
+                test_file, line_num, test_name, status = line.split(":", 3)
 
-            if "PASS" in status:
-                num_passes = num_passes + 1
-                pass_txt = pass_txt + test_file + ":" + test_name + NL
+                test_file = test_file.strip()
+                line_num = line_num.strip()
+                test_name = test_name.strip()
+                status = status.strip()
 
-            if "IGNORE" in status:
-                num_ignores = num_ignores + 1
-                ignore_txt = (
-                    ignore_txt + test_file + ":" + test_name + ":" + status + NL
-                )
+                if "PASS" in status:
+                    num_passes = num_passes + 1
+                    pass_txt = pass_txt + test_file + ":" + test_name + NL
 
-            if "FAIL" in status:
-                num_fails = num_fails + 1
-                fail_txt = fail_txt + test_file + ":" + test_name + ":" + status + NL
+                if "IGNORE" in status:
+                    num_ignores = num_ignores + 1
+                    ignore_txt = (
+                        ignore_txt + test_file + ":" + test_name + ":" + status + NL
+                    )
 
-    # Unity prints a "final status" text at the end.  If the last line isn't either
-    # of these then likely the testDriver crashed
-    if line != "FAIL" and line != "OK":
-        notes_txt = notes_txt + filename + " did not finish.  Likely crashed." + NL
+                if "FAIL" in status:
+                    num_fails = num_fails + 1
+                    fail_txt = fail_txt + test_file + ":" + test_name + ":" + status + NL
+
+
+        # Unity prints a "final status" text at the end.  If the last line isn't either
+        # of these then likely the testDriver crashed
+        if line != "FAIL" and line != "OK":
+            notes_txt = notes_txt + filename + " did not finish.  Likely crashed." + NL
 
 # print the whole report as one big string so that make won't random insert a space
 # in between every print()

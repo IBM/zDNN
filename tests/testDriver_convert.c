@@ -63,10 +63,8 @@ typedef
     _Packed
 #endif
     struct midfloat_str {
-  // cppcheck-suppress unusedStructMember
   uint8_t filler1;
   float_bit16 shortfloat;
-  // cppcheck-suppress unusedStructMember
   uint8_t filler2;
 }
 #ifndef __MVS__
@@ -175,7 +173,7 @@ int convert_and_compare(zdnn_data_types in_type, int numvalues,
   }
 
   // call convert_data to convert/stickify the original data
-  LOG_DEBUG("Calling convert_data_format", NULL);
+  LOG_DEBUG("Calling convert_data_format", NO_ARG);
   int converted_cnt = convert_data_format(
       fixeddata, in_type, converted_DLF_data, ZDNN_DLFLOAT16, numvalues);
   if (converted_cnt != numvalues) {
@@ -185,7 +183,7 @@ int convert_and_compare(zdnn_data_types in_type, int numvalues,
   }
 
   // compare expected to convert_data_format output
-  LOG_DEBUG("comparing expected to convert_data output", NULL);
+  LOG_DEBUG("comparing expected to convert_data output", NO_ARG);
 
   LOG_DEBUG("expected data - first word / last word %d / %d",
             *(int *)((char *)&expected_DLF_data),
@@ -230,7 +228,7 @@ int convert_and_compare(zdnn_data_types in_type, int numvalues,
   }
 
   // call convert_data in stride to convert/stickify the original data
-  LOG_DEBUG("call convert_data_in_stride", NULL);
+  LOG_DEBUG("call convert_data_in_stride", NO_ARG);
   converted_cnt = convert_data_format_in_stride(
       fixeddata, in_type, converted_DLF_data, ZDNN_DLFLOAT16, numvalues, 1);
   if (converted_cnt != numvalues) {
@@ -256,10 +254,10 @@ int convert_and_compare(zdnn_data_types in_type, int numvalues,
   // Now convert back the other way, and compare to original
   LOG_DEBUG(
       "comparing data converted back to Orig format by convert_data output",
-      NULL);
+      NO_ARG);
   int orig_data_size = numvalues * get_data_type_size(in_type);
 
-  LOG_DEBUG("call convert_data", NULL);
+  LOG_DEBUG("call convert_data", NO_ARG);
   int converted_cnt2 =
       convert_data_format(converted_DLF_data, ZDNN_DLFLOAT16,
                           converted_orig_data, in_type, numvalues);
@@ -412,10 +410,12 @@ void test_BFLOAT_DLF_63() { test_16_DLF(BFLOAT, 63); }
 
 void test_BFLOAT_DLF_64() { test_16_DLF(BFLOAT, 64); }
 
+// cppcheck-suppress 	unusedFunction
 void setUp(void) { /* This is run before EACH TEST */
   VERIFY_HW_ENV;
 }
 
+// cppcheck-suppress 	unusedFunction
 void tearDown(void) {}
 
 int main() {

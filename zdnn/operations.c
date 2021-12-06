@@ -232,6 +232,16 @@ zdnn_status zdnn_lstm(const zdnn_ztensor *input, const zdnn_ztensor *h0,
     PRINT_PARM_ZTENSOR_PTR(hn_output);
     PRINT_PARM_ZTENSOR_PTR(cf_output);
     END_PRINT_PARMS;
+
+    // aiu_lstm_gru() dissects the input tensors and makes multiple calls to the
+    // AIU.  check the overall input tensors here and precheck will check the
+    // dissected tensors later before each and every AIU call
+    zdnn_status precheck_status;
+    if ((precheck_status = verify_zdnn_lstm_or_gru_tensors(
+             NNPA_LSTMACT, input, h0, c0, weights, biases, hidden_weights,
+             hidden_biases, direction, hn_output, cf_output)) != ZDNN_OK) {
+      return precheck_status;
+    }
   }
 
   return aiu_lstm_gru(NNPA_LSTMACT, input, h0, c0, weights, biases,
@@ -272,6 +282,16 @@ zdnn_status zdnn_gru(const zdnn_ztensor *input, const zdnn_ztensor *h0,
     PRINT_PARM_PTR(work_area);
     PRINT_PARM_ZTENSOR_PTR(hn_output);
     END_PRINT_PARMS;
+
+    // aiu_lstm_gru() dissects the input tensors and makes multiple calls to the
+    // AIU.  check the overall input tensors here and precheck will check the
+    // dissected tensors later before the AIU calls
+    zdnn_status precheck_status;
+    if ((precheck_status = verify_zdnn_lstm_or_gru_tensors(
+             NNPA_GRUACT, input, h0, NULL, weights, biases, hidden_weights,
+             hidden_biases, direction, hn_output, NULL)) != ZDNN_OK) {
+      return precheck_status;
+    }
   }
 
   return aiu_lstm_gru(NNPA_GRUACT, input, h0, NULL, weights, biases,

@@ -26,14 +26,8 @@ void setUp(void) {}
 
 void tearDown(void) {}
 
-/*
- * Checks that each mode of get_num_elements returns the expected value for each
- * supported pre_tfrmd data type
- */
-void test_num_elements_concat(zdnn_data_layouts layout,
-                              unsigned char zdnn_ztensor_concat_type,
-                              uint32_t *shape, uint64_t exp_all,
-                              uint64_t exp_single, uint64_t exp_no_pad) {
+void test_num_elements(zdnn_data_layouts layout, uint32_t *shape,
+                       uint64_t exp_pre, uint64_t exp_aiu) {
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
 
@@ -58,49 +52,85 @@ void test_num_elements_concat(zdnn_data_layouts layout,
     break;
   }
 
-  // This supports the not_concat helper can just call this helper
-  if (zdnn_ztensor_concat_type == NO_CONCAT) {
-    zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
-    // The concat cases use this
-  } else {
-    zdnn_generate_transformed_desc_concatenated(
-        &pre_tfrmd_desc, zdnn_ztensor_concat_type, &tfrmd_desc);
-  }
+  zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
   zdnn_init_ztensor(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
 
   // Get output from each mode
-  uint64_t all = get_num_elements(&ztensor, ELEMENTS_ALL);
-  uint64_t single_concat = get_num_elements(&ztensor, ELEMENTS_CONCAT_SINGLE);
-  uint64_t without_pad = get_num_elements(&ztensor, ELEMENTS_CONCAT_WO_PAD);
+  uint64_t num_elements_pre = get_num_elements(&ztensor, ELEMENTS_PRE);
+  uint64_t num_elements_aiu = get_num_elements(&ztensor, ELEMENTS_AIU);
 
   // Check each mode's output matches the expected value.
   TEST_ASSERT_MESSAGE_FORMATTED(
-      exp_all == all,
-      "For %s tfrmd_desc tensor we expected %" PRIu64
-      " elements but ELEMENTS_ALL returned %" PRIu64 " elements",
-      get_data_layout_str(tfrmd_desc.layout), exp_all, all);
+      exp_pre == num_elements_pre,
+      "For %s tensor we expected %" PRIu64
+      " elements but ELEMENTS_PRE returned %" PRIu64 " elements",
+      get_data_layout_str(tfrmd_desc.layout), exp_pre, num_elements_pre);
 
   TEST_ASSERT_MESSAGE_FORMATTED(
-      exp_single == single_concat,
-      "For %s tfrmd_desc tensor we expected %" PRIu64
-      " elements but ELEMENTS_CONCAT_SINGLE returned %" PRIu64 " elements",
-      get_data_layout_str(tfrmd_desc.layout), exp_single, single_concat);
-
-  TEST_ASSERT_MESSAGE_FORMATTED(
-      exp_no_pad == without_pad,
-      "For %s tfrmd_desc tensor we expected %" PRIu64
-      " elements but ELEMENTS_CONCAT_WO_PAD returned %" PRIu64 " elements",
-      get_data_layout_str(tfrmd_desc.layout), exp_no_pad, without_pad);
+      exp_aiu == num_elements_aiu,
+      "For %s tensor we expected %" PRIu64
+      " elements but ELEMENTS_AIU returned %" PRIu64 " elements",
+      get_data_layout_str(tfrmd_desc.layout), exp_aiu, num_elements_aiu);
 }
 
-/*
- * Convenience non-concatenated helper that expects the output of each mode to
- * be the same value.
- */
-void test_num_elements_not_concat(zdnn_data_layouts layout, uint32_t *shape,
-                                  uint64_t expected) {
-  test_num_elements_concat(layout, NO_CONCAT, shape, expected, expected,
-                           expected);
+void test_num_elements_concat(zdnn_data_layouts layout, zdnn_concat_info info,
+                              uint32_t *shape, uint64_t exp_single_gate,
+                              uint64_t exp_all_gates, uint64_t exp_aiu) {
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_ztensor ztensor;
+
+// SIM alters AIU_2BYTE_CELLS_PER_STICK which affects the padded dim1 set
+// by zdnn_generate_transformed_desc_concatenated(). That changes the
+// expected number of all elements (which includes padding), so skip if SIM
+#ifdef ZDNN_CONFIG_SIMULATION
+  TEST_PASS();
+#endif
+
+  switch (layout) {
+  case ZDNN_2DS:
+    zdnn_init_pre_transformed_desc(layout, test_datatype, &pre_tfrmd_desc,
+                                   shape[0], shape[1]);
+    break;
+  case ZDNN_3DS:
+    zdnn_init_pre_transformed_desc(layout, test_datatype, &pre_tfrmd_desc,
+                                   shape[0], shape[1], shape[2]);
+    break;
+  default:
+    TEST_FAIL_MESSAGE_FORMATTED("invalid pre-transformed layout: %s",
+                                get_data_layout_str(layout));
+  }
+
+  zdnn_generate_transformed_desc_concatenated(&pre_tfrmd_desc, info,
+                                              &tfrmd_desc);
+  zdnn_init_ztensor(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
+
+  // Get output from each mode
+  uint64_t num_elements_single_gate =
+      get_num_elements(&ztensor, ELEMENTS_PRE_SINGLE_GATE);
+  uint64_t num_elements_all_gates =
+      get_num_elements(&ztensor, ELEMENTS_PRE_ALL_GATES);
+  uint64_t num_elements_aiu = get_num_elements(&ztensor, ELEMENTS_AIU);
+
+  // Check each mode's output matches the expected value.
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      num_elements_single_gate == exp_single_gate,
+      "For %s tensor we expected %" PRIu64
+      " elements but ELEMENTS_PRE_SINGLE_GATE returned %" PRIu64
+      " elements (info = %08x)",
+      get_data_layout_str(tfrmd_desc.layout), exp_single_gate,
+      num_elements_single_gate, info);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      "For %s tensor we expected %" PRIu64
+      " elements but ELEMENTS_PRE_ALL_GATES returned %" PRIu64
+      " elements (info = %08x)",
+      get_data_layout_str(tfrmd_desc.layout), exp_all_gates,
+      num_elements_all_gates, info);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      "For %s tensor we expected %" PRIu64
+      " elements but ELEMENTS_AIU returned %" PRIu64 " elements (info = %08x)",
+      get_data_layout_str(tfrmd_desc.layout), exp_aiu, num_elements_aiu, info);
 }
 
 /*
@@ -108,7 +138,7 @@ void test_num_elements_not_concat(zdnn_data_layouts layout, uint32_t *shape,
  */
 void get_num_elements_nhwc() {
   uint32_t shape[] = {1, 4, 4, 1};
-  test_num_elements_not_concat(ZDNN_NHWC, shape, 16);
+  test_num_elements(ZDNN_NHWC, shape, 16, 16);
 }
 
 /*
@@ -116,7 +146,7 @@ void get_num_elements_nhwc() {
  */
 void get_num_elements_4d() {
   uint32_t shape[] = {1, 32, 15, 5};
-  test_num_elements_not_concat(ZDNN_4D, shape, 2400);
+  test_num_elements(ZDNN_4D, shape, 2400, 2400);
 }
 
 /*
@@ -124,7 +154,7 @@ void get_num_elements_4d() {
  */
 void get_num_elements_3ds() {
   uint32_t shape[] = {3, 4, 4};
-  test_num_elements_not_concat(ZDNN_3DS, shape, 48);
+  test_num_elements(ZDNN_3DS, shape, 48, 48);
 }
 
 /*
@@ -132,7 +162,7 @@ void get_num_elements_3ds() {
  */
 void get_num_elements_3d() {
   uint32_t shape[] = {15, 4, 2};
-  test_num_elements_not_concat(ZDNN_3D, shape, 120);
+  test_num_elements(ZDNN_3D, shape, 120, 120);
 }
 
 /*
@@ -140,7 +170,7 @@ void get_num_elements_3d() {
  */
 void get_num_elements_2ds() {
   uint32_t shape[] = {4, 4};
-  test_num_elements_not_concat(ZDNN_2DS, shape, 16);
+  test_num_elements(ZDNN_2DS, shape, 16, 16);
 }
 
 /*
@@ -148,7 +178,7 @@ void get_num_elements_2ds() {
  */
 void get_num_elements_2d() {
   uint32_t shape[] = {15, 4};
-  test_num_elements_not_concat(ZDNN_2D, shape, 60);
+  test_num_elements(ZDNN_2D, shape, 60, 60);
 }
 
 /*
@@ -156,47 +186,101 @@ void get_num_elements_2d() {
  */
 void get_num_elements_1d() {
   uint32_t shape[] = {16};
-  test_num_elements_not_concat(ZDNN_1D, shape, 16);
+  test_num_elements(ZDNN_1D, shape, 16, 16);
 }
 
 /*
- * Test to ensure get_num_elements works with a 3DS LSTM tensor.
+ * Test to ensure get_num_elements works with a 3DS LSTM tensor that doesn't
+ * require vertical concatenation.
  */
-void get_num_elements_lstm_3DS_input_concat() {
+void get_num_elements_lstm_no_vconcat_weights() {
   uint32_t shape[] = {2, 3, 4};
-  test_num_elements_concat(ZDNN_3DS, CONCAT_LSTM, shape, 1536, 24, 96);
+  for (int i = 0; i < NUM_NO_VCONCAT_INFOS; i++) {
+    test_num_elements_concat(ZDNN_3DS, RNN_TYPE_LSTM | no_vconcat_infos[i],
+                             shape, 24, 96, 1536);
+  }
 }
 
 /*
- * Test to ensure get_num_elements works with a 2DS LSTM tensor.
+ * Test to ensure get_num_elements works with a 3DS LSTM tensor that requires
+ * vertical concatenation.
  */
-void get_num_elements_lstm_2DS_input_concat() {
+void get_num_elements_lstm_prev_bidir_weights() {
+  uint32_t shape[] = {2, 6, 4};
+  test_num_elements_concat(ZDNN_3DS,
+                           RNN_TYPE_LSTM | PREV_LAYER_BIDIR | USAGE_WEIGHTS,
+                           shape, 48, 192, 65536);
+}
+
+/*
+ * Test to ensure get_num_elements works with a (hidden-)biases 2DS LSTM
+ * tensor.
+ */
+void get_num_elements_lstm_biases() {
   uint32_t shape[] = {2, 3};
-  test_num_elements_concat(ZDNN_2DS, CONCAT_LSTM, shape, 512, 6, 24);
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_num_elements_concat(
+          ZDNN_2DS, RNN_TYPE_LSTM | prev_layers[i] | biases_usages[j], shape, 6,
+          24, 512);
+    }
+  }
 }
 
 /*
- * Test to ensure get_num_elements works with a 3DS GRU tensor.
+ * Test to ensure get_num_elements works with a 3DS GRU tensor that doesn't
+ * require vertical concatenation.
  */
-void get_num_elements_gru_3DS_input_concat() {
+void get_num_elements_gru_no_vconcat_weights() {
   uint32_t shape[] = {2, 3, 4};
-  test_num_elements_concat(ZDNN_3DS, CONCAT_GRU, shape, 1152, 24, 72);
+  for (int i = 0; i < NUM_NO_VCONCAT_INFOS; i++) {
+    test_num_elements_concat(ZDNN_3DS, RNN_TYPE_GRU | no_vconcat_infos[i],
+                             shape, 24, 72, 1152);
+  }
 }
 
 /*
- * Test to ensure get_num_elements works with a 2DS GRU tensor.
+ * Test to ensure get_num_elements works with a 3DS GRU tensor that requires
+ * vertical concatenation.
  */
-void get_num_elements_gru_2DS_input_concat() {
+void get_num_elements_gru_prev_bidir_weights() {
+  uint32_t shape[] = {2, 6, 4};
+  test_num_elements_concat(ZDNN_3DS,
+                           RNN_TYPE_GRU | PREV_LAYER_BIDIR | USAGE_WEIGHTS,
+                           shape, 48, 144, 49152);
+}
+
+/*
+ * Test to ensure get_num_elements works with a (hidden-)biases 2DS GRU
+ * tensor.
+ */
+void get_num_elements_gru_biases() {
   uint32_t shape[] = {2, 3};
-  test_num_elements_concat(ZDNN_2DS, CONCAT_GRU, shape, 384, 6, 18);
+  for (int i = 0; i < NUM_PREV_LAYERS; i++) {
+    for (int j = 0; j < NUM_BIASES_USAGES; j++) {
+      test_num_elements_concat(ZDNN_2DS,
+                               RNN_TYPE_GRU | prev_layers[i] | biases_usages[j],
+                               shape, 6, 18, 384);
+    }
+  }
 }
 
 /*
- * Test to ensure get_num_elements works with an RNN bidir output tensor.
+ * Test to ensure get_num_elements works with an RNN uni output tensor, which
+ * the ELEMENTS_AIU result will not have any padding
  */
-void get_num_elements_bidir_output_concat() {
-  uint32_t shape[] = {2, 3, 4};
-  test_num_elements_concat(ZDNN_3DS, CONCAT_BIDIR_OUTPUT, shape, 768, 24, 48);
+void get_num_elements_uni_output() {
+  uint32_t shape[] = {2, 1, 3, 4};
+  test_num_elements(ZDNN_4DS, shape, 24, 24);
+}
+
+/*
+ * Test to ensure get_num_elements works with an RNN bidir output tensor, which
+ * the ELEMENTS_AIU result WILL have paddings
+ */
+void get_num_elements_bidir_output() {
+  uint32_t shape[] = {2, 2, 3, 4};
+  test_num_elements(ZDNN_4DS, shape, 48, 768);
 }
 
 int main() {
@@ -209,13 +293,15 @@ int main() {
   RUN_TEST_ALL_DATATYPES(get_num_elements_2d);
   RUN_TEST_ALL_DATATYPES(get_num_elements_1d);
 
-  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_3DS_input_concat);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_2DS_input_concat);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_no_vconcat_weights);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_prev_bidir_weights);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_biases);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_no_vconcat_weights);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_prev_bidir_weights);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_biases);
 
-  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_3DS_input_concat);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_2DS_input_concat);
-
-  RUN_TEST_ALL_DATATYPES(get_num_elements_bidir_output_concat);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_uni_output);
+  RUN_TEST_ALL_DATATYPES(get_num_elements_bidir_output);
 
   return UNITY_END();
 }

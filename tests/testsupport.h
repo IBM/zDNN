@@ -37,7 +37,7 @@
 
 extern float ZERO_ARRAY[1];
 
-#define NO_CONCAT 255
+#define NO_CONCAT 0xFFFFFFFF
 
 // "default" failure when non of the ZDNN_STATUS's si appropriate,
 // likely due to something's wrong with the testcase itself
@@ -57,13 +57,14 @@ typedef enum offset_mode {
 uint64_t get_offsets_from_file(const char *file_name, size_t *array);
 size_t *alloc_offsets(zdnn_ztensor *ztensor, offset_mode mode,
                       const char *path);
+size_t *alloc_rnn_output_offsets(const zdnn_ztensor *ztensor);
 
 void *alloc_and_convert_float_values(zdnn_data_types type, uint64_t num_values,
                                      bool repeat_first_value, float *values);
 zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
                                         zdnn_data_layouts pre_tfrmd_layout,
                                         zdnn_data_types type,
-                                        unsigned char zdnn_ztensor_concat_type,
+                                        zdnn_concat_info info,
                                         int repeat_first_value, ...);
 void free_ztensor_buffers(uint32_t num_ztensors, ...);
 
@@ -158,8 +159,28 @@ bool almost_equal_dlf16(uint16_t actual, uint16_t expected);
 #define MAX_BFLOAT FLT_MAX
 #define MAX_DLF16 ((float)8581545984) // 2^32 * (1 + 511/512)
 
-int redir_stdstream_to_buf(char *buf, int stream_num);
-void restore_stdstream(int stdout_saved, int stream_num);
+#if defined(ZDNN_CONFIG_SIMULATION)
+#define NUM_PRE_TFRMD_TYPES 1
+#else
+#define NUM_PRE_TFRMD_TYPES 3
+#endif
+
+#define NUM_TFRMD_TYPES 1
+extern zdnn_data_types pre_tfrmd_types[NUM_PRE_TFRMD_TYPES];
+extern zdnn_data_types tfrmd_types[NUM_TFRMD_TYPES];
+
+#define NUM_PREV_LAYERS 2
+#define NUM_BIASES_USAGES 2
+#define NUM_NO_VCONCAT_INFOS 3
+
+extern zdnn_concat_info prev_layers[NUM_PREV_LAYERS];
+extern zdnn_concat_info biases_usages[NUM_BIASES_USAGES];
+extern zdnn_concat_info no_vconcat_infos[NUM_NO_VCONCAT_INFOS];
+
+void stdout_to_pipe();
+void stderr_to_pipe();
+void restore_stdout(char *buf, int buf_size);
+void restore_stderr(char *buf, int buf_size);
 
 /* The following defines a macro to verify the hardware environment for our
  * tests to successfully run in. Most tests require the proper HW environment

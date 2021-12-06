@@ -44,8 +44,8 @@ void try_log(uint32_t loglvl) {
   char buf_stdout[BUFSIZ] = {0};
   char buf_stderr[BUFSIZ] = {0};
 
-  int stdout_saved = redir_stdstream_to_buf(buf_stdout, STDOUT_FILENO);
-  int stderr_saved = redir_stdstream_to_buf(buf_stderr, STDERR_FILENO);
+  stdout_to_pipe();
+  stderr_to_pipe();
 
   LOG_TRACE(msg_trace, NO_ARG);
   LOG_DEBUG(msg_debug, NO_ARG);
@@ -54,8 +54,8 @@ void try_log(uint32_t loglvl) {
   LOG_ERROR(msg_error, NO_ARG);
   LOG_FATAL(msg_fatal, NO_ARG);
 
-  restore_stdstream(stdout_saved, STDOUT_FILENO);
-  restore_stdstream(stderr_saved, STDERR_FILENO);
+  restore_stdout(buf_stdout, BUFSIZ);
+  restore_stderr(buf_stderr, BUFSIZ);
 
 #define EXPECTS_ONLY_STDOUT(msg)                                               \
   if (strstr(buf_stdout, msg) == NULL) {                                       \
@@ -158,11 +158,9 @@ void test_in_logmodule() {
 
   char buf_stdout[BUFSIZ] = {0};
 
-  int stdout_saved = redir_stdstream_to_buf(buf_stdout, STDOUT_FILENO);
-
+  stdout_to_pipe();
   LOG_INFO(msg_info, NO_ARG);
-
-  restore_stdstream(stdout_saved, STDOUT_FILENO);
+  restore_stdout(buf_stdout, BUFSIZ);
 
   if (strstr(buf_stdout, msg_info) == NULL) {
     TEST_FAIL_MESSAGE("can't find message message in STDOUT");
@@ -178,11 +176,9 @@ void test_in_logmodule2() {
 
   char buf_stdout[BUFSIZ] = {0};
 
-  int stdout_saved = redir_stdstream_to_buf(buf_stdout, STDOUT_FILENO);
-
+  stdout_to_pipe();
   LOG_INFO(msg_info, NO_ARG);
-
-  restore_stdstream(stdout_saved, STDOUT_FILENO);
+  restore_stdout(buf_stdout, BUFSIZ);
 
   if (strstr(buf_stdout, msg_info) == NULL) {
     TEST_FAIL_MESSAGE("can't find message message in STDOUT");
@@ -198,11 +194,9 @@ void test_not_in_logmodule() {
 
   char buf_stdout[BUFSIZ] = {0};
 
-  int stdout_saved = redir_stdstream_to_buf(buf_stdout, STDOUT_FILENO);
-
+  stdout_to_pipe();
   LOG_INFO(msg_info, NO_ARG);
-
-  restore_stdstream(stdout_saved, STDOUT_FILENO);
+  restore_stdout(buf_stdout, BUFSIZ);
 
   if (strstr(buf_stdout, msg_info) != NULL) {
     TEST_FAIL_MESSAGE("found message unexpectedly STDOUT");

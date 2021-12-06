@@ -111,6 +111,8 @@ static size_t setup_work_area_descs(uint8_t function_code, const uint32_t *nums,
   size_t buff_size = 0;
   size_t work_area_size = 0;
 
+  // Output of NNPA_MATMUL_OP_BCAST23 + ADDITION:
+  // (ts, 1, b, in_pad) or (ts * g, 1, b, s)
   init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
                         &wa_descs[FUSED_WA_DESC].desc, nums[TS], 1, nums[BATCH],
                         nums[IN_PAD]);
@@ -118,6 +120,7 @@ static size_t setup_work_area_descs(uint8_t function_code, const uint32_t *nums,
   wa_descs[FUSED_WA_DESC].buffer_size = buff_size;
   work_area_size += buff_size;
 
+  // Output of NNPA_MATMUL_OP + ADDITION: (4, 1, b, s)
   init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
                         &wa_descs[MATMULBIASADD_OUT_WA_DESC].desc, 1, 1,
                         nums[BATCH], nums[IN_PAD]);
@@ -125,6 +128,7 @@ static size_t setup_work_area_descs(uint8_t function_code, const uint32_t *nums,
   wa_descs[MATMULBIASADD_OUT_WA_DESC].buffer_size = buff_size;
   work_area_size += buff_size;
 
+  // Output of NNPA_LSTMACT/NNPA_GRUACT: (1 or 2, 1, b, s)
   // Depending on number of timesteps, we may or may not need to get temporary
   // storage for h/c output.  If nums[TS] == ...
   // 1:  Save the output right into hn/cf_output buffer.
@@ -138,6 +142,8 @@ static size_t setup_work_area_descs(uint8_t function_code, const uint32_t *nums,
   buff_size = zdnn_getsize_ztensor(&wa_descs[TS_HC_OUT_WA_DESC].desc);
   wa_descs[TS_HC_OUT_WA_DESC].buffer_size = buff_size;
   work_area_size += buff_size * MIN(nums[TS] - 1, 2);
+
+  // final math: ((ts * g) + 4 + (1 or 2), 1, b, s)
 
   return work_area_size;
 }
@@ -305,17 +311,10 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
 
   // Determine type of output based on hn_output's timestep dimension.
   bool all_timesteps;
-  if (hn_output->transformed_desc->dim4 == 1) {
-    all_timesteps = false;
-  } else if (hn_output->transformed_desc->dim4 == nums[TS]) {
+  if (hn_output->transformed_desc->dim4 == nums[TS]) {
     all_timesteps = true;
   } else {
-    return ZDNN_STATUS(
-        ZDNN_INVALID_SHAPE,
-        "hn_output's timesteps dimension (%" PRIu64
-        ") must be either 1 or match the timestep dimension of input (%" PRIu64
-        ")",
-        hn_output->transformed_desc->dim4, nums[TS]);
+    all_timesteps = false;
   }
 
   uint32_t num_internal_ztens = (function_code == NNPA_LSTMACT)
@@ -443,10 +442,10 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
     // big enough (but not necessarily exact), we can't use it to find the right
     // output address. So instead we use the TS_H_OUT size that we created
     // which is the exact size of a single FWD or BWD output. Here loop_start
-    // gives us the index for the last _concatenated_ output. So to reach the
-    // start of the correct concatenated output address we jump hn_out_shift (ie
-    // 2 or 0) * num concatenated outputs plus one more single output to reach
-    // the reverse's half.
+    // gives us the index for the last horizontally concatenated output. So to
+    // reach the start of the correct concatenated output address we jump
+    // hn_out_shift (ie 2 or 0) * num concatenated outputs plus one more single
+    // output to reach the reverse's half.
     internal_ztens[TS_H_OUT].buffer =
         (char *)internal_ztens[TS_H_OUT].buffer +
         loop_start * hn_out_shift * internal_ztens[TS_H_OUT].buffer_size +
@@ -549,11 +548,21 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
       // If returning all timesteps, the shift will be 1 for unidirectional
       // output. We write and move one output space each loop.
       //
-      // For BIDIR we return a concatenated output. The BIDIR_FWD and BIDIR_BWD
-      // call each starts at different addresses in the same hn_output buffer.
-      // Each loop writes one output and shifts 2 spaces. This way each
-      // direction for each timestep can write to it's half of the concatenated
-      // output without overwriting the other's output.
+      // For BIDIR we return a horizontally concatenated output, where the FWDs
+      // and BWDs are interleaved:
+      //
+      //  timestep
+      //             -------------
+      //     0       | FWD | BWD |
+      //     1       | FWD | BWD |
+      //    ...      |    ...    |
+      //     n       | FWD | BWD |
+      //             -------------
+      //
+      // The BIDIR_FWD and BIDIR_BWD call each starts at different addresses in
+      // the same hn_output buffer. Each loop writes one output and shifts 2
+      // spaces. This way each direction for each timestep can write to it's
+      // half of the concatenated output without overwriting the other's output.
       //
       // For all timesteps FWD (uni or bidir), the pointer starts at the
       // beginning of hn_ouput and each loop shifts forward toward the end of
@@ -598,8 +607,9 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
       // iteration...
       if (i + (2 * loop_delta) == loop_end) {
         internal_ztens[TS_C_OUT].buffer = cf_output->buffer;
-        // For BIDIR, cf_output returns concatenated FWD and BWD output. For
-        // BIDIR_BWD shift one output space size to separate FWD and BWD output.
+        // For BIDIR, cf_output returns a horizontally concatenated FWD and BWD
+        // output. For BIDIR_BWD shift one output space size to separate FWD and
+        // BWD output.
         if (direction == BIDIR_BWD) {
           internal_ztens[TS_C_OUT].buffer =
               (char *)cf_output->buffer + internal_ztens[TS_C_OUT].buffer_size;
@@ -654,8 +664,10 @@ zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
     g = number of gates (4 LSTM or 3 GRU)
     s = hidden state size
     s_pad = ceil(s/64) * 64 (s with padding to nearest multiple of 64)
-    in_pad = g * s_pad (concatenated gate input with padding between gates)
-    out_pad = d * s_pad (concatenated output with padding between directions)
+    in_pad = g * s_pad (horizontally concatenated gate input with padding
+             between gates)
+    out_pad = d * s_pad (horizontally concatenated output with padding between
+              directions)
     ts = number of timesteps
 
   Note: The *_output expected shape differs based on unidirectional versus
@@ -678,6 +690,14 @@ zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
                  | (1, 1, b, out_pad)    | (bidir final only)
   cf_output      | (1, 1, b, s)          | (uni LSTM only, GRU NULL)
                  | (1, 1, b, out_pad)    | (bidir LSTM only, GRU NULL)
+
+  When bidir output of the previous layer is used as the input of the current
+  layer, number of features (f) has the same value as out_pad of the previous
+  layer.  In such case, the weights tensor for the current layer needs to be
+  vertically concatenated at dim2:
+
+  input: (ts, 1, b, prev_out_pad)
+  weights: (d, 1, prev_out_pad, in_pad)
   */
 
   zdnn_status status;
@@ -685,17 +705,12 @@ zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
   // Store special dimensions/values to pass to various internal methods.
   uint32_t nums[NUM_INTEGER_INDICES];
   nums[TS] = input->transformed_desc->dim4;
-  if (nums[TS] == 0) {
-    // We divide by TS later so return an error now rather than seg fault later.
-    return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
-                       "%s is not a valid number of timesteps.", nums[TS]);
-  }
   nums[BATCH] = input->transformed_desc->dim2;
   nums[HID_SIZE] = h0->transformed_desc->dim1;
   nums[IN_PAD] = weights->transformed_desc->dim1;
 
-  // LSTM and GRU expect different numbers of tensors (ie gates) concatenated
-  // into weights and biases tensors.
+  // LSTM and GRU expect different numbers of tensors (ie gates) horizontally
+  // concatenated into weights and biases tensors.
   nums[GATES] = get_func_code_num_gates(function_code);
 
   // Accounts for extra "cell" tensors in LSTM that aren't in GRU.
@@ -770,16 +785,6 @@ zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
         // Retrieve or calculate the sliced buffer size for this input.
         if (dir_idx == 0) {
           uint32_t unsliced_dim4 = unsliced_input->transformed_desc->dim4;
-          if (unsliced_dim4 != num_dirs) {
-            status = ZDNN_INVALID_SHAPE;
-            ZDNN_STATUS(
-                status,
-                "%d is not a valid transformed_desc->dim4 value. All dim4 "
-                "values for inputs with a direction dimension must be %d for "
-                "the specified lstm_gru_direction (%d)",
-                unsliced_dim4, num_dirs, direction);
-            break;
-          }
           sliced_zten_buff_sizes[input_idx] =
               zdnn_getsize_ztensor(unsliced_input->transformed_desc) /
               unsliced_dim4;
