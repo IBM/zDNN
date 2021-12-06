@@ -15,15 +15,16 @@
 # limitations under the License.
 
 _dummy := $(shell mkdir -p obj)
-INCDIR := -I ../zdnn -I .
 OBJDIR := obj
 
 include ../config.make
 
+INCDIR := $(CFLAGS_NOSEARCH) -I ../zdnn -I .
+
 _dummy2 := $(shell mkdir -p $(SODIR))
 
-CFLAGS := $(CFLAGS) $(INCDIR)
-CXXFLAGS := $(CXXFLAGS) $(INCDIR)
+CFLAGS := $(INCDIR) $(CFLAGS)
+CXXFLAGS := $(INCDIR) $(CXXFLAGS)
 
 H_FILES        := $(filter-out $(wildcard convert*.h), $(wildcard *.h))
 INIT_SRCFILE := zdnn_init.c

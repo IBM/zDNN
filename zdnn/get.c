@@ -30,15 +30,17 @@
 DECLARE_DATA_LAYOUT_STR(ZDNN_1D)
 DECLARE_DATA_LAYOUT_STR(ZDNN_2D)
 DECLARE_DATA_LAYOUT_STR(ZDNN_2DS)
-DECLARE_DATA_LAYOUT_STR(ZDNN_BIDIR_OUTPUT)
 DECLARE_DATA_LAYOUT_STR(ZDNN_3D)
 DECLARE_DATA_LAYOUT_STR(ZDNN_3DS)
 DECLARE_DATA_LAYOUT_STR(ZDNN_ZRH)
 DECLARE_DATA_LAYOUT_STR(ZDNN_4D)
+DECLARE_DATA_LAYOUT_STR(ZDNN_4DS)
 DECLARE_DATA_LAYOUT_STR(ZDNN_NHWC)
 DECLARE_DATA_LAYOUT_STR(ZDNN_NCHW)
 DECLARE_DATA_LAYOUT_STR(ZDNN_FICO)
 DECLARE_DATA_LAYOUT_STR(ZDNN_HWCK)
+DECLARE_DATA_LAYOUT_STR(ZDNN_BIDIR_ZRH)
+DECLARE_DATA_LAYOUT_STR(ZDNN_BIDIR_FICO)
 
 #define DECLARE_DATA_FORMAT_STR(a) static const char *DATA_FORMAT_STR_##a = #a;
 
@@ -118,6 +120,7 @@ short get_data_layout_dims(zdnn_data_layouts layout) {
     CASE_RTN_DIM(ZDNN_3D, 3);
     CASE_RTN_DIM(ZDNN_3DS, 3);
     CASE_RTN_DIM(ZDNN_4D, 4);
+    CASE_RTN_DIM(ZDNN_4DS, 4);
     CASE_RTN_DIM(ZDNN_NHWC, 4);
     CASE_RTN_DIM(ZDNN_NCHW, 4);
     CASE_RTN_DIM(ZDNN_HWCK, 4);
@@ -141,14 +144,50 @@ short get_data_layout_num_gates(zdnn_data_layouts layout) {
     return b;
 
   switch (layout) {
-    CASE_RTN_GATES(ZDNN_BIDIR_OUTPUT, 2);
     CASE_RTN_GATES(ZDNN_ZRH, 3);
     CASE_RTN_GATES(ZDNN_FICO, 4);
+    CASE_RTN_GATES(ZDNN_BIDIR_ZRH, 3);
+    CASE_RTN_GATES(ZDNN_BIDIR_FICO, 4);
   default:
     LOG_WARN("Unknown or not concatenated layout: %d", layout);
     return 0;
   }
 #undef CASE_RTN_GATES
+}
+
+/// Returns concatenated dim1 value based on concatenation info
+///
+/// \param val incoming dim1 value
+/// \param info concatenation info
+///
+/// \returns concatenated dim1 value
+///
+uint32_t get_rnn_concatenated_dim1(uint32_t val, zdnn_concat_info info) {
+  if (CONCAT_RNN_TYPE(info) == RNN_TYPE_LSTM) {
+    return PADDED(val) * 4;
+  } else if (CONCAT_RNN_TYPE(info) == RNN_TYPE_GRU) {
+    return PADDED(val) * 3;
+  } else {
+    return val;
+  }
+}
+
+/// Returns concatenated dim2 value based on concatenation info
+///
+/// \param val incoming dim2 value
+/// \param info concatenation info
+///
+/// \returns concatenated dim2 value
+///
+uint32_t get_rnn_concatenated_dim2(uint32_t val, zdnn_concat_info info) {
+  // the only case we need vertical concatenation is when a weight tensor is
+  // used with bidir output from the previous layer.
+  if (CONCAT_USAGE(info) == USAGE_WEIGHTS &&
+      CONCAT_PREV_LAYER(info) == PREV_LAYER_BIDIR) {
+    return PADDED(val / 2) * 2;
+  } else {
+    return val;
+  }
 }
 
 /// Returns number of gates, based on RNN function code
@@ -190,15 +229,17 @@ const char *get_data_layout_str(zdnn_data_layouts layout) {
     CASE_RTN_STR(ZDNN_1D);
     CASE_RTN_STR(ZDNN_2D);
     CASE_RTN_STR(ZDNN_2DS);
-    CASE_RTN_STR(ZDNN_BIDIR_OUTPUT);
     CASE_RTN_STR(ZDNN_3D);
     CASE_RTN_STR(ZDNN_3DS);
     CASE_RTN_STR(ZDNN_ZRH);
     CASE_RTN_STR(ZDNN_4D);
+    CASE_RTN_STR(ZDNN_4DS);
     CASE_RTN_STR(ZDNN_NHWC);
     CASE_RTN_STR(ZDNN_NCHW);
     CASE_RTN_STR(ZDNN_FICO);
     CASE_RTN_STR(ZDNN_HWCK);
+    CASE_RTN_STR(ZDNN_BIDIR_ZRH);
+    CASE_RTN_STR(ZDNN_BIDIR_FICO);
   default:
     LOG_WARN("Unknown layout: %d", layout);
     return UNDEFINED_STR;

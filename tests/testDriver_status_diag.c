@@ -43,12 +43,10 @@ void try_diag(uint32_t status_to_diag, uint32_t status_to_set,
 
   char buf_stdout[BUFSIZ] = {0};
 
-  int stdout_saved = redir_stdstream_to_buf(buf_stdout, STDOUT_FILENO);
-
+  stdout_to_pipe();
   set_zdnn_status(status_to_set, __func__, __FILE__, __LINE__,
                   "this is a test");
-
-  restore_stdstream(stdout_saved, STDOUT_FILENO);
+  restore_stdout(buf_stdout, BUFSIZ);
 
   /*
     the backtrace should have something like:

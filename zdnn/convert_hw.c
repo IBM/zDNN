@@ -563,10 +563,10 @@ uint64_t fp32_to_dlf16(float *input_data, uint16_t *output_data,
   // Set vector pointers from input/output pointers passed in.
   // Note: adding 1 to a vector pointer will move it ahead 16 bytes
 
-  vec_float32 *cur_input_data =
-      (vec_float32 *)input_data; // Point to input vector data
-  vec_int16 *cur_output_data =
-      (vec_int16 *)output_data; // Point to output vector data
+  // Point to input vector followed by point to output vector data
+  // cppcheck-suppress invalidPointerCast
+  vec_float32 *cur_input_data = (vec_float32 *)input_data;
+  vec_int16 *cur_output_data = (vec_int16 *)output_data;
 
   vec_float32
       in_vector_left; // Define a vector to load four of the input data
@@ -658,10 +658,10 @@ uint64_t dlf16_to_fp32(uint16_t *input_data, float *output_data,
 
   // Set vector pointers from input/output pointers passed in.
   // Note: adding 1 to a vector pointer will move it ahead 16 bytes
-  vec_int16 *cur_input_data =
-      (vec_int16 *)input_data; // Point to input vector data
-  vec_float32 *cur_output_data =
-      (vec_float32 *)output_data; // Point to output data
+  // Point to input vector followed by point to output vector data
+  vec_int16 *cur_input_data = (vec_int16 *)input_data;
+  // cppcheck-suppress invalidPointerCast
+  vec_float32 *cur_output_data = (vec_float32 *)output_data;
 
   vec_int16 in_vector; /* Define a input vector for UNPACK operation.
                           a Vector Register can fit 8 int16 fields */
@@ -995,6 +995,7 @@ uint64_t fp32_to_dlf16_in_stride(float *fp32_data, uint16_t *dflt16_data,
       (vec_float32 *)&gathered_data; /* redefine the same
                                         array storage as a vector */
 
+  // cppcheck-suppress invalidPointerCast
   float_bit32 *cur_fp32_data = &(*(float_bit32 *)fp32_data);
 
   vec_int16 *cur_dflt16_data = (vec_int16 *)dflt16_data;
@@ -1220,6 +1221,7 @@ uint64_t dlf16_to_fp32_in_stride(uint16_t *dflt16_data, float *fp32_data,
   float_bit16 gathered_data[STICKCVT_MAX_ENTRIES_TO_CONVERT] = {0};
 
   float_bit16 *cur_dflt16_data = dflt16_data;
+  // cppcheck-suppress invalidPointerCast
   float_bit32 *cur_fp32_data = (float_bit32 *)fp32_data;
 
   for (uint64_t i = 0;

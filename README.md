@@ -7,7 +7,7 @@
 
 ## Version
 
-v0.3.0
+0.4.0
 
 ## Table of Contents <a id="TOC"></a>
 
@@ -161,10 +161,10 @@ Include Files: `zdnn.h`
 [Back to Table of Contents](#TOC)
 
 ```
-#define ZDNN_VERSION "0.3.0"
-#define ZDNN_VERNUM 0x000300 // 0x[major][minor][patch]
+#define ZDNN_VERSION "0.4.0"
+#define ZDNN_VERNUM 0x000400 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 0
-#define ZDNN_VER_MINOR 3
+#define ZDNN_VER_MINOR 4
 #define ZDNN_VER_PATCH 0
 ```
 
@@ -192,10 +192,10 @@ typedef struct zdnn_ztensor {
   zdnn_tensor_desc
       *pre_transformed_desc; // tensor's shape information before transformation
   zdnn_tensor_desc *transformed_desc; // transformed tensor's shape information
-  bool is_transformed;  // indicator if data in buffer has been transformed
-  uint64_t buffer_size; // tensor size in bytes
-  char reserved[32];    // not currently used, exploiter should not touch.
-  void *buffer;         // pointer to the tensor in memory
+  uint64_t buffer_size;               // tensor size in bytes
+  void *buffer;                       // pointer to the tensor in memory
+  bool is_transformed; // indicator if data in buffer has been transformed
+  char reserved[31];   // not currently used, should contain zeros.
 } zdnn_ztensor;
 ```
 
@@ -211,19 +211,24 @@ typedef struct zdnn_ztensor {
     - Calling [zdnn_getsize_ztensor](#zdnn_getsize_ztensor) with the tensor's
       `transformed_desc` returns the required size.
   - Start of `buffer` field must be 4k aligned.
+- `reserved` should contain zeros, otherwise the program may not operate
+  compatibly in the future.
+  - Calling [zdnn_init_ztensor](#zdnn_init_ztensor) or
+    [zdnn_init_ztensor_with_malloc](#zdnn_init_ztensor_with_malloc) will set
+    `reserved` to zeros.
 
 #### Concatenated zTensor Requirements <a id="concat-zten-reqs"></a>
 
-[Back to Table of Contents](#TOC)]
+[Back to Table of Contents](#TOC)
 
+- For use with weights/biases/hidden-weights/hidden-biases RNN-gates tensors.
 - You must use
   [zdnn_generate_transformed_desc_concatenated](#zdnn_generate_transformed_desc_concatenated)
-  with the correct concatenation type
+  with the appropriate concatenation info
   - Do not use `zdnn_generate_transformed_desc` with concatenated tensors
 - The pre-transformed shape dimensions should not include the concatenation.
-  - For example, the pre-transformed shape should be that of a single gate or
-    unidirectional RNN output and not the shape of the combined gates or RNN
-    bidirectional output.
+  - Thus, the pre-transformed shape should be that of a single gate, not the
+    shape of the combined gates
 - Afterward transform with [zdnn_transform_ztensor](#zdnn_transform_ztensor) as
   normal
 - Must follow [general tensor requirements](#gen-zten-reqs)
@@ -277,20 +282,21 @@ number and order of dimensions to expect for the ztensor data.
 
 ```
 typedef enum zdnn_data_layouts {
-  ZDNN_1D,           // 1d tensor
-  ZDNN_2D,           // 2d tensor
-  ZDNN_2DS,          // represents special 2D tensors required by LSTM/GRU
-  ZDNN_BIDIR_OUTPUT, // concatenated output (FWD, BWD) for bidirectional
-                     // LSTM/GRU
-  ZDNN_3D,           // 3d tensor
-  ZDNN_3DS,          // represents special 3D tensors required by
-                     // LSTM/GRU/Softmax/Matmul
-  ZDNN_ZRH,          // represents (update, reset, hidden) used by GRU
-  ZDNN_4D,           // 4d tensor
-  ZDNN_NHWC,         // 4d feature tensor in NHWC
-  ZDNN_NCHW,         // 4d feature tensor in NCHW
-  ZDNN_FICO,         // represents (forget, input, cell, output) used by LSTM
-  ZDNN_HWCK          // 4d kernel CNN tensor
+  ZDNN_1D,          // 1d tensor
+  ZDNN_2D,          // 2d tensor
+  ZDNN_2DS,         // represents special 2D tensors required by LSTM/GRU
+  ZDNN_3D,          // 3d tensor
+  ZDNN_3DS,         // represents special 3D tensors required by
+                    // LSTM/GRU/Softmax/Matmul
+  ZDNN_ZRH,         // represents (update, reset, hidden) used by GRU
+  ZDNN_4D,          // 4d tensor
+  ZDNN_4DS,         // represents special 4D tensors required by LSTM/GRU output
+  ZDNN_NHWC,        // 4d feature tensor in NHWC
+  ZDNN_NCHW,        // 4d feature tensor in NCHW
+  ZDNN_FICO,        // represents (forget, input, cell, output) used by LSTM
+  ZDNN_HWCK,        // 4d kernel CNN tensor
+  ZDNN_BIDIR_ZRH,   // ZRH variant to work with bidirectional LSTM/GRU output
+  ZDNN_BIDIR_FICO  // FICO variant to work with bidirectional LSTM/GRU output
 } zdnn_data_layouts;
 ```
 
@@ -303,19 +309,18 @@ transformation.
 - `ZDNN_3DS` - The outermost dimension of the original shape is promoted to dim4
   during transformation. For example, a shape of (a, b, c) becomes [a, 1, b, c]
   (dim4, dim3, dim2, dim1) in the `transformed_desc`
-- `ZDNN_BIDIR_OUTPUT` - Set automatically in `transformed_desc` based on
-  `concat_type` when calling `zdnn_generate_transformed_desc_concatenated()`.
-  This layout supports concatenated FWD and BWD output on the innermost
-  dimension for bidirectional RNN results. Supported with
-  `pre_transformed_layout` of `ZDNN_3DS`.
-- `ZDNN_ZRH` - Set automatically in `transformed_desc` based on `concat_type`
-  when calling `zdnn_generate_transformed_desc_concatenated()`. During
-  transformation, the input data gates are re-grouped by their outermost
-  dimension. For example, if each 2D input data was shaped g1=(a1, b1), g2=(a2,
-  b2), and g3=(a3, b2), then the transformed ztensor would look like (a,
-  b1+b2+b3). Supported with `pre_transformed_layout` of `ZDNN_2DS` or
-  `ZDNN_3DS`.
-- `ZDNN_FICO` - Similar to `ZDNN_ZRH` except four gates instead of three.
+- `ZDNN_4DS` - Arrangement for RNN output tensor
+
+The followings are set automatically in `transformed_desc` based on `info` when
+calling `zdnn_generate_transformed_desc_concatenated()`:
+
+- `ZDNN_ZRH/FICO` - During transformation, the RNN input gates data are
+  concatenated on the innermost dimension. Supported with
+  `pre_transformed_layout` of `ZDNN_2DS` or `ZDNN_3DS`.
+- `ZDNN_BIDIR_ZRH/FICO` - Similar to `ZDNN_ZRH/FICO`, used when:
+  1. transforming RNN input weight gate data, and
+  2. the input tensor for the current RNN layer is a bidirectional RNN output
+     from a previous RNN layer
 
 ### zDNN Data Formats <a id="common-formats"></a>
 
@@ -374,7 +379,7 @@ that encountered the violation._
 | ZDNN_INVALID_TYPE\*              | 0x00040003 | Invalid type information in one (or more) of the input/output tensor(s).       |
 | ZDNN_INVALID_FORMAT\*            | 0x00040004 | Invalid format information in one (or more) of the input/output tensor(s).     |
 | ZDNN_INVALID_DIRECTION           | 0x00040005 | Invalid RNN direction.                                                         |
-| ZDNN_INVALID_CONCAT_TYPE         | 0x00040006 | Invalid concatenation type.                                                    |
+| ZDNN_INVALID_CONCAT_INFO         | 0x00040006 | Invalid concatenation info.                                                    |
 | ZDNN_INVALID_STRIDE_PADDING\*    | 0x00040007 | Invalid padding type parameter for current strides.                            |
 | ZDNN_INVALID_STRIDES\*           | 0x00040008 | Invalid stride height or width parameter.                                      |
 | ZDNN_MISALIGNED_PARMBLOCK\*      | 0x00040009 | NNPA parameter block is not on double word boundary.                           |
@@ -932,7 +937,7 @@ zdnn_status zdnn_generate_transformed_desc(
 #### zdnn_status indications
 
 - `ZDNN_OK`
-- `ZDNN_INVALID_LAYOUT` - `pre_tfrmd_desc->layout` is not recognized or is a
+- `ZDNN_INVALID_LAYOUT` - pre-transformed `layout` is not recognized or is a
   layout only used for concatenated tensors.
 
 ---
@@ -941,15 +946,15 @@ zdnn_status zdnn_generate_transformed_desc(
 
 #### Description
 
-Generate concatenated transformed tensor descriptor information (for LSTM or GRU
-layers) based on a supplied pre-transformed tensor descriptor.
+Generate concatenated transformed tensor descriptor information for RNN
+input-gates tensors based on a supplied pre-transformed tensor descriptor.
 
 #### Format
 
 ```
 zdnn_status zdnn_generate_transformed_desc_concatenated(
     const zdnn_tensor_desc *pre_tfrmd_desc,
-    zdnn_ztensor_concat_types concat_type, zdnn_tensor_desc *tfrmd_desc);
+    zdnn_concat_info info, zdnn_tensor_desc *tfrmd_desc);
 ```
 
 #### Parameters
@@ -958,15 +963,28 @@ zdnn_status zdnn_generate_transformed_desc_concatenated(
 
   - input tensor descriptor with pre-transformed shape information
 
-- `zdnn_ztensor_concat_types concat_type`
+- `zdnn_concat_info info`
 
-  - Valid concatenation types:
+  - Information about how the tensors will be concatenated, consists of the
+    RNN_TYPE, PREV_LAYER and USAGE flags OR'd together:
 
-    ```
-    CONCAT_LSTM
-    CONCAT_GRU
-    CONCAT_BIDIR_OUTPUT
-    ```
+    RNN_TYPE flags:
+
+    - RNN_TYPE_LSTM - For LSTM
+    - RNN_TYPE_GRU - For GRU
+
+    PREV_LAYER flags:
+
+    - PREV_LAYER_UNI - Previous RNN layer is uni-directional
+    - PREV_LAYER_NONE - Previous layer is not a RNN layer
+    - PREV_LAYER_BIDIR - Previous RNN layer is bi-directional
+
+    USAGE flags:
+
+    - USAGE_WEIGHTS - Concatenate as input weights
+    - USAGE_HIDDEN_WEIGHTS - Concatenate as input hidden-weights
+    - USAGE_BIASES - Concatenate as input biases
+    - USAGE_HIDDEN_BIASES - Concatenate as input hidden-biases
 
 - `zdnn_tensor_desc *tfrmd_desc`
 
@@ -975,9 +993,9 @@ zdnn_status zdnn_generate_transformed_desc_concatenated(
 #### zdnn_status indications
 
 - `ZDNN_OK`
-- `ZDNN_INVALID_LAYOUT` - `pre_tfrmd_desc->layout` is not recognized or is not
+- `ZDNN_INVALID_LAYOUT` - pre-transformed `layout` is not recognized or is not
   supported for concatenated tensors.
-- `ZDNN_INVALID_CONCAT_TYPE` - `concat_type` is not recognized.
+- `ZDNN_INVALID_CONCAT_INFO` - invalid concatenation information.
 
 ---
 
@@ -1443,8 +1461,10 @@ Converts the input tensor from the zDNN transformed format back to a standard
 non-transformed layout. The `is_transformed` field within `ztensor` must be
 `true`.
 
-Only feature tensors that have been converted to transformed format are
-supported. Kernel tensors and concatenated tensors are not supported.
+All stick format tensors are supported, except:
+
+- Kernel tensors
+- Concatenated RNN input-gates tensors
 
 #### Format
 
@@ -2628,75 +2648,110 @@ the usage example section.
 
 #### LSTM Input / Output requirements
 
-- `hidden_state_size` dimensions: <a id="lstm-hid_sz"></a>
-  - Any hidden_state_size dimension must be less than or equal to 8192 elements.
+- `num_hidden` dimensions: <a id="lstm-hid_sz"></a>
+  - Any num_hidden dimension must be less than or equal to 8192 elements.
 
 #### Parameters
 
 - `zdnn_ztensor *input`
 
-  - Input must be a tensor with the shape [timestep, batch, feature] prior to
-    transformation with the `zdnn_transform_ztensor` API.
+  - Input must be a tensor with the shape (num_timesteps, num_batches,
+    num_features) prior to transformation with the `zdnn_transform_ztensor` API.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
   - Must follow [general tensor requirements](#gen-zten-reqs)
 
 - `zdnn_ztensor *h0`
 
-  - Tensor containing the initial hidden state with shape [direction, batch,
-    hidden_state_size] prior to transformation with the `zdnn_transform_ztensor`
-    API.
+  - Tensor containing the initial hidden state with shape (num_dirs,
+    num_batches, num_hidden) prior to transformation with the
+    `zdnn_transform_ztensor` API.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
   - Must follow [general tensor requirements](#gen-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
 
 - `zdnn_ztensor *c0`
 
-  - Tensor containing the initial cell state with shape [direction, batch,
-    hidden_state_size] prior to transformation with the `zdnn_transform_ztensor`
-    API.
+  - Tensor containing the initial cell state with shape (num_dirs, num_batches,
+    num_hidden) prior to transformation with the `zdnn_transform_ztensor` API.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
   - Must follow [general tensor requirements](#gen-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
 
 - `zdnn_ztensor *weights`
 
   - Tensor containing the concatenated input connection weights in Forget,
     Input, Cell, Output (FICO) order.
   - Prior to transformation, each gate needs to be transposed to shape
-    (direction, features, hidden_state_size) by the caller.
+    (num_dirs, num_features, num_hidden) by the caller.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
-  - Expects a `CONCAT_LSTM` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_LSTM`
+    - `USAGE_WEIGHTS`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
 
 - `zdnn_ztensor *biases`
 
   - Tensor containing the concatenated input connection bias in Forget, Input,
     Cell, Output (FICO) order.
-  - Prior to transformation, expects each gate needs to be shape (direction,
-    hidden_state_size).
+  - Prior to transformation, expects each gate needs to be shape (num_dirs,
+    num_hidden).
   - Expects `pre_transformed_desc->layout` to be `ZDNN_2DS`.
-  - Expects a `CONCAT_LSTM` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_LSTM`
+    - `USAGE_HIDDEN_WEIGHTS`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
 
 - `zdnn_ztensor *hidden_weights`
 
   - Tensor containing the concatenated hidden connection weights in Forget,
     Input, Cell, Output (FICO) order.
   - Prior to transformation, each gate needs to be transposed to shape
-    (direction, hidden_state_size, hidden_state_size) by the caller.
+    (num_dirs, num_hidden, num_hidden) by the caller.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
-  - Expects a `CONCAT_LSTM` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_LSTM`
+    - `USAGE_BIASES`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
 
 - `zdnn_ztensor *hidden_biases`
 
   - Tensor containing the concatenated hidden connection bias in Forget, Input,
     Cell, Output (FICO) order.
-  - Prior to transformation, expects each gate needs to be shape (direction,
-    hidden_state_size).
+  - Prior to transformation, expects each gate needs to be shape (num_dirs,
+    num_hidden).
   - Expects `pre_transformed_desc->layout` to be `ZDNN_2DS`.
-  - Expects a `CONCAT_LSTM` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_LSTM`
+    - `USAGE_HIDDEN_BIASES`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
 
 - `lstm_gru_direction direction`
 
@@ -2704,11 +2759,11 @@ the usage example section.
     - `FWD` (forward)
     - `BWD` (backward)
     - `BIDIR` (bi-directional).
-  - For input shapes, the direction dimension should be:
+  - For input and output shapes, the num_dirs dimension should be:
     - `1` for unidirectional calls such as FWD or BWD
     - `2` for bidirectional calls such that:
-      - direction == 1 contains FWD values.
-      - direction == 2 contains BWD values.
+      - dimension 0 contains FWD values.
+      - dimension 1 contains BWD values.
 
 - `void *work_area`
 
@@ -2717,19 +2772,19 @@ the usage example section.
   - If set to NULL, the operation will determine, allocate and free storage
     automatically.
   - Amount of required storage can be determined given the LSTM timestep, batch,
-    and hidden_state_size values.
+    and num_hidden values.
 
     - The sample code below creates a ztensor descriptor that is an equivalent
       size of the required `work_area`. To use this sample code yourself,
-      replace the `timestep`, `batch`, and `hidden_state_size` variables with
-      your own values.
+      replace the `num_timesteps`, `num_batches`, and `num_hidden` variables
+      with your own values.
 
       ```
         zdnn_tensor_desc desc;
-        desc.dim4 = (4 * timestep) + 6;
+        desc.dim4 = (4 * num_timesteps) + 6;
         desc.dim3 = 1;
-        desc.dim2 = batch;
-        desc.dim1 = hidden_state_size;
+        desc.dim2 = num_batches;
+        desc.dim1 = num_hidden;
         uint64_t work_area_size = zdnn_getsize_ztensor(&desc);
       ```
 
@@ -2740,22 +2795,24 @@ the usage example section.
 
   - Output results of the hidden states
 
-  - Expects pre_transformed_desc->layout to be `ZDNN_3DS`.
-
-  - Output must be a tensor with either of the following shapes:
-
-    - For output from all timesteps: [timestep, batch, hidden_state_size]
-    - For final processed timestep only: [1, batch, hidden_state_size]
+  - Expects pre_transformed_desc->layout to be `ZDNN_4DS`.
 
   - Must follow [general tensor requirements](#gen-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
+
+  - Output pre-transformed shapes:
+
+    - all timesteps: (num_timesteps, num_dirs, num_batches, num_hidden)
+    - final timestep only: (1, num_dirs, num_batches, num_hidden)
 
   - For bidirectional (`BIDIR`) output:
 
     - Forward and backward results are concatenated on the innermost dimension.
-    - Expects a `CONCAT_BIDIR_OUTPUT` [concatenated tensor](#concat-zten-reqs)
-    - Concatenated output is meant for use in subsequent layers. Direct
-      untransformation of output is not supported.
+    - Can be used directly as input for subsequent RNN layers without needing
+      untransformation.
+      - Can not be used directly as input for other non-RNN zDNN ops.
+    - Untransformation is supported.
 
   - Note that for `BWD` and the backward component of `BIDIR` directions, the
     output order matches the order of the input, not the processing order. For
@@ -2766,33 +2823,46 @@ the usage example section.
 
   - Output results of the cell state for the last processed timestep
 
-  - Expects pre_transformed_desc->layout to be `ZDNN_3DS`.
-
-  - Output must be a tensor with shape [1, batch, hidden_state_size]
+  - Expects pre_transformed_desc->layout to be `ZDNN_4DS`.
 
   - Must follow [general tensor requirements](#gen-zten-reqs)
-  - Must follow [hidden_state_size requirements](#lstm-hid_sz)
+
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
+
+  - Output pre-transformed shapes:
+
+    - (1, num_dirs, num_batches, num_hidden)
 
   - For bidirectional (`BIDIR`):
     - Forward and backward results are concatenated on the innermost dimension.
-    - Expects a `CONCAT_BIDIR_OUTPUT` [concatenated tensor](#concat-zten-reqs)
-    - Concatenated output is meant for use in subsequent layers. Direct
-      untransformation of output is not supported.
+    - Can not be used directly as input for other non-RNN zDNN ops.
+    - Untransformation is supported.
 
 #### Summary
 
-|                | pre-transformed layout | pre-transformed shape                                                                                       | create transformed desc via:                                                                                                         |
-| -------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| input          | `ZDNN_3DS`             | (timestep, batch, feature)                                                                                  | `zdnn_generate_transformed_desc`                                                                                                     |
-| h0             | `ZDNN_3DS`             | (direction, batch, hidden_state_size)                                                                       | `zdnn_generate_transformed_desc`                                                                                                     |
-| c0             | `ZDNN_3DS`             | (direction, batch, hidden_state_size)                                                                       | `zdnn_generate_transformed_desc`                                                                                                     |
-| weights        | `ZDNN_3DS`             | (direction, features, hidden_state_size)                                                                    | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_LSTM`                                                                     |
-| bias           | `ZDNN_2DS`             | (direction, hidden_state_size)                                                                              | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_LSTM`                                                                     |
-| hidden_weights | `ZDNN_3DS`             | (direction, hidden_state_size, hidden_state_size)                                                           | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_LSTM`                                                                     |
-| hidden_biases  | `ZDNN_2DS`             | (direction, hidden_state_size)                                                                              | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_LSTM`                                                                     |
-|                |                        |                                                                                                             |                                                                                                                                      |
-| hn_output      | `ZDNN_3DS`             | **all timesteps**: (timestep, batch, hidden_state_size)<br>**last timestep**: (1, batch, hidden_state_size) | **FWD/BWD**: `zdnn_generate_transformed_desc`<br>**BIDIR**: `zdnn_generate_transformed_desc_concatenated` with `CONCAT_BIDIR_OUTPUT` |
-| cf_output      | `ZDNN_3DS`             | (1, batch, hidden_state_size)                                                                               | **FWD/BWD**: `zdnn_generate_transformed_desc`<br>**BIDIR**: `zdnn_generate_transformed_desc_concatenated` with `CONCAT_BIDIR_OUTPUT` |
+|                | pre-transformed layout | pre-transformed shape                                                                               |
+| -------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
+| input          | `ZDNN_3DS`             | (num_timesteps, num_batches, num_features)                                                          |
+| h0             | `ZDNN_3DS`             | (num_dirs, num_batches, num_hidden)                                                                 |
+| c0             | `ZDNN_3DS`             | (num_dirs, num_batches, num_hidden)                                                                 |
+| weights        | `ZDNN_3DS`             | (num_dirs, num_features, num_hidden)                                                                |
+| bias           | `ZDNN_2DS`             | (num_dirs, num_hidden)                                                                              |
+| hidden_weights | `ZDNN_3DS`             | (num_dirs, num_hidden, num_hidden)                                                                  |
+| hidden_biases  | `ZDNN_2DS`             | (num_dirs, num_hidden)                                                                              |
+| hn_output      | `ZDNN_4DS`             | (num_timesteps, num_dirs, num_batches, num_hidden)<br>(last timestep only when `num_timesteps` = 1) |
+| cf_output      | `ZDNN_4DS`             | (1, num_dirs, num_batches, num_hidden)                                                              |
+
+|                | create transformed descriptor via                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| input          | `zdnn_generate_transformed_desc`                                                                                                                                          |
+| h0             | `zdnn_generate_transformed_desc`                                                                                                                                          |
+| c0             | `zdnn_generate_transformed_desc`                                                                                                                                          |
+| weights        | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_WEIGHTS` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`        |
+| bias           | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_BIASES` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`         |
+| hidden_weights | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_HIDDEN_WEIGHTS` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR` |
+| hidden_biases  | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_HIDDEN_BIASES` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`  |
+| hn_output      | `zdnn_generate_transformed_desc`                                                                                                                                          |
+| cf_output      | `zdnn_generate_transformed_desc`                                                                                                                                          |
 
 #### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
 
@@ -2837,6 +2907,7 @@ linear.
 The following formula is computed for the input tensor input(t) for all time
 steps:
 
+```
 (Default: f=Sigmoid, g=Tanh):
 
 - zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
@@ -2846,6 +2917,7 @@ steps:
 - ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh)
 
 - Ht = (1 - zt) (.) ht + zt (.) Ht-1
+```
 
 #### Format
 
@@ -2863,68 +2935,102 @@ the usage example section.
 
 #### GRU Input / Output requirements
 
-- `hidden_state_size` dimensions: <a id="gru-hid_sz"></a>
-  - Any hidden_state_size dimension must be less than or equal to 10880
-    elements.
+- `num_hidden` dimensions: <a id="gru-hid_sz"></a>
+  - Any num_hidden dimension must be less than or equal to 10880 elements.
 
 #### Parameters
 
 - `zdnn_ztensor *input`
 
-  - Input must be a tensor with the shape [timestep, batch, feature] prior to
-    transformation with the `zdnn_transform_ztensor` API.
+  - Input must be a tensor with the shape (num_timesteps, num_batches,
+    num_features) prior to transformation with the `zdnn_transform_ztensor` API.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
   - Must follow [general tensor requirements](#gen-zten-reqs)
-  - Must follow [hidden_state_size requirements](#gru-hid_sz)
 
 - `zdnn_ztensor *h0`
 
-  - Tensor containing the initial hidden state with shape [direction, batch,
-    hidden_state_size] prior to transformation with the `zdnn_transform_ztensor`
-    API.
+  - Tensor containing the initial hidden state with shape (num_dirs,
+    num_batches, num_hidden) prior to transformation with the
+    `zdnn_transform_ztensor` API.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
   - Must follow [general tensor requirements](#gen-zten-reqs)
-  - Must follow [hidden_state_size requirements](#gru-hid_sz)
+  - Must follow [num_hidden requirements](#gru-hid_sz)
 
 - `zdnn_ztensor *weights`
 
   - Tensor containing the concatenated input connection weights in (Z)update,
     Reset, Hidden, (ZRH) order.
   - Prior to transformation, each gate needs to be transposed to shape
-    (direction, features, hidden_state_size) by the caller.
+    (num_dirs, num_features, num_hidden) by the caller.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
-  - Expects a `CONCAT_GRU` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#gru-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_GRU`
+    - `USAGE_WEIGHTS`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#gru-hid_sz)
 
 - `zdnn_ztensor *biases`
 
   - Tensor containing the concatenated input connection bias in (Z)update,
     Reset, Hidden, (ZRH) order.
-  - Prior to transformation, expects each gate needs to be shape (direction,
-    hidden_state_size).
+  - Prior to transformation, expects each gate needs to be shape (num_dirs,
+    num_hidden).
   - Expects `pre_transformed_desc->layout` to be `ZDNN_2DS`.
-  - Expects a `CONCAT_GRU` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#gru-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_GRU`
+    - `USAGE_HIDDEN_WEIGHTS`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#gru-hid_sz)
 
 - `zdnn_ztensor *hidden_weights`
 
   - Tensor containing the concatenated hidden connection weights in (Z)update,
     Reset, Hidden, (ZRH) order.
   - Prior to transformation, each gate needs to be transposed to shape
-    (direction, hidden_state_size, hidden_state_size) by the caller.
+    (num_dirs, num_hidden, num_hidden) by the caller.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
-  - Expects a `CONCAT_GRU` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#gru-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_GRU`
+    - `USAGE_BIASES`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#gru-hid_sz)
 
 - `zdnn_ztensor *hidden_biases`
 
   - Tensor containing the concatenated hidden connection bias in (Z)update,
     Reset, Hidden, (ZRH) order.
-  - Prior to transformation, expects each gate needs to be shape (direction,
-    hidden_state_size).
+  - Prior to transformation, expects each gate needs to be shape (num_dirs,
+    num_hidden).
   - Expects `pre_transformed_desc->layout` to be `ZDNN_2DS`.
-  - Expects a `CONCAT_GRU` [concatenated tensor](#concat-zten-reqs)
-  - Must follow [hidden_state_size requirements](#gru-hid_sz)
+  - Expects `zdnn_concat_info` having the following flags turned on:
+    - `RNN_TYPE_GRU`
+    - `USAGE_HIDDEN_BIASES`
+    - Appropriate `PREV_LAYER` flag:
+      - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
+      - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
+        previous RNN layer
+      - `PREV_LAYER_BIDIR` if `input` tensor is bi-directional output from a
+        previous RNN layer
+  - Must follow [concatenated tensor requirements](#concat-zten-reqs)
+  - Must follow [num_hidden requirements](#gru-hid_sz)
 
 - `lstm_gru_direction direction`
 
@@ -2932,11 +3038,11 @@ the usage example section.
     - `FWD` (forward)
     - `BWD` (backward)
     - `BIDIR` (bi-directional).
-  - For input shapes, the direction dimension should be:
+  - For input shapes, the num_dirs dimension should be:
     - `1` for unidirectional calls such as FWD or BWD
     - `2` for bidirectional calls such that:
-      - direction == 1 contains FWD values.
-      - direction == 2 contains BWD values.
+      - dimension 0 contains FWD values.
+      - dimension 1 contains BWD values.
 
 - `void *work_area`
 
@@ -2945,19 +3051,19 @@ the usage example section.
   - If set to NULL, the operation will determine, allocate and free storage
     automatically.
   - Amount of required storage can be determined given the GRU timestep, batch,
-    and hidden_state_size values.
+    and num_hidden values.
 
     - The sample code below creates a ztensor descriptor that is an equivalent
       size of the required `work_area`. To use this sample code yourself,
-      replace the `timestep`, `batch`, and `hidden_state_size` variables with
-      your own values.
+      replace the `num_timesteps`, `num_batches`, and `num_hidden` variables
+      with your own values.
 
       ```
         zdnn_tensor_desc desc;
-        desc.dim4 = (3 * timestep) + 5;
+        desc.dim4 = (3 * num_timesteps) + 5;
         desc.dim3 = 1;
-        desc.dim2 = batch;
-        desc.dim1 = hidden_state_size;
+        desc.dim2 = num_batches;
+        desc.dim1 = num_hidden;
         uint64_t work_area_size = zdnn_getsize_ztensor(&desc);
       ```
 
@@ -2968,22 +3074,24 @@ the usage example section.
 
   - Output results of the hidden states
 
-  - Expects pre_transformed_desc->layout to be `ZDNN_3DS`.
-
-  - Output must be a tensor with either of the following shapes:
-
-    - For output from all timesteps: [timestep, batch, hidden_state_size]
-    - For final processed timestep only: [1, batch, hidden_state_size]
+  - Expects pre_transformed_desc->layout to be `ZDNN_4DS`.
 
   - Must follow [general tensor requirements](#gen-zten-reqs)
-  - Must follow [hidden_state_size requirements](#gru-hid_sz)
 
-  - For bidirectional (`BIDIR`):
+  - Must follow [num_hidden requirements](#lstm-hid_sz)
+
+  - Output pre-transformed shapes:
+
+    - all timesteps: (num_timesteps, num_dirs, num_batches, num_hidden)
+    - final timestep only: (1, num_dirs, num_batches, num_hidden)
+
+  - For bidirectional (`BIDIR`) output:
 
     - Forward and backward results are concatenated on the innermost dimension.
-    - Expects a `CONCAT_BIDIR_OUTPUT` [concatenated tensor](#concat-zten-reqs)
-    - Concatenated output is meant for use in subsequent layers. Direct
-      untransformation of output is not supported.
+    - Can be used directly as input for subsequent RNN layers without needing
+      untransformation.
+      - Can not be used directly as input for other non-RNN zDNN ops.
+    - Untransformation is supported.
 
   - Note that for `BWD` and the backward component of `BIDIR` directions, the
     output order matches the order of the input, not the processing order. For
@@ -2992,16 +3100,27 @@ the usage example section.
 
 #### Summary
 
-|                | pre-transformed layout | pre-transformed shape                                                                                       | create transformed desc via:                                                                                                         |
-| -------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| input          | `ZDNN_3DS`             | (timestep, batch, feature)                                                                                  | `zdnn_generate_transformed_desc`                                                                                                     |
-| h0             | `ZDNN_3DS`             | (direction, batch, hidden_state_size)                                                                       | `zdnn_generate_transformed_desc`                                                                                                     |
-| weights        | `ZDNN_3DS`             | (direction, features, hidden_state_size)                                                                    | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_GRU`                                                                      |
-| bias           | `ZDNN_2DS`             | (direction, hidden_state_size)                                                                              | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_GRU`                                                                      |
-| hidden_weights | `ZDNN_3DS`             | (direction, hidden_state_size, hidden_state_size)                                                           | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_GRU`                                                                      |
-| hidden_biases  | `ZDNN_2DS`             | (direction, hidden_state_size)                                                                              | `zdnn_generate_transformed_desc_concatenated` with `CONCAT_GRU`                                                                      |
-|                |                        |                                                                                                             |                                                                                                                                      |
-| hn_output      | `ZDNN_3DS`             | **all timesteps**: (timestep, batch, hidden_state_size)<br>**last timestep**: (1, batch, hidden_state_size) | **FWD/BWD**: `zdnn_generate_transformed_desc`<br>**BIDIR**: `zdnn_generate_transformed_desc_concatenated` with `CONCAT_BIDIR_OUTPUT` |
+|                | pre-transformed layout | pre-transformed shape                                                                               |
+| -------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
+| input          | `ZDNN_3DS`             | (num_timesteps, num_batches, num_features)                                                          |
+| h0             | `ZDNN_3DS`             | (num_dirs, num_batches, num_hidden)                                                                 |
+| c0             | `ZDNN_3DS`             | (num_dirs, num_batches, num_hidden)                                                                 |
+| weights        | `ZDNN_3DS`             | (num_dirs, num_features, num_hidden)                                                                |
+| bias           | `ZDNN_2DS`             | (num_dirs, num_hidden)                                                                              |
+| hidden_weights | `ZDNN_3DS`             | (num_dirs, num_hidden, num_hidden)                                                                  |
+| hidden_biases  | `ZDNN_2DS`             | (num_dirs, num_hidden)                                                                              |
+| hn_output      | `ZDNN_4DS`             | (num_timesteps, num_dirs, num_batches, num_hidden)<br>(last timestep only when `num_timesteps` = 1) |
+
+|                | create transformed descriptor via                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| input          | `zdnn_generate_transformed_desc`                                                                                                                                          |
+| h0             | `zdnn_generate_transformed_desc`                                                                                                                                          |
+| c0             | `zdnn_generate_transformed_desc`                                                                                                                                          |
+| weights        | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_WEIGHTS` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`        |
+| bias           | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_BIASES` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`         |
+| hidden_weights | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_HIDDEN_WEIGHTS` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR` |
+| hidden_biases  | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_HIDDEN_BIASES` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`  |
+| hn_output      | `zdnn_generate_transformed_desc`                                                                                                                                          |
 
 #### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
 
@@ -3020,6 +3139,17 @@ the usage example section.
 - `ZDNN_ALLOCATION_FAILURE` - A preallocated `work_area` was not specified and
   internal allocation for the required memory failed.
 - [hardware statuses](#hw-statuses)
+
+#### Framework Examples
+
+[TensorFlow GRU]
+
+[tensorflow gru]:
+  https://www.tensorflow.org/api_docs/python/tf/keras/layers/GRUCell
+
+[ONNX GRU]
+
+[onnx gru]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#GRU
 
 ---
 
@@ -3579,7 +3709,23 @@ int main(int argc, char *argv[]) {
 [Back to Table of Contents](#TOC)
 
 ```
-// Sample: LSTM
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -3591,23 +3737,27 @@ int main(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   zdnn_status status;
 
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
   /***********************************************************************
    *
    * LSTM (FWD/BWD):
    *
    * INPUTS --------------------------------------------------------------
    * input           |  ZDNN_3DS  | (num_timesteps, num_batches, num_features)
-   * h0              |  ZDNN_3DS  | (1, num_batches, num_hiddens)
-   * c0              |  ZDNN_3DS  | (1, num_batches, num_hiddens)
-   * weights         |  ZDNN_3DS  | (1, num_features, num_hiddens)
-   * biases          |  ZDNN_2DS  | (1, num_hiddens)
-   * hidden_weights  |  ZDNN_3DS  | (1, num_hiddens, num_hiddens)
-   * hidden_biases   |  ZDNN_2DS  | (1, num_hiddens)
+   * h0              |  ZDNN_3DS  | (1, num_batches, num_hidden)
+   * c0              |  ZDNN_3DS  | (1, num_batches, num_hidden)
+   * weights         |  ZDNN_3DS  | (1, num_features, num_hidden)
+   * biases          |  ZDNN_2DS  | (1, num_hidden)
+   * hidden_weights  |  ZDNN_3DS  | (1, num_hidden, num_hidden)
+   * hidden_biases   |  ZDNN_2DS  | (1, num_hidden)
    *
    * OUTPUTS -------------------------------------------------------------
-   * hn_output       |  ZDNN_3DS  | (num_timesteps, num_batches, num_hiddens)
-   *                 |            | or (1, num_batches, num_hiddens)
-   * cf_output       |  ZDNN_3DS  | (1, num_batches, num_hiddens)
+   * hn_output       |  ZDNN_4DS  | (num_timesteps, 1, num_batches, num_hidden)
+   *                 |            | or (1, 1, num_batches, num_hidden)
+   * cf_output       |  ZDNN_4DS  | (1, 1, num_batches, num_hidden)
    ***********************************************************************/
 
   /***********************************************************************
@@ -3620,14 +3770,13 @@ int main(int argc, char *argv[]) {
   uint32_t num_timesteps = 5;
   uint32_t num_batches = 3;
   uint32_t num_features = 32;
-  uint32_t num_hiddens = 5;
+  uint32_t num_hidden = 5;
 
   zdnn_data_types type = FP32;
   short element_size = 4; // size of each element in bytes
 
-  zdnn_ztensor_concat_types concat_type = CONCAT_LSTM;
   lstm_gru_direction dir = FWD;
-  uint8_t num_dirs = (dir == BIDIR) ? 2 : 1;
+  uint8_t num_dirs = 1;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &input_pre_tfrmd_desc,
                                  num_timesteps, num_batches, num_features);
@@ -3653,7 +3802,7 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor h0, c0;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &h0c0_pre_tfrmd_desc, num_dirs,
-                                 num_batches, num_hiddens);
+                                 num_batches, num_hidden);
   status =
       zdnn_generate_transformed_desc(&h0c0_pre_tfrmd_desc, &h0c0_tfrmd_desc);
   assert(status == ZDNN_OK);
@@ -3665,7 +3814,7 @@ int main(int argc, char *argv[]) {
                                          &c0);
   assert(status == ZDNN_OK);
 
-  uint64_t h0c0_data_size = num_batches * num_hiddens * element_size;
+  uint64_t h0c0_data_size = num_batches * num_hidden * element_size;
   void *hidden_state_data = malloc(h0c0_data_size);
   void *cell_state_data = malloc(h0c0_data_size);
 
@@ -3683,16 +3832,17 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor weights;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &weights_pre_tfrmd_desc,
-                                 num_dirs, num_features, num_hiddens);
+                                 num_dirs, num_features, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &weights_pre_tfrmd_desc, concat_type, &weights_tfrmd_desc);
+      &weights_pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_NONE,
+      &weights_tfrmd_desc);
   assert(status == ZDNN_OK);
 
   status = zdnn_init_ztensor_with_malloc(&weights_pre_tfrmd_desc,
                                          &weights_tfrmd_desc, &weights);
   assert(status == ZDNN_OK);
 
-  uint64_t weights_data_size = num_features * num_hiddens * element_size;
+  uint64_t weights_data_size = num_features * num_hidden * element_size;
   void *weights_data_f = malloc(weights_data_size);
   void *weights_data_i = malloc(weights_data_size);
   void *weights_data_c = malloc(weights_data_size);
@@ -3700,6 +3850,35 @@ int main(int argc, char *argv[]) {
 
   status = zdnn_transform_ztensor(&weights, weights_data_f, weights_data_i,
                                   weights_data_c, weights_data_o);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create biases zTensors
+   * Resultant zTensors are concatenated
+   ***********************************************************************/
+
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
+  status = zdnn_generate_transformed_desc_concatenated(
+      &biases_pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_BIASES | PREV_LAYER_NONE,
+      &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                         &biases_tfrmd_desc, &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = num_hidden * element_size;
+  void *biases_data_f = malloc(biases_data_size);
+  void *biases_data_i = malloc(biases_data_size);
+  void *biases_data_c = malloc(biases_data_size);
+  void *biases_data_o = malloc(biases_data_size);
+
+  status = zdnn_transform_ztensor(&biases, biases_data_f, biases_data_i,
+                                  biases_data_c, biases_data_o);
   assert(status == ZDNN_OK);
 
   /***********************************************************************
@@ -3711,16 +3890,18 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor hidden_weights;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &hidden_weights_pre_tfrmd_desc,
-                                 num_dirs, num_hiddens, num_hiddens);
+                                 num_dirs, num_hidden, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &hidden_weights_pre_tfrmd_desc, concat_type, &hidden_weights_tfrmd_desc);
+      &hidden_weights_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_WEIGHTS | PREV_LAYER_NONE,
+      &hidden_weights_tfrmd_desc);
   assert(status == ZDNN_OK);
   status = zdnn_init_ztensor_with_malloc(&hidden_weights_pre_tfrmd_desc,
                                          &hidden_weights_tfrmd_desc,
                                          &hidden_weights);
   assert(status == ZDNN_OK);
 
-  uint64_t hidden_weights_data_size = num_hiddens * num_hiddens * element_size;
+  uint64_t hidden_weights_data_size = num_hidden * num_hidden * element_size;
   void *hidden_weights_data_f = malloc(hidden_weights_data_size);
   void *hidden_weights_data_i = malloc(hidden_weights_data_size);
   void *hidden_weights_data_c = malloc(hidden_weights_data_size);
@@ -3732,40 +3913,31 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Create biases and hidden biases zTensors
+   * Create hidden biases zTensors
    * Resultant zTensors are concatenated
    ***********************************************************************/
 
-  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
-  zdnn_ztensor biases, hidden_biases;
+  zdnn_tensor_desc hidden_biases_pre_tfrmd_desc, hidden_biases_tfrmd_desc;
+  zdnn_ztensor hidden_biases;
 
-  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
-                                 num_dirs, num_hiddens);
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &hidden_biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &biases_pre_tfrmd_desc, concat_type, &biases_tfrmd_desc);
+      &hidden_biases_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_BIASES | PREV_LAYER_NONE,
+      &hidden_biases_tfrmd_desc);
   assert(status == ZDNN_OK);
 
-  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
-                                         &biases_tfrmd_desc, &biases);
-  assert(status == ZDNN_OK);
-  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
-                                         &biases_tfrmd_desc, &hidden_biases);
+  status = zdnn_init_ztensor_with_malloc(
+      &hidden_biases_pre_tfrmd_desc, &hidden_biases_tfrmd_desc, &hidden_biases);
   assert(status == ZDNN_OK);
 
-  uint64_t biases_data_size = num_hiddens * element_size;
-  void *biases_data_f = malloc(biases_data_size);
-  void *biases_data_i = malloc(biases_data_size);
-  void *biases_data_c = malloc(biases_data_size);
-  void *biases_data_o = malloc(biases_data_size);
+  uint64_t hidden_biases_data_size = num_hidden * element_size;
 
-  status = zdnn_transform_ztensor(&biases, biases_data_f, biases_data_i,
-                                  biases_data_c, biases_data_o);
-  assert(status == ZDNN_OK);
-
-  void *hidden_biases_data_f = malloc(biases_data_size);
-  void *hidden_biases_data_i = malloc(biases_data_size);
-  void *hidden_biases_data_c = malloc(biases_data_size);
-  void *hidden_biases_data_o = malloc(biases_data_size);
+  void *hidden_biases_data_f = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_i = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_c = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_o = malloc(hidden_biases_data_size);
 
   status = zdnn_transform_ztensor(&hidden_biases, hidden_biases_data_f,
                                   hidden_biases_data_i, hidden_biases_data_c,
@@ -3781,8 +3953,8 @@ int main(int argc, char *argv[]) {
 
   zdnn_ztensor hn_output_ztensor, cf_output_ztensor;
 
-  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &hncf_pre_tfrmd_desc, 1,
-                                 num_batches, num_hiddens);
+  zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &hncf_pre_tfrmd_desc, 1, 1,
+                                 num_batches, num_hidden);
   status =
       zdnn_generate_transformed_desc(&hncf_pre_tfrmd_desc, &hncf_tfrmd_desc);
   assert(status == ZDNN_OK);
@@ -3809,7 +3981,7 @@ int main(int argc, char *argv[]) {
    * Output and Cleanup
    ***********************************************************************/
 
-  uint64_t hncf_data_size = num_batches * num_hiddens * element_size;
+  uint64_t hncf_data_size = num_batches * num_hidden * element_size;
   void *hn_output_data = malloc(hncf_data_size);
   void *cf_output_data = malloc(hncf_data_size);
 
@@ -3870,6 +4042,23 @@ int main(int argc, char *argv[]) {
 [Back to Table of Contents](#TOC)
 
 ```
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -3881,23 +4070,27 @@ int main(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   zdnn_status status;
 
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
   /***********************************************************************
    *
    * LSTM (BI-DIR):
    *
    * INPUTS --------------------------------------------------------------
    * input           |  ZDNN_3DS  | (num_timesteps, num_batches, num_features)
-   * h0              |  ZDNN_3DS  | (2, num_batches, num_hiddens)
-   * c0              |  ZDNN_3DS  | (2, num_batches, num_hiddens)
-   * weights         |  ZDNN_3DS  | (2, num_features, num_hiddens)
-   * biases          |  ZDNN_2DS  | (2, num_hiddens)
-   * hidden_weights  |  ZDNN_3DS  | (2, num_hiddens, num_hiddens)
-   * hidden_biases   |  ZDNN_2DS  | (2, num_hiddens)
+   * h0              |  ZDNN_3DS  | (2, num_batches, num_hidden)
+   * c0              |  ZDNN_3DS  | (2, num_batches, num_hidden)
+   * weights         |  ZDNN_3DS  | (2, num_features, num_hidden)
+   * biases          |  ZDNN_2DS  | (2, num_hidden)
+   * hidden_weights  |  ZDNN_3DS  | (2, num_hidden, num_hidden)
+   * hidden_biases   |  ZDNN_2DS  | (2, num_hidden)
    *
    * OUTPUTS -------------------------------------------------------------
-   * hn_output       |  ZDNN_3DS  | (num_timesteps, num_batches, num_hiddens)
-   *                 |            | or (1, num_batches, num_hiddens)
-   * cf_output       |  ZDNN_3DS  | (1, num_batches, num_hiddens)
+   * hn_output       |  ZDNN_4DS  | (num_timesteps, 2, num_batches, num_hidden)
+   *                 |            | or (1, 2, num_batches, num_hidden)
+   * cf_output       |  ZDNN_4DS  | (1, 2, num_batches, num_hidden)
    ***********************************************************************/
 
   /***********************************************************************
@@ -3910,14 +4103,13 @@ int main(int argc, char *argv[]) {
   uint32_t num_timesteps = 5;
   uint32_t num_batches = 3;
   uint32_t num_features = 32;
-  uint32_t num_hiddens = 5;
+  uint32_t num_hidden = 5;
 
   zdnn_data_types type = FP32;
   short element_size = 4; // size of each element in bytes
 
-  zdnn_ztensor_concat_types concat_type = CONCAT_LSTM;
   lstm_gru_direction dir = BIDIR;
-  uint8_t num_dirs = (dir == BIDIR) ? 2 : 1;
+  uint8_t num_dirs = 2;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &input_pre_tfrmd_desc,
                                  num_timesteps, num_batches, num_features);
@@ -3943,7 +4135,7 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor h0, c0;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &h0c0_pre_tfrmd_desc, num_dirs,
-                                 num_batches, num_hiddens);
+                                 num_batches, num_hidden);
   status =
       zdnn_generate_transformed_desc(&h0c0_pre_tfrmd_desc, &h0c0_tfrmd_desc);
   assert(status == ZDNN_OK);
@@ -3955,7 +4147,7 @@ int main(int argc, char *argv[]) {
                                          &c0);
   assert(status == ZDNN_OK);
 
-  uint64_t h0c0_data_size = num_batches * num_hiddens * element_size;
+  uint64_t h0c0_data_size = num_batches * num_hidden * element_size;
   void *hidden_state_data = malloc(h0c0_data_size);
   void *cell_state_data = malloc(h0c0_data_size);
 
@@ -3973,16 +4165,17 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor weights;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &weights_pre_tfrmd_desc,
-                                 num_dirs, num_features, num_hiddens);
+                                 num_dirs, num_features, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &weights_pre_tfrmd_desc, concat_type, &weights_tfrmd_desc);
+      &weights_pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_NONE,
+      &weights_tfrmd_desc);
   assert(status == ZDNN_OK);
 
   status = zdnn_init_ztensor_with_malloc(&weights_pre_tfrmd_desc,
                                          &weights_tfrmd_desc, &weights);
   assert(status == ZDNN_OK);
 
-  uint64_t weights_data_size = num_features * num_hiddens * element_size;
+  uint64_t weights_data_size = num_features * num_hidden * element_size;
   void *weights_data_f = malloc(weights_data_size);
   void *weights_data_i = malloc(weights_data_size);
   void *weights_data_c = malloc(weights_data_size);
@@ -3990,6 +4183,35 @@ int main(int argc, char *argv[]) {
 
   status = zdnn_transform_ztensor(&weights, weights_data_f, weights_data_i,
                                   weights_data_c, weights_data_o);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create biases zTensors
+   * Resultant zTensors are concatenated
+   ***********************************************************************/
+
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
+  status = zdnn_generate_transformed_desc_concatenated(
+      &biases_pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_BIASES | PREV_LAYER_NONE,
+      &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                         &biases_tfrmd_desc, &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = num_hidden * element_size;
+  void *biases_data_f = malloc(biases_data_size);
+  void *biases_data_i = malloc(biases_data_size);
+  void *biases_data_c = malloc(biases_data_size);
+  void *biases_data_o = malloc(biases_data_size);
+
+  status = zdnn_transform_ztensor(&biases, biases_data_f, biases_data_i,
+                                  biases_data_c, biases_data_o);
   assert(status == ZDNN_OK);
 
   /***********************************************************************
@@ -4001,16 +4223,18 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor hidden_weights;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &hidden_weights_pre_tfrmd_desc,
-                                 num_dirs, num_hiddens, num_hiddens);
+                                 num_dirs, num_hidden, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &hidden_weights_pre_tfrmd_desc, concat_type, &hidden_weights_tfrmd_desc);
+      &hidden_weights_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_WEIGHTS | PREV_LAYER_NONE,
+      &hidden_weights_tfrmd_desc);
   assert(status == ZDNN_OK);
   status = zdnn_init_ztensor_with_malloc(&hidden_weights_pre_tfrmd_desc,
                                          &hidden_weights_tfrmd_desc,
                                          &hidden_weights);
   assert(status == ZDNN_OK);
 
-  uint64_t hidden_weights_data_size = num_hiddens * num_hiddens * element_size;
+  uint64_t hidden_weights_data_size = num_hidden * num_hidden * element_size;
   void *hidden_weights_data_f = malloc(hidden_weights_data_size);
   void *hidden_weights_data_i = malloc(hidden_weights_data_size);
   void *hidden_weights_data_c = malloc(hidden_weights_data_size);
@@ -4022,40 +4246,31 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Create biases and hidden biases zTensors
+   * Create hidden biases zTensors
    * Resultant zTensors are concatenated
    ***********************************************************************/
 
-  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
-  zdnn_ztensor biases, hidden_biases;
+  zdnn_tensor_desc hidden_biases_pre_tfrmd_desc, hidden_biases_tfrmd_desc;
+  zdnn_ztensor hidden_biases;
 
-  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
-                                 num_dirs, num_hiddens);
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &hidden_biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &biases_pre_tfrmd_desc, concat_type, &biases_tfrmd_desc);
+      &hidden_biases_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_BIASES | PREV_LAYER_NONE,
+      &hidden_biases_tfrmd_desc);
   assert(status == ZDNN_OK);
 
-  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
-                                         &biases_tfrmd_desc, &biases);
-  assert(status == ZDNN_OK);
-  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
-                                         &biases_tfrmd_desc, &hidden_biases);
+  status = zdnn_init_ztensor_with_malloc(
+      &hidden_biases_pre_tfrmd_desc, &hidden_biases_tfrmd_desc, &hidden_biases);
   assert(status == ZDNN_OK);
 
-  uint64_t biases_data_size = num_hiddens * element_size;
-  void *biases_data_f = malloc(biases_data_size);
-  void *biases_data_i = malloc(biases_data_size);
-  void *biases_data_c = malloc(biases_data_size);
-  void *biases_data_o = malloc(biases_data_size);
+  uint64_t hidden_biases_data_size = num_hidden * element_size;
 
-  status = zdnn_transform_ztensor(&biases, biases_data_f, biases_data_i,
-                                  biases_data_c, biases_data_o);
-  assert(status == ZDNN_OK);
-
-  void *hidden_biases_data_f = malloc(biases_data_size);
-  void *hidden_biases_data_i = malloc(biases_data_size);
-  void *hidden_biases_data_c = malloc(biases_data_size);
-  void *hidden_biases_data_o = malloc(biases_data_size);
+  void *hidden_biases_data_f = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_i = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_c = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_o = malloc(hidden_biases_data_size);
 
   status = zdnn_transform_ztensor(&hidden_biases, hidden_biases_data_f,
                                   hidden_biases_data_i, hidden_biases_data_c,
@@ -4071,16 +4286,14 @@ int main(int argc, char *argv[]) {
 
   zdnn_ztensor hn_output_ztensor, cf_output_ztensor;
 
-  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &hn_pre_tfrmd_desc,
-                                 num_timesteps, num_batches, num_hiddens);
-  status = zdnn_generate_transformed_desc_concatenated(
-      &hn_pre_tfrmd_desc, CONCAT_BIDIR_OUTPUT, &hn_tfrmd_desc);
+  zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &hn_pre_tfrmd_desc,
+                                 num_timesteps, 2, num_batches, num_hidden);
+  status = zdnn_generate_transformed_desc(&hn_pre_tfrmd_desc, &hn_tfrmd_desc);
   assert(status == ZDNN_OK);
 
-  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &cf_pre_tfrmd_desc, 1,
-                                 num_batches, num_hiddens);
-  status = zdnn_generate_transformed_desc_concatenated(
-      &cf_pre_tfrmd_desc, CONCAT_BIDIR_OUTPUT, &cf_tfrmd_desc);
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &cf_pre_tfrmd_desc, 1, 2,
+                                 num_batches, num_hidden);
+  status = zdnn_generate_transformed_desc(&cf_pre_tfrmd_desc, &cf_tfrmd_desc);
   assert(status == ZDNN_OK);
 
   status = zdnn_init_ztensor_with_malloc(&hn_pre_tfrmd_desc, &hn_tfrmd_desc,
@@ -4103,10 +4316,18 @@ int main(int argc, char *argv[]) {
 
   /***********************************************************************
    * Output and Cleanup
-   *
-   * NOTE: zdnn_transform_origtensor() bi-directional output is not
-   *       supported
    ***********************************************************************/
+
+  uint64_t hn_data_size =
+      num_timesteps * 2 * num_batches * num_hidden * element_size;
+  uint64_t cf_data_size = 2 * num_batches * num_hidden * element_size;
+  void *hn_output_data = malloc(hn_data_size);
+  void *cf_output_data = malloc(cf_data_size);
+
+  status = zdnn_transform_origtensor(&hn_output_ztensor, hn_output_data);
+  assert(status == ZDNN_OK);
+  status = zdnn_transform_origtensor(&cf_output_ztensor, cf_output_data);
+  assert(status == ZDNN_OK);
 
   status = zdnn_free_ztensor_buffer(&input);
   assert(status == ZDNN_OK);
@@ -4146,6 +4367,385 @@ int main(int argc, char *argv[]) {
   free(hidden_biases_data_i);
   free(hidden_biases_data_c);
   free(hidden_biases_data_o);
+  free(hn_output_data);
+  free(cf_output_data);
+}
+
+
+
+```
+
+---
+
+### Example of an application calling the zdnn_lstm API (multi-layer bi-directional)
+
+[Back to Table of Contents](#TOC)
+
+```
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "zdnn.h"
+
+void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
+                    zdnn_ztensor *hn_output, bool is_prev_layer_bidir) {
+
+  zdnn_status status;
+
+  uint32_t num_batches = input->pre_transformed_desc->dim2;
+
+  // if input is bidir output from previous layer then number of features for
+  // this layer is 2x of hidden-state size (dim1) of the previous layer
+  uint32_t num_features =
+      input->pre_transformed_desc->dim1 * (is_prev_layer_bidir ? 2 : 1);
+
+  zdnn_data_types type = FP32;
+  short element_size = 4; // size of each element in bytes
+
+  lstm_gru_direction dir = BIDIR;
+  uint8_t num_dirs = 2;
+
+  /***********************************************************************
+   * Create initial hidden and cell state zTensors
+   ***********************************************************************/
+
+  zdnn_tensor_desc h0c0_pre_tfrmd_desc, h0c0_tfrmd_desc;
+  zdnn_ztensor h0, c0;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &h0c0_pre_tfrmd_desc, num_dirs,
+                                 num_batches, num_hidden);
+  status =
+      zdnn_generate_transformed_desc(&h0c0_pre_tfrmd_desc, &h0c0_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(&h0c0_pre_tfrmd_desc, &h0c0_tfrmd_desc,
+                                         &h0);
+  assert(status == ZDNN_OK);
+  status = zdnn_init_ztensor_with_malloc(&h0c0_pre_tfrmd_desc, &h0c0_tfrmd_desc,
+                                         &c0);
+  assert(status == ZDNN_OK);
+
+  uint64_t h0c0_data_size = num_batches * num_hidden * element_size;
+  void *hidden_state_data = malloc(h0c0_data_size);
+  void *cell_state_data = malloc(h0c0_data_size);
+
+  status = zdnn_transform_ztensor(&h0, hidden_state_data);
+  assert(status == ZDNN_OK);
+  status = zdnn_transform_ztensor(&c0, cell_state_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create input weights zTensor
+   * Resultant zTensor is concatenated
+   ***********************************************************************/
+
+  zdnn_tensor_desc weights_pre_tfrmd_desc, weights_tfrmd_desc;
+  zdnn_ztensor weights;
+
+  // if using previous layer bidir output as input then number of features of
+  // this layer is
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &weights_pre_tfrmd_desc,
+                                 num_dirs, num_features, num_hidden);
+  status = zdnn_generate_transformed_desc_concatenated(
+      &weights_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_WEIGHTS |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
+      &weights_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(&weights_pre_tfrmd_desc,
+                                         &weights_tfrmd_desc, &weights);
+  assert(status == ZDNN_OK);
+
+  uint64_t weights_data_size = num_features * num_hidden * element_size;
+  void *weights_data_f = malloc(weights_data_size);
+  void *weights_data_i = malloc(weights_data_size);
+  void *weights_data_c = malloc(weights_data_size);
+  void *weights_data_o = malloc(weights_data_size);
+
+  status = zdnn_transform_ztensor(&weights, weights_data_f, weights_data_i,
+                                  weights_data_c, weights_data_o);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create biases zTensors
+   * Resultant zTensors are concatenated
+   ***********************************************************************/
+
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
+  status = zdnn_generate_transformed_desc_concatenated(
+      &biases_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_BIASES |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
+      &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                         &biases_tfrmd_desc, &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = num_hidden * element_size;
+  void *biases_data_f = malloc(biases_data_size);
+  void *biases_data_i = malloc(biases_data_size);
+  void *biases_data_c = malloc(biases_data_size);
+  void *biases_data_o = malloc(biases_data_size);
+
+  status = zdnn_transform_ztensor(&biases, biases_data_f, biases_data_i,
+                                  biases_data_c, biases_data_o);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create hidden weights zTensor
+   * Resultant zTensor is concatenated
+   ***********************************************************************/
+
+  zdnn_tensor_desc hidden_weights_pre_tfrmd_desc, hidden_weights_tfrmd_desc;
+  zdnn_ztensor hidden_weights;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &hidden_weights_pre_tfrmd_desc,
+                                 num_dirs, num_hidden, num_hidden);
+  status = zdnn_generate_transformed_desc_concatenated(
+      &hidden_weights_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_WEIGHTS |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
+      &hidden_weights_tfrmd_desc);
+  assert(status == ZDNN_OK);
+  status = zdnn_init_ztensor_with_malloc(&hidden_weights_pre_tfrmd_desc,
+                                         &hidden_weights_tfrmd_desc,
+                                         &hidden_weights);
+  assert(status == ZDNN_OK);
+
+  uint64_t hidden_weights_data_size = num_hidden * num_hidden * element_size;
+  void *hidden_weights_data_f = malloc(hidden_weights_data_size);
+  void *hidden_weights_data_i = malloc(hidden_weights_data_size);
+  void *hidden_weights_data_c = malloc(hidden_weights_data_size);
+  void *hidden_weights_data_o = malloc(hidden_weights_data_size);
+
+  status = zdnn_transform_ztensor(&hidden_weights, hidden_weights_data_f,
+                                  hidden_weights_data_i, hidden_weights_data_c,
+                                  hidden_weights_data_o);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create hidden biases zTensors
+   * Resultant zTensors are concatenated
+   ***********************************************************************/
+
+  zdnn_tensor_desc hidden_biases_pre_tfrmd_desc, hidden_biases_tfrmd_desc;
+  zdnn_ztensor hidden_biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &hidden_biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
+  status = zdnn_generate_transformed_desc_concatenated(
+      &hidden_biases_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_BIASES |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
+      &hidden_biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(
+      &hidden_biases_pre_tfrmd_desc, &hidden_biases_tfrmd_desc, &hidden_biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t hidden_biases_data_size = num_hidden * element_size;
+
+  void *hidden_biases_data_f = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_i = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_c = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_o = malloc(hidden_biases_data_size);
+
+  status = zdnn_transform_ztensor(&hidden_biases, hidden_biases_data_f,
+                                  hidden_biases_data_i, hidden_biases_data_c,
+                                  hidden_biases_data_o);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create cf output zTensor
+   ***********************************************************************/
+
+  zdnn_tensor_desc cf_pre_tfrmd_desc, cf_tfrmd_desc;
+
+  zdnn_ztensor cf_output_ztensor;
+
+  zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &cf_pre_tfrmd_desc, 1, 2,
+                                 num_batches, num_hidden);
+  status = zdnn_generate_transformed_desc(&cf_pre_tfrmd_desc, &cf_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(&cf_pre_tfrmd_desc, &cf_tfrmd_desc,
+                                         &cf_output_ztensor);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Call the AIU
+   ***********************************************************************/
+
+  void *work_area = NULL;
+
+  status =
+      zdnn_lstm(input, &h0, &c0, &weights, &biases, &hidden_weights,
+                &hidden_biases, dir, work_area, hn_output, &cf_output_ztensor);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Cleanup and Return
+   ***********************************************************************/
+
+  status = zdnn_free_ztensor_buffer(&h0);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&c0);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&weights);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&biases);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&hidden_weights);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&hidden_biases);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&cf_output_ztensor);
+  assert(status == ZDNN_OK);
+
+  free(hidden_state_data);
+  free(cell_state_data);
+  free(weights_data_f);
+  free(weights_data_i);
+  free(weights_data_c);
+  free(weights_data_o);
+  free(hidden_weights_data_f);
+  free(hidden_weights_data_i);
+  free(hidden_weights_data_c);
+  free(hidden_weights_data_o);
+  free(biases_data_f);
+  free(biases_data_i);
+  free(biases_data_c);
+  free(biases_data_o);
+  free(hidden_biases_data_f);
+  free(hidden_biases_data_i);
+  free(hidden_biases_data_c);
+  free(hidden_biases_data_o);
+}
+
+// Sample: LSTM multi-layer BIDIR
+int main(int argc, char *argv[]) {
+  zdnn_status status;
+
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
+  uint32_t num_hidden[2] = {5, 4};
+
+  /***********************************************************************
+   * Create input zTensor
+   ***********************************************************************/
+
+  zdnn_tensor_desc input_pre_tfrmd_desc, input_tfrmd_desc;
+  zdnn_ztensor input;
+
+  uint32_t num_timesteps = 5;
+  uint32_t num_batches = 3;
+  uint32_t num_features = 32;
+
+  zdnn_data_types type = FP32;
+  short element_size = 4; // size of each element in bytes
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &input_pre_tfrmd_desc,
+                                 num_timesteps, num_batches, num_features);
+  status =
+      zdnn_generate_transformed_desc(&input_pre_tfrmd_desc, &input_tfrmd_desc);
+  assert(status == ZDNN_OK);
+  status = zdnn_init_ztensor_with_malloc(&input_pre_tfrmd_desc,
+                                         &input_tfrmd_desc, &input);
+  assert(status == ZDNN_OK);
+
+  uint64_t input_data_size =
+      num_timesteps * num_batches * num_features * element_size;
+  void *input_data = malloc(input_data_size);
+
+  status = zdnn_transform_ztensor(&input, input_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create 2 hn output zTensors
+   ***********************************************************************/
+
+  zdnn_tensor_desc hn_pre_tfrmd_desc[2], hn_tfrmd_desc[2];
+  zdnn_ztensor hn_output[2];
+
+  for (int i = 0; i < 2; i++) {
+    zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &hn_pre_tfrmd_desc[i],
+                                   num_timesteps, 2, num_batches,
+                                   num_hidden[i]);
+    status = zdnn_generate_transformed_desc(&hn_pre_tfrmd_desc[i],
+                                            &hn_tfrmd_desc[i]);
+    assert(status == ZDNN_OK);
+
+    status = zdnn_init_ztensor_with_malloc(&hn_pre_tfrmd_desc[i],
+                                           &hn_tfrmd_desc[i], &hn_output[i]);
+    assert(status == ZDNN_OK);
+  }
+
+  /***********************************************************************
+   * Do the layers
+   ***********************************************************************/
+
+  // call the first layer with input, previous layer bidir = false, output goes
+  // to hn_output[0]
+  do_bidir_layer(&input, num_hidden[0], &hn_output[0], false);
+
+  // call the second layer with hn_output[0] from layer 1, previous layer bidir
+  // = true, output goes to hn_output[1]
+  do_bidir_layer(&hn_output[0], num_hidden[1], &hn_output[1], true);
+
+  /***********************************************************************
+   * Output and Cleanup
+   ***********************************************************************/
+
+  void *hn_output_data[2];
+
+  for (int i = 0; i < 2; i++) {
+    uint64_t hn_output_data_size = (uint64_t)num_timesteps * num_batches *
+                                   num_hidden[i] * 2 * element_size;
+    hn_output_data[i] = malloc(hn_output_data_size);
+
+    status = zdnn_transform_origtensor(&hn_output[i], hn_output_data[i]);
+    assert(status == ZDNN_OK);
+  }
+
+  status = zdnn_free_ztensor_buffer(&input);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&hn_output[0]);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&hn_output[1]);
+  assert(status == ZDNN_OK);
+
+  free(input_data);
+  free(hn_output_data[0]);
+  free(hn_output_data[1]);
 }
 
 
@@ -4159,6 +4759,23 @@ int main(int argc, char *argv[]) {
 [Back to Table of Contents](#TOC)
 
 ```
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -4170,21 +4787,25 @@ int main(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   zdnn_status status;
 
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
   /***********************************************************************
    *
    * GRU (FWD/BWD):
    *
    * INPUTS --------------------------------------------------------------
    * input           |  ZDNN_3DS  | (num_timesteps, num_batches, num_features)
-   * h0              |  ZDNN_3DS  | (1, num_batches, num_hiddens)
-   * weights         |  ZDNN_3DS  | (1, num_features, num_hiddens)
-   * input_biases    |  ZDNN_2DS  | (1, num_hiddens)
-   * hidden_weights  |  ZDNN_3DS  | (1, num_hiddens, num_hiddens)
-   * hidden_biases   |  ZDNN_2DS  | (1, num_hiddens)
+   * h0              |  ZDNN_3DS  | (1, num_batches, num_hidden)
+   * weights         |  ZDNN_3DS  | (1, num_features, num_hidden)
+   * input_biases    |  ZDNN_2DS  | (1, num_hidden)
+   * hidden_weights  |  ZDNN_3DS  | (1, num_hidden, num_hidden)
+   * hidden_biases   |  ZDNN_2DS  | (1, num_hidden)
    *
    * OUTPUTS -------------------------------------------------------------
-   * hn_output       |  ZDNN_3DS  | (num_timesteps, num_batches, num_hiddens)
-   *                 |            | or (1, num_batches, num_hiddens)
+   * hn_output       |  ZDNN_4DS  | (num_timesteps, 1, num_batches, num_hidden)
+   *                 |            | or (1, 1, num_batches, num_hidden)
    ***********************************************************************/
 
   /***********************************************************************
@@ -4197,14 +4818,14 @@ int main(int argc, char *argv[]) {
   uint32_t num_timesteps = 5;
   uint32_t num_batches = 3;
   uint32_t num_features = 32;
-  uint32_t num_hiddens = 5;
+  uint32_t num_hidden = 5;
 
   zdnn_data_types type = FP32;
   short element_size = 4; // size of each element in bytes
 
-  zdnn_ztensor_concat_types concat_type = CONCAT_GRU;
   lstm_gru_direction dir = FWD;
-  uint8_t num_dirs = (dir == BIDIR) ? 2 : 1;
+  uint8_t num_dirs = 1;
+
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &input_pre_tfrmd_desc,
                                  num_timesteps, num_batches, num_features);
   status =
@@ -4229,7 +4850,7 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor h0;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &h0_pre_tfrmd_desc, num_dirs,
-                                 num_batches, num_hiddens);
+                                 num_batches, num_hidden);
   status = zdnn_generate_transformed_desc(&h0_pre_tfrmd_desc, &h0_tfrmd_desc);
   assert(status == ZDNN_OK);
 
@@ -4237,7 +4858,7 @@ int main(int argc, char *argv[]) {
       zdnn_init_ztensor_with_malloc(&h0_pre_tfrmd_desc, &h0_tfrmd_desc, &h0);
   assert(status == ZDNN_OK);
 
-  uint64_t h0_data_size = num_batches * num_hiddens * element_size;
+  uint64_t h0_data_size = num_batches * num_hidden * element_size;
   void *hidden_state_data = malloc(h0_data_size);
 
   status = zdnn_transform_ztensor(&h0, hidden_state_data);
@@ -4252,22 +4873,51 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor weights;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &weights_pre_tfrmd_desc,
-                                 num_dirs, num_features, num_hiddens);
+                                 num_dirs, num_features, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &weights_pre_tfrmd_desc, concat_type, &weights_tfrmd_desc);
+      &weights_pre_tfrmd_desc, RNN_TYPE_GRU | USAGE_WEIGHTS | PREV_LAYER_NONE,
+      &weights_tfrmd_desc);
   assert(status == ZDNN_OK);
 
   status = zdnn_init_ztensor_with_malloc(&weights_pre_tfrmd_desc,
                                          &weights_tfrmd_desc, &weights);
   assert(status == ZDNN_OK);
 
-  uint64_t weights_data_size = num_features * num_hiddens * element_size;
+  uint64_t weights_data_size = num_features * num_hidden * element_size;
   void *weights_data_z = malloc(weights_data_size);
   void *weights_data_r = malloc(weights_data_size);
   void *weights_data_h = malloc(weights_data_size);
 
   status = zdnn_transform_ztensor(&weights, weights_data_z, weights_data_r,
                                   weights_data_h);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create biases zTensors
+   * Resultant zTensors are concatenated
+   ***********************************************************************/
+
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
+  status = zdnn_generate_transformed_desc_concatenated(
+      &biases_pre_tfrmd_desc, RNN_TYPE_GRU | USAGE_BIASES | PREV_LAYER_NONE,
+      &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                         &biases_tfrmd_desc, &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = num_hidden * element_size;
+  void *biases_data_z = malloc(biases_data_size);
+  void *biases_data_r = malloc(biases_data_size);
+  void *biases_data_h = malloc(biases_data_size);
+
+  status = zdnn_transform_ztensor(&biases, biases_data_z, biases_data_r,
+                                  biases_data_h);
   assert(status == ZDNN_OK);
 
   /***********************************************************************
@@ -4279,16 +4929,18 @@ int main(int argc, char *argv[]) {
   zdnn_ztensor hidden_weights;
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &hidden_weights_pre_tfrmd_desc,
-                                 num_dirs, num_hiddens, num_hiddens);
+                                 num_dirs, num_hidden, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &hidden_weights_pre_tfrmd_desc, concat_type, &hidden_weights_tfrmd_desc);
+      &hidden_weights_pre_tfrmd_desc,
+      RNN_TYPE_GRU | USAGE_HIDDEN_WEIGHTS | PREV_LAYER_NONE,
+      &hidden_weights_tfrmd_desc);
   assert(status == ZDNN_OK);
   status = zdnn_init_ztensor_with_malloc(&hidden_weights_pre_tfrmd_desc,
                                          &hidden_weights_tfrmd_desc,
                                          &hidden_weights);
   assert(status == ZDNN_OK);
 
-  uint64_t hidden_weights_data_size = num_hiddens * num_hiddens * element_size;
+  uint64_t hidden_weights_data_size = num_hidden * num_hidden * element_size;
   void *hidden_weights_data_z = malloc(hidden_weights_data_size);
   void *hidden_weights_data_r = malloc(hidden_weights_data_size);
   void *hidden_weights_data_h = malloc(hidden_weights_data_size);
@@ -4298,38 +4950,29 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Create biases and hidden biases zTensors
+   * Create hidden biases zTensors
    * Resultant zTensors are concatenated
    ***********************************************************************/
 
-  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
-  zdnn_ztensor biases, hidden_biases;
+  zdnn_tensor_desc hidden_biases_pre_tfrmd_desc, hidden_biases_tfrmd_desc;
+  zdnn_ztensor hidden_biases;
 
-  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
-                                 num_dirs, num_hiddens);
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &hidden_biases_pre_tfrmd_desc,
+                                 num_dirs, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &biases_pre_tfrmd_desc, concat_type, &biases_tfrmd_desc);
+      &hidden_biases_pre_tfrmd_desc,
+      RNN_TYPE_GRU | USAGE_HIDDEN_BIASES | PREV_LAYER_NONE,
+      &hidden_biases_tfrmd_desc);
   assert(status == ZDNN_OK);
 
-  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
-                                         &biases_tfrmd_desc, &biases);
-  assert(status == ZDNN_OK);
-  status = zdnn_init_ztensor_with_malloc(&biases_pre_tfrmd_desc,
-                                         &biases_tfrmd_desc, &hidden_biases);
+  status = zdnn_init_ztensor_with_malloc(
+      &hidden_biases_pre_tfrmd_desc, &hidden_biases_tfrmd_desc, &hidden_biases);
   assert(status == ZDNN_OK);
 
-  uint64_t biases_data_size = num_hiddens * element_size;
-  void *biases_data_z = malloc(biases_data_size);
-  void *biases_data_r = malloc(biases_data_size);
-  void *biases_data_h = malloc(biases_data_size);
-
-  status = zdnn_transform_ztensor(&biases, biases_data_z, biases_data_r,
-                                  biases_data_h);
-  assert(status == ZDNN_OK);
-
-  void *hidden_biases_data_z = malloc(biases_data_size);
-  void *hidden_biases_data_r = malloc(biases_data_size);
-  void *hidden_biases_data_h = malloc(biases_data_size);
+  uint64_t hidden_biases_data_size = num_hidden * element_size;
+  void *hidden_biases_data_z = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_r = malloc(hidden_biases_data_size);
+  void *hidden_biases_data_h = malloc(hidden_biases_data_size);
 
   status = zdnn_transform_ztensor(&hidden_biases, hidden_biases_data_z,
                                   hidden_biases_data_r, hidden_biases_data_h);
@@ -4344,8 +4987,8 @@ int main(int argc, char *argv[]) {
 
   zdnn_ztensor hn_output_ztensor;
 
-  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &hn_pre_tfrmd_desc, 1,
-                                 num_batches, num_hiddens);
+  zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &hn_pre_tfrmd_desc, 1, 1,
+                                 num_batches, num_hidden);
   status = zdnn_generate_transformed_desc(&hn_pre_tfrmd_desc, &hn_tfrmd_desc);
   assert(status == ZDNN_OK);
 
@@ -4367,7 +5010,7 @@ int main(int argc, char *argv[]) {
    * Output and Cleanup
    ***********************************************************************/
 
-  uint64_t hn_data_size = num_batches * num_hiddens * element_size;
+  uint64_t hn_data_size = num_batches * num_hidden * element_size;
   void *hn_output_data = malloc(hn_data_size);
 
   status = zdnn_transform_origtensor(&hn_output_ztensor, hn_output_data);
@@ -4404,6 +5047,7 @@ int main(int argc, char *argv[]) {
   free(hidden_biases_data_h);
   free(hn_output_data);
 }
+
 
 
 ```

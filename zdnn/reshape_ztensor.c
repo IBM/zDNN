@@ -62,8 +62,8 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
             src_tfrmd_desc->dim1, dest_tfrmd_desc->dim4, dest_tfrmd_desc->dim3,
             dest_tfrmd_desc->dim2, dest_tfrmd_desc->dim1);
 
-  if (get_num_elements(src, ELEMENTS_ALL) !=
-      get_num_elements(dest, ELEMENTS_ALL)) {
+  if (get_num_elements(src, ELEMENTS_PRE) !=
+      get_num_elements(dest, ELEMENTS_PRE)) {
     return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
                        "src (%d * %d * %d * %d) does not have the same number "
                        "of elements as dest (%d * %d * %d * %d)",
@@ -192,7 +192,7 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
 
   // if unstickified content is small enough (=< STACK_TMPBUF_SIZE) then use
   // stack_tmpbuf instead of malloc()-ing one on heap
-  uint64_t s = get_num_elements(src, ELEMENTS_ALL) * get_data_type_size(FP32);
+  uint64_t s = get_num_elements(src, ELEMENTS_PRE) * get_data_type_size(FP32);
   if (s > STACK_TMPBUF_SIZE) {
     malloc_tmpbuf = malloc(s);
   }

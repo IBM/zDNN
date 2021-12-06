@@ -62,7 +62,7 @@ typedef enum zdnn_status {
   ZDNN_INVALID_TYPE,                                  // Invalid type information in one (or more) of the input/output tensor(s).
   ZDNN_INVALID_FORMAT,                                // Invalid format information in one (or more) of the input/output tensor(s).
   ZDNN_INVALID_DIRECTION,                             // Invalid RNN direction.
-  ZDNN_INVALID_CONCAT_TYPE,                           // Invalid concatenation type.
+  ZDNN_INVALID_CONCAT_INFO,                           // Invalid concatenation type.
   ZDNN_INVALID_STRIDE_PADDING,                        // Invalid padding type parameter for current strides
   ZDNN_INVALID_STRIDES,                               // Invalid stride height or width parameter.
   ZDNN_MISALIGNED_PARMBLOCK,                          // NNPA parameter block is not on double word boundary.
@@ -202,20 +202,21 @@ typedef enum zdnn_data_types {
 } zdnn_data_types;
 
 typedef enum zdnn_data_layouts {
-  ZDNN_1D,           // 1d tensor
-  ZDNN_2D,           // 2d tensor
-  ZDNN_2DS,          // represents special 2D tensors required by LSTM/GRU
-  ZDNN_BIDIR_OUTPUT, // concatenated output (FWD, BWD) for bidirectional
-                     // LSTM/GRU
-  ZDNN_3D,           // 3d tensor
-  ZDNN_3DS,          // represents special 3D tensors required by
-                     // LSTM/GRU/Softmax/Matmul
-  ZDNN_ZRH,          // represents (update, reset, hidden) used by GRU
-  ZDNN_4D,           // 4d tensor
-  ZDNN_NHWC,         // 4d feature tensor in NHWC
-  ZDNN_NCHW,         // 4d feature tensor in NCHW
-  ZDNN_FICO,         // represents (forget, input, cell, output) used by LSTM
-  ZDNN_HWCK          // 4d kernel CNN tensor
+  ZDNN_1D,        // 1d tensor
+  ZDNN_2D,        // 2d tensor
+  ZDNN_2DS,       // represents special 2D tensors required by LSTM/GRU
+  ZDNN_3D,        // 3d tensor
+  ZDNN_3DS,       // represents special 3D tensors required by
+                  // LSTM/GRU/Softmax/Matmul
+  ZDNN_ZRH,       // represents (update, reset, hidden) used by GRU
+  ZDNN_4D,        // 4d tensor
+  ZDNN_4DS,       // represents special 4D tensors required by LSTM/GRU output
+  ZDNN_NHWC,      // 4d feature tensor in NHWC
+  ZDNN_NCHW,      // 4d feature tensor in NCHW
+  ZDNN_FICO,      // represents (forget, input, cell, output) used by LSTM
+  ZDNN_HWCK,      // 4d kernel CNN tensor
+  ZDNN_BIDIR_ZRH, // ZRH variant to work with bidirectional LSTM/GRU output
+  ZDNN_BIDIR_FICO // FICO variant to work with bidirectional LSTM/GRU output
 } zdnn_data_layouts;
 
 typedef enum zdnn_data_formats {
@@ -278,27 +279,46 @@ typedef struct zdnn_ztensor {
   zdnn_tensor_desc
       *pre_transformed_desc; // tensor's shape information before transformation
   zdnn_tensor_desc *transformed_desc; // transformed tensor's shape information
-  bool is_transformed;  // indicator if data in buffer has been transformed
-  uint64_t buffer_size; // tensor size in bytes
-  char reserved[32];    // not currently used, exploiter should not touch.
-  void *buffer;         // pointer to the tensor in memory
+  uint64_t buffer_size;               // tensor size in bytes
+  void *buffer;                       // pointer to the tensor in memory
+  bool is_transformed; // indicator if data in buffer has been transformed
+  char reserved[31];   // not currently used, should contain zeros.
 } zdnn_ztensor;
 
-#define ZDNN_VERSION "0.3.0"
-#define ZDNN_VERNUM 0x000300 // 0x[major][minor][patch]
+#define ZDNN_VERSION "0.4.0"
+#define ZDNN_VERNUM 0x000400 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 0
-#define ZDNN_VER_MINOR 3
+#define ZDNN_VER_MINOR 4
 #define ZDNN_VER_PATCH 0
 
 // -----------------------------------------------------------------------------
 // External Tensor Functions
 // -----------------------------------------------------------------------------
 
-typedef enum zdnn_ztensor_concat_types {
-  CONCAT_LSTM,
-  CONCAT_GRU,
-  CONCAT_BIDIR_OUTPUT
-} zdnn_ztensor_concat_types;
+// Concatenation information is encoded into a 32-bit word:
+// [RNN_TYPE: 8][PREV_LAYER_TYPE: 8][USAGE: 8][8]
+
+typedef uint32_t zdnn_concat_info;
+
+#define BITSHIFT_RNN_TYPE 24
+#define BITSHIFT_PREV_LAYER 16
+#define BITSHIFT_USAGE 8
+
+#define RNN_TYPE_LSTM (0 << BITSHIFT_RNN_TYPE)
+#define RNN_TYPE_GRU (1 << BITSHIFT_RNN_TYPE)
+
+#define PREV_LAYER_UNI (0 << BITSHIFT_PREV_LAYER)
+#define PREV_LAYER_NONE PREV_LAYER_UNI
+#define PREV_LAYER_BIDIR (1 << BITSHIFT_PREV_LAYER)
+
+#define USAGE_WEIGHTS (0 << BITSHIFT_USAGE)
+#define USAGE_HIDDEN_WEIGHTS (1 << BITSHIFT_USAGE)
+#define USAGE_BIASES (2 << BITSHIFT_USAGE)
+#define USAGE_HIDDEN_BIASES (3 << BITSHIFT_USAGE)
+
+#define CONCAT_RNN_TYPE(info) (info & (0xFFu << BITSHIFT_RNN_TYPE))
+#define CONCAT_PREV_LAYER(info) (info & (0xFFu << BITSHIFT_PREV_LAYER))
+#define CONCAT_USAGE(info) (info & (0xFFu << BITSHIFT_USAGE))
 
 void zdnn_init_pre_transformed_desc(zdnn_data_layouts layout,
                                     zdnn_data_types type,
@@ -309,8 +329,8 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
                                zdnn_tensor_desc *tfrmd_desc);
 
 zdnn_status zdnn_generate_transformed_desc_concatenated(
-    const zdnn_tensor_desc *pre_tfrmd_desc,
-    zdnn_ztensor_concat_types concat_type, zdnn_tensor_desc *tfrmd_desc);
+    const zdnn_tensor_desc *pre_tfrmd_desc, zdnn_concat_info info,
+    zdnn_tensor_desc *tfrmd_desc);
 
 zdnn_status zdnn_allochelper_ztensor(zdnn_ztensor *ztensor);
 zdnn_status zdnn_free_ztensor_buffer(const zdnn_ztensor *ztensor);

@@ -98,11 +98,9 @@ void bad_batchnorm() {
 }
 
 void bad_lstm() {
-  // Force a type mismatch so we should fail precheck verification.
-  ztensor_input1.transformed_desc->type = ZDNN_DLFLOAT16;
-  ztensor_input2.transformed_desc->type = FP32;
+  // ZDNN_INVALID_SHAPE because all dims are 1s
 
-  zdnn_status exp_status = ZDNN_INVALID_TYPE;
+  zdnn_status exp_status = ZDNN_INVALID_SHAPE;
   zdnn_status status =
       zdnn_lstm(&ztensor_input1, &ztensor_input2, &ztensor_input3,
                 &ztensor_input1, &ztensor_input2, &ztensor_input3,

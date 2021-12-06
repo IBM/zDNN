@@ -349,7 +349,7 @@ float default_bidir_hidden_biases_h_values[] = {
 /******************************************************************************
                     default_fwd_exp_hn_out_all_ts
 ******************************************************************************/
-uint32_t default_fwd_hn_out_all_ts_shape[] = {5, 2, 3};
+uint32_t default_fwd_hn_out_all_ts_shape[] = {5, 1, 2, 3};
 
 /* Visualization of values in shape order
 [[[-0.1562103  0.1410986 -0.1123356]
@@ -377,7 +377,7 @@ float default_fwd_exp_hn_out_all_ts_values[] = {
 /******************************************************************************
                     default_fwd_exp_hn_out_final_ts
 ******************************************************************************/
-uint32_t default_fwd_hn_out_final_ts_shape[] = {1, 2, 3};
+uint32_t default_fwd_hn_out_final_ts_shape[] = {1, 1, 2, 3};
 
 /* Visualization of values in shape order
 [[[-0.3660706  0.0814286 -0.2807784]
@@ -389,7 +389,7 @@ float default_fwd_exp_hn_out_final_ts_values[] = {
 /******************************************************************************
                     default_bwd_exp_hn_out_all_ts
 ******************************************************************************/
-uint32_t default_bwd_hn_out_all_ts_shape[] = {5, 2, 3};
+uint32_t default_bwd_hn_out_all_ts_shape[] = {5, 1, 2, 3};
 
 /* Visualization of values in shape order
 [[[-0.4037485  0.2564563 -0.2790346]
@@ -417,7 +417,7 @@ float default_bwd_exp_hn_out_all_ts_values[] = {
 /******************************************************************************
                     default_bwd_exp_hn_out_final_ts
 ******************************************************************************/
-uint32_t default_bwd_hn_out_final_ts_shape[] = {1, 2, 3};
+uint32_t default_bwd_hn_out_final_ts_shape[] = {1, 1, 2, 3};
 
 /* Visualization of values in shape order
 [[[-0.4037485  0.2564563 -0.2790346]
@@ -429,229 +429,50 @@ float default_bwd_exp_hn_out_final_ts_values[] = {
 /******************************************************************************
                     default_bidir_exp_hn_out_all_ts
 ******************************************************************************/
-uint32_t default_bidir_hn_out_all_ts_shape[] = {5, 2, 3};
+uint32_t default_bidir_hn_out_all_ts_shape[] = {5, 2, 2, 3};
 
 /* Visualization of values in shape order
-[[[-0.1562103  0.1410986 -0.1123356 -0.4037485  0.2564563 -0.2790346]
-  [-0.1553763  0.1372994 -0.1123919 -0.4026485  0.2477951 -0.2778324]]
+[[[-0.1562103  0.1410986 -0.1123356 -0.1553763  0.1372994 -0.1123919]
+  [-0.4037485  0.2564563 -0.2790346 -0.4026485  0.2477951 -0.2778324]]
 
- [[-0.253498   0.1940096 -0.1891814 -0.3612258  0.1689991 -0.2550354]
-  [-0.2523776  0.1878957 -0.1889893 -0.3600727  0.1606691 -0.2541449]]
+ [[-0.253498   0.1940096 -0.1891814 -0.2523776  0.1878956 -0.1889893]
+  [-0.3612258  0.1689991 -0.2550354 -0.3600727  0.1606691 -0.2541449]]
 
- [[-0.3126792  0.1866586 -0.2388406 -0.3028114  0.0906047 -0.224893 ]
-  [-0.3114854  0.179318  -0.2382826 -0.3015861  0.083261  -0.2243577]]
+ [[-0.3126791  0.1866586 -0.2388406 -0.3114854  0.179318  -0.2382826]
+  [-0.3028114  0.0906047 -0.2248929 -0.3015861  0.083261  -0.2243577]]
 
- [[-0.3473134  0.1435677 -0.2676416 -0.223746   0.0309375 -0.1819546]
-  [-0.3461194  0.1356744 -0.2667077 -0.2225393  0.025346  -0.1817581]]
+ [[-0.3473134  0.1435677 -0.2676416 -0.3461194  0.1356744 -0.2667077]
+  [-0.223746   0.0309375 -0.1819546 -0.2225393  0.025346  -0.1817581]]
 
- [[-0.3660706  0.0814286 -0.2807784 -0.1217477 -0.0007261 -0.1141484]
-  [-0.3648955  0.0733736 -0.2795098 -0.1208584 -0.0038126 -0.1141814]]]
+ [[-0.3660705  0.0814286 -0.2807783 -0.3648955  0.0733736 -0.2795098]
+  [-0.1217477 -0.0007261 -0.1141484 -0.1208584 -0.0038126 -0.1141814]]]
 */
+
 float default_bidir_exp_hn_out_all_ts_values[] = {
-    -0.1562103, 0.1410986,  -0.1123356, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.4037485, 0.2564563,  -0.2790346, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.1553763, 0.1372994,  -0.1123919, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.4026485, 0.2477951,  -0.2778324, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.253498,  0.1940096,  -0.1891814, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3612258, 0.1689991,  -0.2550354, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.2523776, 0.1878957,  -0.1889893, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3600727, 0.1606691,  -0.2541449, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3126792, 0.1866586,  -0.2388406, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3028114, 0.0906047,  -0.224893,  0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3114854, 0.179318,   -0.2382826, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3015861, 0.083261,   -0.2243577, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3473134, 0.1435677,  -0.2676416, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.223746,  0.0309375,  -0.1819546, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3461194, 0.1356744,  -0.2667077, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.2225393, 0.025346,   -0.1817581, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3660706, 0.0814286,  -0.2807784, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.1217477, -0.0007261, -0.1141484, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3648955, 0.0733736,  -0.2795098, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.1208584, -0.0038126, -0.1141814, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,        0.0,        0.0, 0.0, 0.0, 0.0, 0.0};
-;
+    -0.1562103, 0.1410986,  -0.1123356, -0.1553763, 0.1372994,  -0.1123919,
+    -0.4037485, 0.2564563,  -0.2790346, -0.4026485, 0.2477951,  -0.2778324,
+    -0.253498,  0.1940096,  -0.1891814, -0.2523776, 0.1878956,  -0.1889893,
+    -0.3612258, 0.1689991,  -0.2550354, -0.3600727, 0.1606691,  -0.2541449,
+    -0.3126791, 0.1866586,  -0.2388406, -0.3114854, 0.179318,   -0.2382826,
+    -0.3028114, 0.0906047,  -0.2248929, -0.3015861, 0.083261,   -0.2243577,
+    -0.3473134, 0.1435677,  -0.2676416, -0.3461194, 0.1356744,  -0.2667077,
+    -0.223746,  0.0309375,  -0.1819546, -0.2225393, 0.025346,   -0.1817581,
+    -0.3660705, 0.0814286,  -0.2807783, -0.3648955, 0.0733736,  -0.2795098,
+    -0.1217477, -0.0007261, -0.1141484, -0.1208584, -0.0038126, -0.1141814};
 
 /******************************************************************************
                     default_bidir_exp_hn_out_final_ts
 ******************************************************************************/
-uint32_t default_bidir_hn_out_final_ts_shape[] = {1, 2, 3};
+uint32_t default_bidir_hn_out_final_ts_shape[] = {1, 2, 2, 3};
 
 /* Visualization of values in shape order
-[[[-0.3660706  0.0814286 -0.2807784 -0.4037485  0.2564563 -0.2790346]
-  [-0.3648955  0.0733736 -0.2795098 -0.4026485  0.2477951 -0.2778324]]]
+[[[-0.3660705  0.0814286 -0.2807783 -0.3648955  0.0733736 -0.2795098]
+  [-0.4037485  0.2564563 -0.2790346 -0.4026485  0.2477951 -0.2778324]]]
 */
+
 float default_bidir_exp_hn_out_final_ts_values[] = {
-    -0.3660706, 0.0814286, -0.2807784, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.4037485, 0.2564563, -0.2790346, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.3648955, 0.0733736, -0.2795098, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    -0.4026485, 0.2477951, -0.2778324, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0,        0.0,       0.0,        0.0, 0.0, 0.0, 0.0, 0.0};
+    -0.3660705, 0.0814286, -0.2807783, -0.3648955, 0.0733736, -0.2795098,
+    -0.4037485, 0.2564563, -0.2790346, -0.4026485, 0.2477951, -0.2778324};
 
 /******************************************************************************
                           Unity Methods
@@ -700,7 +521,7 @@ void gru_basic_fwd_hn_all() {
       default_uni_hidden_biases_z_values, default_uni_hidden_biases_r_values,
       default_uni_hidden_biases_h_values, ZERO_ARRAY,
 
-      default_fwd_hn_out_all_ts_shape, ZDNN_3DS,
+      default_fwd_hn_out_all_ts_shape, ZDNN_4DS,
       default_fwd_exp_hn_out_all_ts_values,
 
       // The test method also supports LSTM which requires cf, pass NULL for GRU
@@ -743,60 +564,13 @@ void gru_basic_fwd_hn_final() {
       default_uni_hidden_biases_z_values, default_uni_hidden_biases_r_values,
       default_uni_hidden_biases_h_values, ZERO_ARRAY,
 
-      default_fwd_hn_out_final_ts_shape, ZDNN_3DS,
+      default_fwd_hn_out_final_ts_shape, ZDNN_4DS,
       default_fwd_exp_hn_out_final_ts_values,
 
       // The test method also supports LSTM which requires cf, pass NULL for GRU
       NULL, ZDNN_3DS, NULL,
 
       FWD, ZDNN_OK);
-}
-
-// Confirm we return an error if hn_output is invalid (ie neither 1 nor equal to
-// number of input timesteps)
-void gru_basic_fwd_hn_ts_bad_fail() {
-  // Make output timesteps slightly larger than input timesteps to cause failure
-  uint32_t bad_hn_shape[] = {default_fwd_hn_out_all_ts_shape[0] + 1,
-                             default_fwd_hn_out_all_ts_shape[1],
-                             default_fwd_hn_out_all_ts_shape[2]};
-
-  test_zdnn_api_lstm_gru(
-      NNPA_GRUACT,
-
-      default_input_shape, ZDNN_3DS, default_input_values,
-
-      default_uni_h0_shape, ZDNN_3DS, default_uni_h0_values,
-
-      // The test method also supports LSTM which requires c0, pass in h0 again
-      // as a stand-in for c0 which the test will ignore for GRU networks.
-      default_uni_h0_shape, ZDNN_3DS, default_uni_h0_values,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_input_weights_shape, ZDNN_3DS,
-      default_uni_input_weights_z_values, default_uni_input_weights_r_values,
-      default_uni_input_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_input_biases_shape, ZDNN_2DS,
-      default_uni_input_biases_z_values, default_uni_input_biases_r_values,
-      default_uni_input_biases_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_hidden_weights_shape, ZDNN_3DS,
-      default_uni_hidden_weights_z_values, default_uni_hidden_weights_r_values,
-      default_uni_hidden_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_hidden_biases_shape, ZDNN_2DS,
-      default_uni_hidden_biases_z_values, default_uni_hidden_biases_r_values,
-      default_uni_hidden_biases_h_values, ZERO_ARRAY,
-
-      bad_hn_shape, ZDNN_3DS, default_fwd_exp_hn_out_all_ts_values,
-
-      // The test method also supports LSTM which requires cf, pass NULL for GRU
-      NULL, ZDNN_3DS, NULL,
-
-      FWD, ZDNN_INVALID_SHAPE);
 }
 
 // Confirm that gru returns OK and expected values when set to return hn
@@ -833,7 +607,7 @@ void gru_basic_bwd_hn_all() {
       default_uni_hidden_biases_z_values, default_uni_hidden_biases_r_values,
       default_uni_hidden_biases_h_values, ZERO_ARRAY,
 
-      default_bwd_hn_out_all_ts_shape, ZDNN_3DS,
+      default_bwd_hn_out_all_ts_shape, ZDNN_4DS,
       default_bwd_exp_hn_out_all_ts_values,
 
       // The test method also supports LSTM which requires cf, pass NULL for GRU
@@ -876,7 +650,7 @@ void gru_basic_bwd_hn_final() {
       default_uni_hidden_biases_z_values, default_uni_hidden_biases_r_values,
       default_uni_hidden_biases_h_values, ZERO_ARRAY,
 
-      default_bwd_hn_out_final_ts_shape, ZDNN_3DS,
+      default_bwd_hn_out_final_ts_shape, ZDNN_4DS,
       default_bwd_exp_hn_out_final_ts_values,
 
       // The test method also supports LSTM which requires cf, pass NULL for GRU
@@ -922,60 +696,13 @@ void gru_basic_bidir_hn_all() {
       default_bidir_hidden_biases_r_values,
       default_bidir_hidden_biases_h_values, ZERO_ARRAY,
 
-      default_bidir_hn_out_all_ts_shape, ZDNN_3DS,
+      default_bidir_hn_out_all_ts_shape, ZDNN_4DS,
       default_bidir_exp_hn_out_all_ts_values,
 
       // The test method also supports LSTM which requires cf, pass NULL for GRU
       NULL, ZDNN_3DS, NULL,
 
       BIDIR, ZDNN_OK);
-}
-
-// Confirm we return an error if hn_output is invalid (ie neither 1 nor equal to
-// number of input timesteps)
-void gru_basic_bwd_hn_ts_bad_fail() {
-  // Make output timesteps slightly larger than input timesteps to cause failure
-  uint32_t bad_hn_shape[] = {default_bwd_hn_out_all_ts_shape[0] + 1,
-                             default_bwd_hn_out_all_ts_shape[1],
-                             default_bwd_hn_out_all_ts_shape[2]};
-
-  test_zdnn_api_lstm_gru(
-      NNPA_GRUACT,
-
-      default_input_shape, ZDNN_3DS, default_input_values,
-
-      default_uni_h0_shape, ZDNN_3DS, default_uni_h0_values,
-
-      // The test method also supports LSTM which requires c0, pass in h0 again
-      // as a stand-in for c0 which the test will ignore for GRU networks.
-      default_uni_h0_shape, ZDNN_3DS, default_uni_h0_values,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_input_weights_shape, ZDNN_3DS,
-      default_uni_input_weights_z_values, default_uni_input_weights_r_values,
-      default_uni_input_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_input_biases_shape, ZDNN_2DS,
-      default_uni_input_biases_z_values, default_uni_input_biases_r_values,
-      default_uni_input_biases_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_hidden_weights_shape, ZDNN_3DS,
-      default_uni_hidden_weights_z_values, default_uni_hidden_weights_r_values,
-      default_uni_hidden_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_hidden_biases_shape, ZDNN_2DS,
-      default_uni_hidden_biases_z_values, default_uni_hidden_biases_r_values,
-      default_uni_hidden_biases_h_values, ZERO_ARRAY,
-
-      bad_hn_shape, ZDNN_3DS, default_fwd_exp_hn_out_all_ts_values,
-
-      // The test method also supports LSTM which requires cf, pass NULL for GRU
-      NULL, ZDNN_3DS, NULL,
-
-      BWD, ZDNN_INVALID_SHAPE);
 }
 
 // Confirm that gru returns OK and expected values when set to return only
@@ -1015,7 +742,7 @@ void gru_basic_bidir_hn_final() {
       default_bidir_hidden_biases_r_values,
       default_bidir_hidden_biases_h_values, ZERO_ARRAY,
 
-      default_bidir_hn_out_final_ts_shape, ZDNN_3DS,
+      default_bidir_hn_out_final_ts_shape, ZDNN_4DS,
       default_bidir_exp_hn_out_final_ts_values,
 
       // The test method also supports LSTM which requires cf, pass NULL for GRU
@@ -1024,114 +751,8 @@ void gru_basic_bidir_hn_final() {
       BIDIR, ZDNN_OK);
 }
 
-// Confirm we return an error if hn_output is invalid (ie neither 1 nor equal to
-// number of input timesteps)
-void gru_basic_bidir_hn_ts_bad_fail() {
-  // Make output timesteps slightly larger than input timesteps to cause failure
-  uint32_t bad_hn_shape[] = {default_bidir_hn_out_all_ts_shape[0] + 1,
-                             default_bidir_hn_out_all_ts_shape[1],
-                             default_bidir_hn_out_all_ts_shape[2]};
-
-  test_zdnn_api_lstm_gru(
-      NNPA_GRUACT,
-
-      default_input_shape, ZDNN_3DS, default_input_values,
-
-      default_uni_h0_shape, ZDNN_3DS, default_uni_h0_values,
-
-      // The test method also supports LSTM which requires c0, pass in h0 again
-      // as a stand-in for c0 which the test will ignore for GRU networks.
-      default_uni_h0_shape, ZDNN_3DS, default_uni_h0_values,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_input_weights_shape, ZDNN_3DS,
-      default_uni_input_weights_z_values, default_uni_input_weights_r_values,
-      default_uni_input_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_input_biases_shape, ZDNN_2DS,
-      default_uni_input_biases_z_values, default_uni_input_biases_r_values,
-      default_uni_input_biases_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_hidden_weights_shape, ZDNN_3DS,
-      default_uni_hidden_weights_z_values, default_uni_hidden_weights_r_values,
-      default_uni_hidden_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_uni_hidden_biases_shape, ZDNN_2DS,
-      default_uni_hidden_biases_z_values, default_uni_hidden_biases_r_values,
-      default_uni_hidden_biases_h_values, ZERO_ARRAY,
-
-      bad_hn_shape, ZDNN_3DS, default_fwd_exp_hn_out_all_ts_values,
-
-      // The test method also supports LSTM which requires cf, pass NULL for GRU
-      NULL, ZDNN_3DS, NULL,
-
-      BIDIR, ZDNN_INVALID_SHAPE);
-}
-
-// Confirm we return an error if one of directional inputs has the wrong number
-// of directions.
-void gru_bidir_bad_hidden_bias_shape() {
-  // Use default hidden bias shape to create a bad hidden bias shape
-  uint32_t bad_hidden_bias_shape[] = {default_bidir_hidden_biases_shape[0] + 1,
-                                      default_bidir_hidden_biases_shape[1]};
-  float tmp_bad_bidir_hidden_biases_values[bad_hidden_bias_shape[0] *
-                                           bad_hidden_bias_shape[1]];
-
-  for (int i = 0; i < bad_hidden_bias_shape[0] * bad_hidden_bias_shape[1];
-       i++) {
-    tmp_bad_bidir_hidden_biases_values[i] = 0;
-  }
-  test_zdnn_api_lstm_gru(
-      NNPA_GRUACT,
-
-      default_input_shape, ZDNN_3DS, default_input_values,
-
-      default_bidir_h0_shape, ZDNN_3DS, default_bidir_h0_values,
-
-      // The test method also supports LSTM which requires c0, pass in h0 again
-      // as a stand-in for c0 which the test will ignore for GRU networks.
-      default_bidir_h0_shape, ZDNN_3DS, default_bidir_h0_values,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_bidir_input_weights_shape, ZDNN_3DS,
-      default_bidir_input_weights_z_values,
-      default_bidir_input_weights_r_values,
-      default_bidir_input_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_bidir_input_biases_shape, ZDNN_2DS,
-      default_bidir_input_biases_z_values, default_bidir_input_biases_r_values,
-      default_bidir_input_biases_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      default_bidir_hidden_weights_shape, ZDNN_3DS,
-      default_bidir_hidden_weights_z_values,
-      default_bidir_hidden_weights_r_values,
-      default_bidir_hidden_weights_h_values, ZERO_ARRAY,
-
-      // The fourth gate isn't used for GRU so send ZERO_ARRAY
-      bad_hidden_bias_shape, ZDNN_2DS, tmp_bad_bidir_hidden_biases_values,
-      tmp_bad_bidir_hidden_biases_values, tmp_bad_bidir_hidden_biases_values,
-      ZERO_ARRAY,
-
-      default_bidir_hn_out_final_ts_shape, ZDNN_3DS,
-      default_bidir_exp_hn_out_final_ts_values,
-
-      // The test method also supports LSTM which requires cf, pass NULL for GRU
-      NULL, ZDNN_3DS, NULL,
-
-      BIDIR, ZDNN_INVALID_SHAPE);
-}
-
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(gru_basic_fwd_hn_ts_bad_fail);
-  RUN_TEST_ALL_DATATYPES(gru_basic_bwd_hn_ts_bad_fail);
-  RUN_TEST_ALL_DATATYPES(gru_basic_bidir_hn_ts_bad_fail);
-  RUN_TEST_ALL_DATATYPES(gru_bidir_bad_hidden_bias_shape);
 
 // GRU tests with good input requires AIU to get results and
 // validate values.

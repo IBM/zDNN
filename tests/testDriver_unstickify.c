@@ -93,8 +93,7 @@ void test_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
       status == ZDNN_OK,
       "zdnn_init_ztensor_with_malloc() failed (status = %08x)", status);
 
-  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_ALL);
-
+  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
   data = create_and_fill_random_fp_data(&ztensor);
   data_unstickified =
       malloc(num_elements * get_data_type_size(pre_tfrmd_desc.type));
@@ -108,7 +107,14 @@ void test_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
   } else {
     // "stickify" by converting input values to DLFLOAT16s and writing directly
     // to the ztensor's buffer.
-    size_t *offsets = alloc_offsets(&ztensor, offset_mode, path);
+    size_t *offsets;
+
+    if (layout != ZDNN_4DS) {
+      offsets = alloc_offsets(&ztensor, offset_mode, path);
+    } else {
+      offsets = alloc_rnn_output_offsets(&ztensor);
+    }
+
     for (uint64_t i = 0; i < num_elements; i++) {
       uint16_t stickified_input_value = 0;
 
@@ -214,26 +220,104 @@ void test_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
  * NHWC
  **************************************************************/
 
+#define NHWC_TEST_BASIC(n, h, w, c)                                            \
+  void test_nhwc_##n##x##h##x##w##x##c() {                                     \
+    test_unstickify(n, h, w, c, ZDNN_NHWC, QUICK_OFFSETS, NULL);               \
+  }
+
 /*
  * Tensor with 16 entries, NHWC
  * 1,4,4,1 NHWC will use one cell per stick, 4 sticks per page and a total of
  * 4 pages.
  */
-//
-void test_nhwc_1x4x4x1() {
-  test_unstickify(1, 4, 4, 1, ZDNN_NHWC, QUICK_OFFSETS, NULL);
-}
+NHWC_TEST_BASIC(1, 4, 4, 1);
+
+NHWC_TEST_BASIC(1, 4, 4, 2);
 
 /*
- * Tensor with 3072 entries, NHWC
- * 1,32,32,3 NHWC will use 3 cells per stick, all sticks in the page,
+ * Tensor with 1024 entries, NHWC
+ * 1,32,32,1 NHWC will use 1 cell per stick, all sticks in the page,
  * and 32 pages.
  */
-//
-void test_nhwc_1x32x32x3() {
+NHWC_TEST_BASIC(1, 32, 32, 1);
 
-  test_unstickify(1, 32, 32, 3, ZDNN_NHWC, QUICK_OFFSETS, NULL);
-}
+NHWC_TEST_BASIC(1, 32, 32, 2);
+NHWC_TEST_BASIC(1, 32, 32, 3);
+
+NHWC_TEST_BASIC(1, 1, 2, 1);
+NHWC_TEST_BASIC(1, 1, 2, 2);
+NHWC_TEST_BASIC(1, 1, 2, 4);
+NHWC_TEST_BASIC(1, 1, 2, 7);
+NHWC_TEST_BASIC(1, 1, 4, 1);
+NHWC_TEST_BASIC(1, 1, 4, 2);
+NHWC_TEST_BASIC(1, 1, 4, 4);
+NHWC_TEST_BASIC(1, 1, 4, 7);
+NHWC_TEST_BASIC(1, 1, 7, 1);
+NHWC_TEST_BASIC(1, 1, 7, 2);
+NHWC_TEST_BASIC(1, 1, 7, 4);
+NHWC_TEST_BASIC(1, 1, 7, 7);
+NHWC_TEST_BASIC(1, 1, 8, 1);
+NHWC_TEST_BASIC(1, 1, 8, 2);
+NHWC_TEST_BASIC(1, 1, 8, 4);
+NHWC_TEST_BASIC(1, 1, 8, 7);
+NHWC_TEST_BASIC(1, 1, 13, 1);
+NHWC_TEST_BASIC(1, 1, 13, 2);
+NHWC_TEST_BASIC(1, 1, 13, 4);
+NHWC_TEST_BASIC(1, 1, 13, 7);
+NHWC_TEST_BASIC(1, 1, 100, 1);
+NHWC_TEST_BASIC(1, 1, 100, 2);
+NHWC_TEST_BASIC(1, 1, 100, 4);
+NHWC_TEST_BASIC(1, 1, 100, 7);
+
+NHWC_TEST_BASIC(2, 3, 2, 1);
+NHWC_TEST_BASIC(2, 3, 2, 2);
+NHWC_TEST_BASIC(2, 3, 2, 4);
+NHWC_TEST_BASIC(2, 3, 2, 7);
+NHWC_TEST_BASIC(2, 3, 4, 1);
+NHWC_TEST_BASIC(2, 3, 4, 2);
+NHWC_TEST_BASIC(2, 3, 4, 4);
+NHWC_TEST_BASIC(2, 3, 4, 7);
+NHWC_TEST_BASIC(2, 3, 7, 1);
+NHWC_TEST_BASIC(2, 3, 7, 2);
+NHWC_TEST_BASIC(2, 3, 7, 4);
+NHWC_TEST_BASIC(2, 3, 7, 7);
+NHWC_TEST_BASIC(2, 3, 8, 1);
+NHWC_TEST_BASIC(2, 3, 8, 2);
+NHWC_TEST_BASIC(2, 3, 8, 4);
+NHWC_TEST_BASIC(2, 3, 8, 7);
+NHWC_TEST_BASIC(2, 3, 13, 1);
+NHWC_TEST_BASIC(2, 3, 13, 2);
+NHWC_TEST_BASIC(2, 3, 13, 4);
+NHWC_TEST_BASIC(2, 3, 13, 7);
+NHWC_TEST_BASIC(2, 3, 100, 1);
+NHWC_TEST_BASIC(2, 3, 100, 2);
+NHWC_TEST_BASIC(2, 3, 100, 4);
+NHWC_TEST_BASIC(2, 3, 100, 7);
+
+NHWC_TEST_BASIC(3, 2, 2, 1);
+NHWC_TEST_BASIC(3, 2, 2, 2);
+NHWC_TEST_BASIC(3, 2, 2, 4);
+NHWC_TEST_BASIC(3, 2, 2, 7);
+NHWC_TEST_BASIC(3, 2, 4, 1);
+NHWC_TEST_BASIC(3, 2, 4, 2);
+NHWC_TEST_BASIC(3, 2, 4, 4);
+NHWC_TEST_BASIC(3, 2, 4, 7);
+NHWC_TEST_BASIC(3, 2, 7, 1);
+NHWC_TEST_BASIC(3, 2, 7, 2);
+NHWC_TEST_BASIC(3, 2, 7, 4);
+NHWC_TEST_BASIC(3, 2, 7, 7);
+NHWC_TEST_BASIC(3, 2, 8, 1);
+NHWC_TEST_BASIC(3, 2, 8, 2);
+NHWC_TEST_BASIC(3, 2, 8, 4);
+NHWC_TEST_BASIC(3, 2, 8, 7);
+NHWC_TEST_BASIC(3, 2, 13, 1);
+NHWC_TEST_BASIC(3, 2, 13, 2);
+NHWC_TEST_BASIC(3, 2, 13, 4);
+NHWC_TEST_BASIC(3, 2, 13, 7);
+NHWC_TEST_BASIC(3, 2, 100, 1);
+NHWC_TEST_BASIC(3, 2, 100, 2);
+NHWC_TEST_BASIC(3, 2, 100, 4);
+NHWC_TEST_BASIC(3, 2, 100, 7);
 
 void test_nhwc_1x1x1xe1(int e1) {
   test_unstickify(1, 1, 1, e1, ZDNN_NHWC, QUICK_OFFSETS, NULL);
@@ -317,6 +401,36 @@ NCHW_TEST_WITH_FILE(1, 4, 1, 63)
 NCHW_TEST_WITH_FILE(1, 4, 1, 64)
 NCHW_TEST_WITH_FILE(1, 4, 1, 65)
 
+/**************************************************************
+ * RNN OUTPUT
+ **************************************************************/
+
+#define RNN_OUT_TEST(d4, d3, d2, d1)                                           \
+  void test_rnn_output_##d4##x##d3##x##d2##x##d1() {                           \
+    test_unstickify(d4, d3, d2, d1, ZDNN_4DS, QUICK_OFFSETS, NULL);            \
+  }
+
+RNN_OUT_TEST(5, 1, 4, 3)
+RNN_OUT_TEST(1, 1, 4, 3)
+RNN_OUT_TEST(5, 1, 4, 64)
+RNN_OUT_TEST(1, 1, 4, 64)
+RNN_OUT_TEST(5, 1, 4, 65)
+RNN_OUT_TEST(1, 1, 4, 65)
+RNN_OUT_TEST(5, 1, 31, 5)
+RNN_OUT_TEST(1, 1, 31, 5)
+RNN_OUT_TEST(5, 1, 60, 5)
+RNN_OUT_TEST(1, 1, 60, 5)
+RNN_OUT_TEST(5, 2, 4, 3)
+RNN_OUT_TEST(1, 2, 4, 3)
+RNN_OUT_TEST(5, 2, 4, 64)
+RNN_OUT_TEST(1, 2, 4, 64)
+RNN_OUT_TEST(5, 2, 4, 65)
+RNN_OUT_TEST(1, 2, 4, 65)
+RNN_OUT_TEST(5, 2, 31, 5)
+RNN_OUT_TEST(1, 2, 31, 5)
+RNN_OUT_TEST(5, 2, 60, 5)
+RNN_OUT_TEST(1, 2, 60, 5)
+
 void test_unstickify_4dfeature_twice() {
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
@@ -337,7 +451,7 @@ void test_unstickify_4dfeature_twice() {
       "zdnn_init_ztensor_with_malloc() failed (status = %08x)", status);
 
   unsigned char *data_unstickified =
-      malloc(get_num_elements(&ztensor, ELEMENTS_ALL) *
+      malloc(get_num_elements(&ztensor, ELEMENTS_PRE) *
              get_data_type_size(pre_tfrmd_desc.type));
 
   ztensor.is_transformed = true; // hack, since we never actually
@@ -373,12 +487,24 @@ void test_stickify_unstickify_nhwc_1x4x4x1() {
   test_stickify_unstickify(1, 4, 4, 1, ZDNN_NHWC);
 }
 
+void test_stickify_unstickify_nhwc_1x4x4x2() {
+  test_stickify_unstickify(1, 4, 4, 2, ZDNN_NHWC);
+}
+
 /*
  * Tensor with 3072 entries, NHWC
- * 1,32,32,3 NHWC will use 3 cells per stick, all sticks in the page,
+ * 1,32,32,1 NHWC will use 1 cell per stick, all sticks in the page,
  * and 32 pages.
  */
 //
+void test_stickify_unstickify_nhwc_1x32x32x1() {
+  test_stickify_unstickify(1, 32, 32, 1, ZDNN_NHWC);
+}
+
+void test_stickify_unstickify_nhwc_1x32x32x2() {
+  test_stickify_unstickify(1, 32, 32, 2, ZDNN_NHWC);
+}
+
 void test_stickify_unstickify_nhwc_1x32x32x3() {
   test_stickify_unstickify(1, 32, 32, 3, ZDNN_NHWC);
 }
@@ -388,11 +514,11 @@ void test_stickify_unstickify_nhwc_1x2x33x65() {
 }
 
 void test_stickify_unstickify_nchw_1x4x4x1() {
-  test_stickify_unstickify(1, 1, 4, 4, ZDNN_NCHW);
+  test_stickify_unstickify(1, 4, 4, 1, ZDNN_NCHW);
 }
 
 void test_stickify_unstickify_nchw_1x32x32x3() {
-  test_stickify_unstickify(1, 32, 32, 1, ZDNN_NCHW);
+  test_stickify_unstickify(1, 32, 32, 3, ZDNN_NCHW);
 }
 
 void test_stickify_unstickify_nchw_1x2x33x65() {
@@ -438,7 +564,7 @@ void test_ztensor_bad_value_FP16(uint16_t bad_value) {
                                 status);
 
   // Create an area to unstickify/convert back to
-  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_ALL);
+  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
   zdnn_data_types dtype = ztensor.pre_transformed_desc->type;
   unstickified_data = malloc(num_elements * get_data_type_size(dtype));
   array = (uint16_t *)ztensor.buffer; /* use stickified_data as an array */
@@ -522,7 +648,7 @@ void test_ztensor_bad_value_FP32(uint16_t bad_value) {
                                 status);
 
   // Create an area to unstickify/convert back to
-  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_ALL);
+  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
   zdnn_data_types dtype = ztensor.pre_transformed_desc->type;
   unstickified_data = malloc(num_elements * get_data_type_size(dtype));
   array = (uint16_t *)ztensor.buffer; /* use stickified_data as an array */
@@ -577,7 +703,7 @@ void test_unstickify_transform_desc_invalid_type() {
   // Allocate storage for unstickified data. Although not required for test, if
   // expected status doesn't occur, this space may be touched and would require
   // to be allocated or it may blow up.
-  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_ALL);
+  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
   unstickified_data =
       malloc(num_elements * get_data_type_size(ztensor.transformed_desc->type));
 
@@ -600,8 +726,88 @@ void test_unstickify_transform_desc_invalid_type() {
 
 int main(void) {
   UNITY_BEGIN();
+
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x2);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x3);
+
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x7);
+
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x7);
+
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x7);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x1);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x2);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x4);
+  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x7);
+
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x4);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x5);
   RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x8);
@@ -634,7 +840,32 @@ int main(void) {
   RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x64);
   RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x65);
 
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x4x3);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x4x3);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x4x64);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x4x64);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x4x65);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x4x65);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x31x5);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x31x5);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x60x5);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x60x5);
+
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x4x3);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x4x3);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x4x64);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x4x64);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x4x65);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x4x65);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x31x5);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x31x5);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x60x5);
+  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x60x5);
+
   RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x4x4x1);
+  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x4x4x2);
+  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x1);
+  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x2);
   RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x3);
   RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x2x33x65);
   RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nchw_1x4x4x1);
