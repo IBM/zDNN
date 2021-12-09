@@ -31,65 +31,67 @@ void tearDown(void) {}
 #define BAD_FORMAT 255
 #define BAD_TYPE 255
 
-typedef enum which_tensor {
-  NONE,
+#define DEFAULT_NUM_TIMESTEPS 3
+#define DEFAULT_NUM_BATCHES 4
+#define DEFAULT_NUM_FEATURES 7
+#define DEFAULT_NUM_HIDDEN 16
+
+const uint32_t num_batches = DEFAULT_NUM_BATCHES;
+const uint32_t num_hidden = DEFAULT_NUM_HIDDEN;
+
+#define MAX_DESC_LEN 256
+char msg[MAX_DESC_LEN];
+typedef enum tensor_idx {
   FUSED,
   BIAS,
   CELLSTATE,
   OUTPUT,
-  OUTPUT2
-} which_tensor;
+  OUTPUT2,
+  MAX_TENSOR_IDX,
+  NONE = MAX_TENSOR_IDX
+} tensor_idx;
 
-typedef struct rnn_ztensors_struct {
-  zdnn_ztensor *timestep_fused;
-  zdnn_ztensor *bias_add;
-  zdnn_ztensor *timestep_c;
-  zdnn_ztensor *timestep_output1;
-  zdnn_ztensor *timestep_output2;
-} rnn_ztensors_struct;
+// roll our own instead of using get_func_code_num_gates() in case that one
+// breaks
+#define NUM_GATES(f) ((f == NNPA_LSTMACT) ? 4 : 3)
 
-void create_ztensors(uint8_t function_code, uint32_t batch,
-                     uint32_t hidden_size, rnn_ztensors_struct *rnn_ztens) {
+void create_ztensors(uint8_t function_code, zdnn_ztensor **rnn_ztens) {
 
   zdnn_data_layouts layout = ZDNN_NHWC;
   zdnn_data_types dtype = FP32;
-  uint8_t num_gates = get_func_code_num_gates(function_code);
+  uint8_t num_gates = NUM_GATES(function_code);
 
-  if (num_gates == 0) {
-    TEST_FAIL_MESSAGE_FORMATTED(
-        "%d is not a valid NNPA function code for testing.", function_code);
+  // baseline dimensions with correct requirements
+  uint32_t *shape[MAX_TENSOR_IDX];
+
+  // create ztensors using transformed shape + ZDNN_NHWC to make the code
+  // simplier, so that we can loop through them all rather than dealing with
+  // different pre-transformed layouts etc.
+  shape[FUSED] = (uint32_t[]){num_gates, 1, num_batches, num_hidden};
+  shape[BIAS] = (uint32_t[]){num_gates, 1, num_batches, num_hidden};
+  shape[CELLSTATE] = (uint32_t[]){1, 1, num_batches, num_hidden};
+  shape[OUTPUT] = (uint32_t[]){1, 1, num_batches, num_hidden};
+  shape[OUTPUT2] =
+      shape[OUTPUT]; // they share the same shape, final timestep only
+
+  // rnn_ztens[FUSED] is the fuzed_ztensor split as a timestep
+
+  // rnn_ztens[BIAS] is the bias_add_ztensor that would be the result of the
+  // bias_add call within NNPA_LSTMACT function.
+
+  // rnn_ztens[CELLSTATE] is the cell state ztensor (only used in NNPA_LSTMACT)
+
+  // rnn_ztens[OUTPUT] is the result as output_ztensor1
+
+  // rnn_ztens[OUTPUT2] is the result as output_ztensor2
+  for (int i = 0; i < MAX_TENSOR_IDX; i++) {
+    rnn_ztens[i] = alloc_ztensor_with_values(shape[i], layout, dtype, NO_CONCAT,
+                                             true, ZERO_ARRAY);
   }
-
-  // Declare as CORRECT dimension requirements for NNPA_LSTMACT
-  uint32_t timestep_fused_shape[] = {num_gates, 1, batch, hidden_size},
-           bias_add_shape[] = {num_gates, 1, batch, hidden_size},
-           timestep_c_shape[] = {1, 1, batch, hidden_size},
-           timestep_output_shape[] = {1, 1, batch, hidden_size};
-
-  // The first input is the fuzed_ztensor split as a timestep
-  rnn_ztens->timestep_fused = alloc_ztensor_with_values(
-      timestep_fused_shape, layout, dtype, NO_CONCAT, true, ZERO_ARRAY);
-
-  // The second input is the bias_add_ztensor that would be the result of
-  // the bias_add call within NNPA_LSTMACT function.
-  rnn_ztens->bias_add = alloc_ztensor_with_values(bias_add_shape, layout, dtype,
-                                                  NO_CONCAT, true, ZERO_ARRAY);
-
-  // The third input is the cell state ztensor (only used in NNPA_LSTMACT)
-  rnn_ztens->timestep_c = alloc_ztensor_with_values(
-      timestep_c_shape, layout, dtype, NO_CONCAT, true, ZERO_ARRAY);
-
-  // The output is the result as output_ztensor1
-  rnn_ztens->timestep_output1 = alloc_ztensor_with_values(
-      timestep_output_shape, layout, dtype, NO_CONCAT, true, ZERO_ARRAY);
-
-  // The output is the result as output_ztensor2
-  rnn_ztens->timestep_output2 = alloc_ztensor_with_values(
-      timestep_output_shape, layout, dtype, NO_CONCAT, true, ZERO_ARRAY);
 }
 
-void set_dim(zdnn_tensor_desc *desc, uint8_t dim_name_int, uint32_t value) {
-  switch (dim_name_int) {
+void set_dim(zdnn_tensor_desc *desc, uint8_t dim_idx, uint32_t value) {
+  switch (dim_idx) {
   case (1):
     desc->dim1 = value;
     break;
@@ -103,593 +105,250 @@ void set_dim(zdnn_tensor_desc *desc, uint8_t dim_name_int, uint32_t value) {
     desc->dim4 = value;
     break;
   default:
-    TEST_FAIL_MESSAGE_FORMATTED("%d is not a valid dim_name_int to set.",
-                                dim_name_int);
+    TEST_FAIL_MESSAGE_FORMATTED("%d is not a valid dim_idx to set.", dim_idx);
     break;
+  }
+}
+
+// Verify return status by sabotaging a ztensor
+void verify(uint8_t function_code, tensor_idx idx, bool sabotage_dim,
+            uint8_t dim_idx, uint32_t dim_val, bool sabotage_type,
+            zdnn_data_types type, bool sabotage_format,
+            zdnn_data_formats format, zdnn_status exp_status,
+            char *description) {
+
+  // Create the test tensors
+  zdnn_ztensor *rnn_ztens[MAX_TENSOR_IDX];
+  create_ztensors(function_code, rnn_ztens);
+
+  // Sabotage the dim/format/type of the ztensor specified in idx
+  if (idx != NONE) {
+    if (sabotage_dim) {
+      set_dim(rnn_ztens[idx]->transformed_desc, dim_idx, dim_val);
+    }
+
+    if (sabotage_type) {
+      rnn_ztens[idx]->transformed_desc->type = type;
+    }
+
+    if (sabotage_format) {
+      rnn_ztens[idx]->transformed_desc->format = format;
+    }
+  }
+
+  zdnn_status actual_status = verify_lstm_or_gru_act_tensors(
+      function_code, rnn_ztens[FUSED], rnn_ztens[BIAS], rnn_ztens[CELLSTATE],
+      rnn_ztens[OUTPUT], rnn_ztens[OUTPUT2]);
+
+  if (actual_status != exp_status) {
+    TEST_FAIL_MESSAGE_FORMATTED(
+        "%s: Actual status return (%08x) does not match expected (%08x).",
+        description, actual_status, exp_status);
+  }
+
+  // Cleanup
+  for (int i = 0; i < MAX_TENSOR_IDX; i++) {
+    free_ztensor_buffers(1, rnn_ztens[i]);
   }
 }
 
 // Verify return status by sabotaging the ztensor dimension
-void verify_lstm_gru_act_shape(uint8_t function_code, uint32_t batch,
-                               uint32_t hidden_size, which_tensor tensor,
-                               uint8_t dim_name_int, uint32_t dim_val,
-                               zdnn_status exp_status, char *description) {
-
-  // Create the test tensors
-  rnn_ztensors_struct rnn_ztens;
-  create_ztensors(function_code, batch, hidden_size, &rnn_ztens);
-
-  // Sabotage the specified ztensor dimension
-  switch (tensor) {
-  case (NONE):
-    // Don't want to sabotage any dimension (to test positive case)
-    break;
-  case (FUSED):
-    set_dim(rnn_ztens.timestep_fused->transformed_desc, dim_name_int, dim_val);
-    break;
-  case (BIAS):
-    set_dim(rnn_ztens.bias_add->transformed_desc, dim_name_int, dim_val);
-    break;
-  case (CELLSTATE):
-    set_dim(rnn_ztens.timestep_c->transformed_desc, dim_name_int, dim_val);
-    break;
-  case (OUTPUT):
-    set_dim(rnn_ztens.timestep_output1->transformed_desc, dim_name_int,
-            dim_val);
-    break;
-  case (OUTPUT2):
-    set_dim(rnn_ztens.timestep_output2->transformed_desc, dim_name_int,
-            dim_val);
-    break;
-  default:
-    TEST_FAIL_MESSAGE_FORMATTED("%d is not a valid which_tensor for testing.",
-                                tensor);
-    break;
-  }
-
-  zdnn_status actual_status = verify_lstm_or_gru_act_tensors(
-      function_code, rnn_ztens.timestep_fused, rnn_ztens.bias_add,
-      rnn_ztens.timestep_c, rnn_ztens.timestep_output1,
-      rnn_ztens.timestep_output2);
-
-  if (actual_status != exp_status) {
-    TEST_FAIL_MESSAGE_FORMATTED(
-        "%s: Actual status return (%08x) does not match expected (%08x).",
-        description, actual_status, exp_status);
-  }
-
-  // Cleanup
-  free_ztensor_buffers(5, rnn_ztens.timestep_fused, rnn_ztens.bias_add,
-                       rnn_ztens.timestep_c, rnn_ztens.timestep_output1,
-                       rnn_ztens.timestep_output2);
-}
-
-// Verify return status by sabotaging the ztensor format
-void verify_lstm_gru_act_format(uint8_t function_code, uint32_t batch,
-                                uint32_t hidden_size, which_tensor tensor,
-                                zdnn_data_formats format,
-                                zdnn_status exp_status, char *description) {
-
-  // Create the test tensors
-  rnn_ztensors_struct rnn_ztens;
-  create_ztensors(function_code, batch, hidden_size, &rnn_ztens);
-
-  // Sabotage the specified ztensor format
-  switch (tensor) {
-  case (NONE):
-    // Don't want to sabotage any format (to test positive case)
-    break;
-  case (FUSED):
-    rnn_ztens.timestep_fused->transformed_desc->format = format;
-    break;
-  case (BIAS):
-    rnn_ztens.bias_add->transformed_desc->format = format;
-    break;
-  case (CELLSTATE):
-    rnn_ztens.timestep_c->transformed_desc->format = format;
-    break;
-  case (OUTPUT):
-    rnn_ztens.timestep_output1->transformed_desc->format = format;
-    break;
-  case (OUTPUT2):
-    rnn_ztens.timestep_output2->transformed_desc->format = format;
-    break;
-  default:
-    TEST_FAIL_MESSAGE_FORMATTED("%d is not a valid which_tensor for testing.",
-                                tensor);
-    break;
-  }
-
-  zdnn_status actual_status = verify_lstm_or_gru_act_tensors(
-      function_code, rnn_ztens.timestep_fused, rnn_ztens.bias_add,
-      rnn_ztens.timestep_c, rnn_ztens.timestep_output1,
-      rnn_ztens.timestep_output2);
-
-  if (actual_status != exp_status) {
-    TEST_FAIL_MESSAGE_FORMATTED(
-        "%s: Actual status return (%08x) does not match expected (%08x).",
-        description, actual_status, exp_status);
-  }
-
-  // Cleanup
-  free_ztensor_buffers(5, rnn_ztens.timestep_fused, rnn_ztens.bias_add,
-                       rnn_ztens.timestep_c, rnn_ztens.timestep_output1,
-                       rnn_ztens.timestep_output2);
+void verify_shape(uint8_t function_code, tensor_idx idx, uint8_t dim_idx,
+                  uint32_t dim_val, zdnn_status exp_status, char *description) {
+  verify(function_code, idx, true, dim_idx, dim_val, false, 0, false, 0,
+         exp_status, description);
 }
 
 // Verify return status by sabotaging the ztensor data type
-void verify_lstm_gru_act_type(uint8_t function_code, uint32_t batch,
-                              uint32_t hidden_size, which_tensor tensor,
-                              zdnn_data_types type, zdnn_status exp_status,
-                              char *description) {
-
-  // Create the test tensors
-  rnn_ztensors_struct rnn_ztens;
-  create_ztensors(function_code, batch, hidden_size, &rnn_ztens);
-
-  // Sabotage the specified ztensor data type
-  switch (tensor) {
-  case (NONE):
-    // Don't want to sabotage any format (to test positive case)
-    break;
-  case (FUSED):
-    rnn_ztens.timestep_fused->transformed_desc->type = type;
-    break;
-  case (BIAS):
-    rnn_ztens.bias_add->transformed_desc->type = type;
-    break;
-  case (CELLSTATE):
-    rnn_ztens.timestep_c->transformed_desc->type = type;
-    break;
-  case (OUTPUT):
-    rnn_ztens.timestep_output1->transformed_desc->type = type;
-    break;
-  case (OUTPUT2):
-    rnn_ztens.timestep_output2->transformed_desc->type = type;
-    break;
-  default:
-    TEST_FAIL_MESSAGE_FORMATTED("%d is not a valid which_tensor for testing.",
-                                tensor);
-    break;
-  }
-
-  zdnn_status actual_status = verify_lstm_or_gru_act_tensors(
-      function_code, rnn_ztens.timestep_fused, rnn_ztens.bias_add,
-      rnn_ztens.timestep_c, rnn_ztens.timestep_output1,
-      rnn_ztens.timestep_output2);
-
-  if (actual_status != exp_status) {
-    TEST_FAIL_MESSAGE_FORMATTED(
-        "%s: Actual status return (%08x) does not match expected (%08x).",
-        description, actual_status, exp_status);
-  }
-
-  // Cleanup
-  free_ztensor_buffers(5, rnn_ztens.timestep_fused, rnn_ztens.bias_add,
-                       rnn_ztens.timestep_c, rnn_ztens.timestep_output1,
-                       rnn_ztens.timestep_output2);
+void verify_type(uint8_t function_code, tensor_idx idx, zdnn_data_types type,
+                 zdnn_status exp_status, char *description) {
+  verify(function_code, idx, false, 0, 0, true, type, false, 0, exp_status,
+         description);
 }
 
+// Verify return status by sabotaging the ztensor format
+void verify_format(uint8_t function_code, tensor_idx idx,
+                   zdnn_data_formats format, zdnn_status exp_status,
+                   char *description) {
+  verify(function_code, idx, false, 0, 0, false, 0, true, format, exp_status,
+         description);
+}
+
+// this macro assume values of NNPA_LSTMACT and NNPA_GRUACT are next to each
+// other
+#define LOOP_LSTM_AND_GRU(lg)                                                  \
+  for (int lg = NNPA_LSTMACT; lg < NNPA_GRUACT; lg++)
+
+#define TEST_DIM_VAL(tensor_idx, dim_idx, val, exp_status)                     \
+  snprintf(msg, MAX_DESC_LEN, "%s %s dim%s", __func__,                         \
+           act == NNPA_LSTMACT ? "LSTM" : "GRU", #dim_idx);                    \
+  verify_shape(act, tensor_idx, dim_idx, val, exp_status, msg);
+
 /*
- * Test verification of valid lstm activation tensors.
+ * Test verification of valid activation tensors.
  * All tensors will be built with acceptable properties.
  */
-void verify_lstm_act_pass() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
+void verify_pass() {
   // Expect no known error, no bad dims will be set
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, NONE, 0, 0,
-                            ZDNN_OK, "verify_lstm_act_pass");
+  LOOP_LSTM_AND_GRU(act) { TEST_DIM_VAL(NONE, 0, 0, ZDNN_OK); }
 }
 
 /*
- * Test verification of failed lstm output shape.
- * Correct shape is (1, 1, batch, hidden_size)
+ * Test verification of failed output shape.
+ * Correct shape is (1, 1, num_batches, num_hidden)
  * All input tensors will have acceptable descriptors.
  */
-void verify_lstm_act_fail_output_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
+void verify_fail_output_shape() {
+  LOOP_LSTM_AND_GRU(act) {
 
-  // Expect failure when output_ztensor dimension 4 (timestep) is not 2
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT, 4, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim4");
+    // Expect failure when output_ztensor dimension 4 (timestep) is not 1
+    TEST_DIM_VAL(OUTPUT, 4, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when output_ztensor dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim3");
+    // Expect failure when output_ztensor dimension 3 is not 1
+    TEST_DIM_VAL(OUTPUT, 3, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when output_ztensor dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT, 2,
-                            batch + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim2");
+    // Expect failure when output_ztensor dimension 2 does not match num_batches
+    TEST_DIM_VAL(OUTPUT, 2, num_batches + 1, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when output_ztensor dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim1");
+    // Expect failure when output_ztensor dimension 1 does not match num_hidden
+    TEST_DIM_VAL(OUTPUT, 1, num_hidden + 1, ZDNN_INVALID_SHAPE);
+  }
 }
 
 /*
- * Test verification of failed lstm output 2 shape.
- * Correct shape is (1, 1, batch, hidden_size)
+ * Test verification of failed output2 shape.
+ * Correct shape is (1, 1, num_batches, num_hidden)
  * All input tensors will have acceptable descriptors.
  */
-void verify_lstm_act_fail_output2_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
+void verify_fail_output2_shape() {
+  LOOP_LSTM_AND_GRU(act) {
 
-  // Expect failure when output_ztensor dimension 4 (timestep) is not 2
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT2, 4, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim4");
+    // Expect failure when output_ztensor dimension 4 (timestep) is not 1
+    TEST_DIM_VAL(OUTPUT2, 4, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when output_ztensor dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT2, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim3");
+    // Expect failure when output_ztensor dimension 3 is not 1
+    TEST_DIM_VAL(OUTPUT2, 3, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when output_ztensor dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT2, 2,
-                            batch + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim2");
+    // Expect failure when output_ztensor dimension 2 does not match num_batches
+    TEST_DIM_VAL(OUTPUT2, 2, num_batches + 1, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when output_ztensor dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, OUTPUT2, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_output_shape_dim1");
+    // Expect failure when output_ztensor dimension 1 does not match num_hidden
+    TEST_DIM_VAL(OUTPUT2, 1, num_hidden + 1, ZDNN_INVALID_SHAPE);
+  }
 }
 
 /*
- * Test verification of failed lstm input shape.
- * Correct shape is (4, 1, batch, hidden_size)
+ * Test verification of failed fuzed_ztensor shape.
+ * Correct shape is (4, 1, num_batches, num_hidden) for LSTM,
+ * (3, 1, num_batches, num_hidden) for GRU
  * All input tensors except fused will have acceptable descriptors.
  */
-void verify_lstm_act_fail_fused_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
+void verify_fail_fused_shape() {
+  LOOP_LSTM_AND_GRU(act) {
+    uint32_t num_gates = NUM_GATES(act);
 
-  // Expect failure when fused dimension 4 (timestep) is not 4
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, FUSED, 4, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_fused_shape_dim4");
+    // Expect failure when bias dimension 4 is not 4 (LSTM) or 3 (GRU)
+    TEST_DIM_VAL(FUSED, 4, num_gates + 1, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when fused dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, FUSED, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_fused_shape_dim3");
+    // Expect failure when fused dimension 3 is not 1
+    TEST_DIM_VAL(FUSED, 3, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when fused dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, FUSED, 2,
-                            batch + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_fused_shape_dim2");
+    // Expect failure when fused dimension 2 does not match num_batches
+    TEST_DIM_VAL(FUSED, 2, num_batches + 1, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when fused dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, FUSED, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_fused_shape_dim1");
+    // Expect failure when fused dimension 1 does not match num_hidden
+    TEST_DIM_VAL(FUSED, 1, num_hidden + 1, ZDNN_INVALID_SHAPE);
+  }
 }
 
 /*
- * Test verification of failed lstm input shape.
- * Correct shape is (4, 1, batch, hidden_size)
+ * Test verification of failed bias_add_ztensor shape.
+ * Correct shape is (4, 1, num_batches, num_hidden) for LSTM,
+ * (3, 1, num_batches, num_hidden) for GRU
  * All input tensors except bias will have acceptable descriptors.
  */
-void verify_lstm_act_fail_bias_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
+void verify_fail_bias_shape() {
+  LOOP_LSTM_AND_GRU(act) {
+    uint32_t num_gates = NUM_GATES(act);
 
-  // Expect failure when bias dimension 4 is not 4
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, BIAS, 4, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_bias_shape_dim4");
+    // Expect failure when bias dimension 4 is not 4 (LSTM) or 3 (GRU)
+    TEST_DIM_VAL(BIAS, 4, num_gates + 1, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when bias dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, BIAS, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_bias_shape_dim3");
+    // Expect failure when bias dimension 3 is not 1
+    TEST_DIM_VAL(BIAS, 3, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when bias dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, BIAS, 2,
-                            batch + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_bias_shape_dim2");
+    // Expect failure when bias dimension 2 does not match input
+    TEST_DIM_VAL(BIAS, 2, num_batches + 1, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when bias dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, BIAS, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_bias_shape_dim1");
+    // Expect failure when bias dimension 1 does not match input
+    TEST_DIM_VAL(BIAS, 1, num_hidden + 1, ZDNN_INVALID_SHAPE);
+  }
 }
 
 /*
- * Test verification of failed lstm input shape.
- * Correct shape is (1, 1, batch, hidden_size)
+ * Test verification of failed cell state ztensor shape.
+ * Correct shape is (1, 1, num_batches, num_hidden)
  * All input tensors except cell-state will have acceptable descriptors.
  */
-void verify_lstm_act_fail_cellstate_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
+void verify_fail_cellstate_shape() {
+  LOOP_LSTM_AND_GRU(act) {
+    // Expect failure when cellstate dimension 4 is not 1
+    TEST_DIM_VAL(CELLSTATE, 4, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when cellstate dimension 4 is not 1
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, CELLSTATE, 4, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_cellstate_shape_dim4");
+    // Expect failure when cellstate dimension 3 is not 1
+    TEST_DIM_VAL(CELLSTATE, 3, 2, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when cellstate dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, CELLSTATE, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_cellstate_shape_dim3");
+    // Expect failure when cellstate dimension 2 does not match num_batches
+    TEST_DIM_VAL(CELLSTATE, 2, num_batches + 1, ZDNN_INVALID_SHAPE);
 
-  // Expect failure when cellstate dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, CELLSTATE, 2,
-                            batch + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_cellstate_shape_dim2");
-
-  // Expect failure when cellstate dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_LSTMACT, batch, hidden_size, CELLSTATE, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_lstm_act_fail_cellstate_shape_dim1");
+    // Expect failure when cellstate dimension 2 does not matchnum_hidden
+    TEST_DIM_VAL(CELLSTATE, 1, num_hidden + 1, ZDNN_INVALID_SHAPE);
+  }
 }
 
+#define TEST_FORMAT(tensor_idx, format, exp_status)                            \
+  snprintf(msg, MAX_DESC_LEN, "%s %s %s", __func__,                            \
+           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx);                 \
+  verify_format(act, tensor_idx, format, exp_status, msg);
+
 /*
- * Test verification of failed lstm output format.
+ * Test verification of failed format.
  */
-void verify_lstm_act_fail_format() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect failure when output format does not match fused's
-  verify_lstm_gru_act_format(NNPA_LSTMACT, batch, hidden_size, OUTPUT,
-                             BAD_FORMAT, ZDNN_INVALID_FORMAT,
-                             "verify_lstm_act_fail_output_format");
-
-  // Expect failure when output2 format does not match fused's
-  verify_lstm_gru_act_format(NNPA_LSTMACT, batch, hidden_size, OUTPUT2,
-                             BAD_FORMAT, ZDNN_INVALID_FORMAT,
-                             "verify_lstm_act_fail_output2_format");
-
-  // Expect failure when fused/bias/cells-state format does not match output's
-  verify_lstm_gru_act_format(NNPA_LSTMACT, batch, hidden_size, FUSED,
-                             BAD_FORMAT, ZDNN_INVALID_FORMAT,
-                             "verify_lstm_act_fail_fused_format");
-  verify_lstm_gru_act_format(NNPA_LSTMACT, batch, hidden_size, BIAS, BAD_FORMAT,
-                             ZDNN_INVALID_FORMAT,
-                             "verify_lstm_act_fail_bias_format");
-  verify_lstm_gru_act_format(NNPA_LSTMACT, batch, hidden_size, CELLSTATE,
-                             BAD_FORMAT, ZDNN_INVALID_FORMAT,
-                             "verify_lstm_act_fail_cellstate_format");
-} /*
-   * Test verification of failed lstm output type.
-   */
-void verify_lstm_act_fail_type() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect failure when output dtype does not match fused's
-  verify_lstm_gru_act_type(NNPA_LSTMACT, batch, hidden_size, OUTPUT, BAD_TYPE,
-                           ZDNN_INVALID_TYPE,
-                           "verify_lstm_act_fail_output_type");
-
-  // Expect failure when output2 dtype does not match fused's
-  verify_lstm_gru_act_type(NNPA_LSTMACT, batch, hidden_size, OUTPUT2, BAD_TYPE,
-                           ZDNN_INVALID_TYPE,
-                           "verify_lstm_act_fail_output2_type");
-
-  // Expect failure when fused/bias/cells-state dtype does not match
-  // output's
-  verify_lstm_gru_act_type(NNPA_LSTMACT, batch, hidden_size, FUSED, BAD_TYPE,
-                           ZDNN_INVALID_TYPE,
-                           "verify_lstm_act_fail_fused_type");
-  verify_lstm_gru_act_type(NNPA_LSTMACT, batch, hidden_size, BIAS, BAD_TYPE,
-                           ZDNN_INVALID_TYPE, "verify_lstm_act_fail_bias_type");
-  verify_lstm_gru_act_type(NNPA_LSTMACT, batch, hidden_size, CELLSTATE,
-                           BAD_TYPE, ZDNN_INVALID_TYPE,
-                           "verify_lstm_act_fail_cellstate_type");
+void verify_fail_format() {
+  LOOP_LSTM_AND_GRU(act) {
+    for (int i = 0; i < MAX_TENSOR_IDX; i++) {
+      TEST_FORMAT(i, BAD_FORMAT, ZDNN_INVALID_FORMAT);
+    }
+  }
 }
 
-/*
- * Test verification of valid gru activation tensors.
- * All tensors will be built with acceptable properties.
- */
-void verify_gru_act_pass() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect no error, no dim will be set by verify_lstm_gru_act_shape()
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, NONE, 0, 0,
-                            ZDNN_OK, "verify_gru_act_pass");
-}
+#define TEST_TYPE(tensor_idx, type, exp_status)                                \
+  snprintf(msg, MAX_DESC_LEN, "%s %s %s", __func__,                            \
+           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx);                 \
+  verify_type(act, tensor_idx, type, exp_status, msg);
 
 /*
- * Test verification of failed gru output shape.
- * Correct shape is (1, 1, batch, hidden_size)
- * All input tensors will have acceptable descriptors.
+ * Test verification of failed type.
  */
-void verify_gru_act_fail_output_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect failure when output_ztensor dimension 4 is not 1
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT, 4, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_output_shape_dim4");
-
-  // Expect failure when output_ztensor dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_output_shape_dim3");
-
-  // Expect failure when output_ztensor dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT, 2,
-                            batch + 1, ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_output_shape_dim2");
-
-  // Expect failure when output_ztensor dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_output_shape_dim1");
-}
-
-/*
- * Test verification of passing gru output2 shape, as it is ignored.
- * Correct shape is (1, 1, batch, hidden_size)
- * All input tensors will have acceptable descriptors.
- */
-void verify_gru_act_pass_output2_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect success when output_ztensor dimension 4 (timestep) is not 1
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT2, 4, 3,
-                            ZDNN_OK, "verify_gru_act_pass_output2_shape_dim4");
-
-  // Expect success when output_ztensor dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT2, 3, 3,
-                            ZDNN_OK, "verify_gru_act_pass_output2_shape_dim3");
-
-  // Expect success when output_ztensor dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT2, 2,
-                            batch + 1, ZDNN_OK,
-                            "verify_gru_act_pass_output2_shape_dim2");
-
-  // Expect success when output_ztensor dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, OUTPUT2, 1,
-                            hidden_size + 1, ZDNN_OK,
-                            "verify_gru_act_pass_output2_shape_dim_1");
-}
-
-/*
- * Test verification of failed gru input shape.
- * Correct shape is (3, 1, batch, hidden_size)
- * All input tensors except fused will have acceptable descriptors.
- */
-void verify_gru_act_fail_fused_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect failure when fused dimension 4 is not 3
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, FUSED, 4, 2,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_fused_shape_dim4");
-
-  // Expect failure when fused dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, FUSED, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_fused_shape_dim3");
-
-  // Expect failure when fused dimension 2 does not match input
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, FUSED, 2,
-                            batch + 1, ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_fused_shape_dim2");
-
-  // Expect failure when fused dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, FUSED, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_fused_shape_dim1");
-}
-
-/*
- * Test verification of failed gru input shape.
- * Correct shape is (3, 1, batch, hidden_size)
- * All input tensors except bias will have acceptable descriptors.
- */
-void verify_gru_act_fail_bias_shape() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect failure when bias dimension 4 is not 3
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, BIAS, 4, 2,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_bias_shape_dim4");
-
-  // Expect failure when bias dimension 3 is not 1
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, BIAS, 3, 3,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_bias_shape_dim3");
-
-  // Expect failure when bias dimension 2 does not match others
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, BIAS, 2, batch + 1,
-                            ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_bias_shape_dim2");
-
-  // Expect failure when bias dimension 1 does not match input
-  verify_lstm_gru_act_shape(NNPA_GRUACT, batch, hidden_size, BIAS, 1,
-                            hidden_size + 1, ZDNN_INVALID_SHAPE,
-                            "verify_gru_act_fail_bias_shape_dim1");
-}
-
-/*
- * Test verification of failed gru output format.
- */
-void verify_gru_act_fail_format() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect failure when output format does not match fused's
-  verify_lstm_gru_act_format(NNPA_GRUACT, batch, hidden_size, OUTPUT,
-                             BAD_FORMAT, ZDNN_INVALID_FORMAT,
-                             "verify_gru_act_fail_output_format");
-
-  // Expect success when output2 format does not match fused's (since it is
-  // ignored)
-  verify_lstm_gru_act_format(NNPA_GRUACT, batch, hidden_size, OUTPUT2,
-                             BAD_FORMAT, ZDNN_OK,
-                             "verify_gru_act_fail_output2_format");
-
-  // Expect failure when fused/bias/cells-state format does not match output's
-  verify_lstm_gru_act_format(NNPA_GRUACT, batch, hidden_size, FUSED, BAD_FORMAT,
-                             ZDNN_INVALID_FORMAT,
-                             "verify_gru_act_fail_fused_format");
-  verify_lstm_gru_act_format(NNPA_GRUACT, batch, hidden_size, BIAS, BAD_FORMAT,
-                             ZDNN_INVALID_FORMAT,
-                             "verify_gru_act_fail_bias_format");
-}
-
-/*
- * Test verification of failed gru output type.
- */
-void verify_gru_act_fail_type() {
-  uint32_t batch = 4;
-  uint32_t hidden_size = 16;
-
-  // Expect failure when output dtype does not match fused's
-  verify_lstm_gru_act_type(NNPA_GRUACT, batch, hidden_size, OUTPUT, BAD_TYPE,
-                           ZDNN_INVALID_TYPE,
-                           "verify_gru_act_fail_output_type");
-
-  // Expect success when output2 dtype does not match fused's (since it is
-  // ignored)
-  verify_lstm_gru_act_type(NNPA_GRUACT, batch, hidden_size, OUTPUT2, BAD_TYPE,
-                           ZDNN_OK, "verify_gru_act_fail_output2_type");
-
-  // Expect failure when fused/bias/cells-state dtype does not match
-  // output's
-  verify_lstm_gru_act_type(NNPA_GRUACT, batch, hidden_size, FUSED, BAD_TYPE,
-                           ZDNN_INVALID_TYPE, "verify_gru_act_fail_fused_type");
-  verify_lstm_gru_act_type(NNPA_GRUACT, batch, hidden_size, BIAS, BAD_TYPE,
-                           ZDNN_INVALID_TYPE, "verify_gru_act_fail_bias_type");
+void verify_fail_type() {
+  LOOP_LSTM_AND_GRU(act) {
+    for (int i = 0; i < MAX_TENSOR_IDX; i++) {
+      TEST_TYPE(i, BAD_TYPE, ZDNN_INVALID_TYPE);
+    }
+  }
 }
 
 int main() {
   UNITY_BEGIN();
 
-  RUN_TEST(verify_lstm_act_pass);
-  RUN_TEST(verify_lstm_act_fail_output_shape);
-  RUN_TEST(verify_lstm_act_fail_output2_shape);
-  RUN_TEST(verify_lstm_act_fail_fused_shape);
-  RUN_TEST(verify_lstm_act_fail_bias_shape);
-  RUN_TEST(verify_lstm_act_fail_cellstate_shape);
-  RUN_TEST(verify_lstm_act_fail_format);
-  RUN_TEST(verify_lstm_act_fail_type);
-  RUN_TEST(verify_gru_act_pass);
-  RUN_TEST(verify_gru_act_fail_output_shape);
-  RUN_TEST(verify_gru_act_pass_output2_shape);
-  RUN_TEST(verify_gru_act_fail_fused_shape);
-  RUN_TEST(verify_gru_act_fail_bias_shape);
-  RUN_TEST(verify_gru_act_fail_format);
-  RUN_TEST(verify_gru_act_fail_type);
+  RUN_TEST(verify_pass);
+  RUN_TEST(verify_fail_output_shape);
+  RUN_TEST(verify_fail_output2_shape);
+  RUN_TEST(verify_fail_fused_shape);
+  RUN_TEST(verify_fail_bias_shape);
+  RUN_TEST(verify_fail_cellstate_shape);
+  RUN_TEST(verify_fail_format);
+  RUN_TEST(verify_fail_type);
 
   return UNITY_END();
 }

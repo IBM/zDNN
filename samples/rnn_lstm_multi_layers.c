@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+ * Copyright IBM Corp. 2021
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <assert.h>
 #include <stdio.h>
@@ -22,66 +22,23 @@
 
 #include "zdnn.h"
 
-// Sample: LSTM
-int main(int argc, char *argv[]) {
+void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
+                    zdnn_ztensor *hn_output, bool is_prev_layer_bidir) {
+
   zdnn_status status;
 
-#ifdef STATIC_LIB
-  zdnn_init();
-#endif
+  uint32_t num_batches = input->pre_transformed_desc->dim2;
 
-  /***********************************************************************
-   *
-   * LSTM (FWD/BWD):
-   *
-   * INPUTS --------------------------------------------------------------
-   * input           |  ZDNN_3DS  | (num_timesteps, num_batches, num_features)
-   * h0              |  ZDNN_3DS  | (1, num_batches, num_hidden)
-   * c0              |  ZDNN_3DS  | (1, num_batches, num_hidden)
-   * weights         |  ZDNN_3DS  | (1, num_features, num_hidden)
-   * biases          |  ZDNN_2DS  | (1, num_hidden)
-   * hidden_weights  |  ZDNN_3DS  | (1, num_hidden, num_hidden)
-   * hidden_biases   |  ZDNN_2DS  | (1, num_hidden)
-   *
-   * OUTPUTS -------------------------------------------------------------
-   * hn_output       |  ZDNN_4DS  | (num_timesteps, 1, num_batches, num_hidden)
-   *                 |            | or (1, 1, num_batches, num_hidden)
-   * cf_output       |  ZDNN_4DS  | (1, 1, num_batches, num_hidden)
-   ***********************************************************************/
-
-  /***********************************************************************
-   * Create input zTensor
-   ***********************************************************************/
-
-  zdnn_tensor_desc input_pre_tfrmd_desc, input_tfrmd_desc;
-  zdnn_ztensor input;
-
-  uint32_t num_timesteps = 5;
-  uint32_t num_batches = 3;
-  uint32_t num_features = 32;
-  uint32_t num_hidden = 5;
+  // if input is bidir output from previous layer then number of features for
+  // this layer is 2x of hidden-state size (dim1) of the previous layer
+  uint32_t num_features =
+      input->pre_transformed_desc->dim1 * (is_prev_layer_bidir ? 2 : 1);
 
   zdnn_data_types type = FP32;
   short element_size = 4; // size of each element in bytes
 
-  lstm_gru_direction dir = FWD;
-  uint8_t num_dirs = 1;
-
-  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &input_pre_tfrmd_desc,
-                                 num_timesteps, num_batches, num_features);
-  status =
-      zdnn_generate_transformed_desc(&input_pre_tfrmd_desc, &input_tfrmd_desc);
-  assert(status == ZDNN_OK);
-  status = zdnn_init_ztensor_with_malloc(&input_pre_tfrmd_desc,
-                                         &input_tfrmd_desc, &input);
-  assert(status == ZDNN_OK);
-
-  uint64_t input_data_size =
-      num_timesteps * num_batches * num_features * element_size;
-  void *input_data = malloc(input_data_size);
-
-  status = zdnn_transform_ztensor(&input, input_data);
-  assert(status == ZDNN_OK);
+  lstm_gru_direction dir = BIDIR;
+  uint8_t num_dirs = 2;
 
   /***********************************************************************
    * Create initial hidden and cell state zTensors
@@ -120,10 +77,14 @@ int main(int argc, char *argv[]) {
   zdnn_tensor_desc weights_pre_tfrmd_desc, weights_tfrmd_desc;
   zdnn_ztensor weights;
 
+  // if using previous layer bidir output as input then number of features of
+  // this layer is
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &weights_pre_tfrmd_desc,
                                  num_dirs, num_features, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &weights_pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_NONE,
+      &weights_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_WEIGHTS |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
       &weights_tfrmd_desc);
   assert(status == ZDNN_OK);
 
@@ -152,7 +113,9 @@ int main(int argc, char *argv[]) {
   zdnn_init_pre_transformed_desc(ZDNN_2DS, type, &biases_pre_tfrmd_desc,
                                  num_dirs, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
-      &biases_pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_BIASES | PREV_LAYER_NONE,
+      &biases_pre_tfrmd_desc,
+      RNN_TYPE_LSTM | USAGE_BIASES |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
       &biases_tfrmd_desc);
   assert(status == ZDNN_OK);
 
@@ -182,7 +145,8 @@ int main(int argc, char *argv[]) {
                                  num_dirs, num_hidden, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
       &hidden_weights_pre_tfrmd_desc,
-      RNN_TYPE_LSTM | USAGE_HIDDEN_WEIGHTS | PREV_LAYER_NONE,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_WEIGHTS |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
       &hidden_weights_tfrmd_desc);
   assert(status == ZDNN_OK);
   status = zdnn_init_ztensor_with_malloc(&hidden_weights_pre_tfrmd_desc,
@@ -213,7 +177,8 @@ int main(int argc, char *argv[]) {
                                  num_dirs, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
       &hidden_biases_pre_tfrmd_desc,
-      RNN_TYPE_LSTM | USAGE_HIDDEN_BIASES | PREV_LAYER_NONE,
+      RNN_TYPE_LSTM | USAGE_HIDDEN_BIASES |
+          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
       &hidden_biases_tfrmd_desc);
   assert(status == ZDNN_OK);
 
@@ -234,24 +199,19 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Create output zTensor
+   * Create cf output zTensor
    ***********************************************************************/
 
-  // get only the last timestep, thus hn and cf can share descriptor
-  zdnn_tensor_desc hncf_pre_tfrmd_desc, hncf_tfrmd_desc;
+  zdnn_tensor_desc cf_pre_tfrmd_desc, cf_tfrmd_desc;
 
-  zdnn_ztensor hn_output_ztensor, cf_output_ztensor;
+  zdnn_ztensor cf_output_ztensor;
 
-  zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &hncf_pre_tfrmd_desc, 1, 1,
+  zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &cf_pre_tfrmd_desc, 1, 2,
                                  num_batches, num_hidden);
-  status =
-      zdnn_generate_transformed_desc(&hncf_pre_tfrmd_desc, &hncf_tfrmd_desc);
+  status = zdnn_generate_transformed_desc(&cf_pre_tfrmd_desc, &cf_tfrmd_desc);
   assert(status == ZDNN_OK);
 
-  status = zdnn_init_ztensor_with_malloc(&hncf_pre_tfrmd_desc, &hncf_tfrmd_desc,
-                                         &hn_output_ztensor);
-  assert(status == ZDNN_OK);
-  status = zdnn_init_ztensor_with_malloc(&hncf_pre_tfrmd_desc, &hncf_tfrmd_desc,
+  status = zdnn_init_ztensor_with_malloc(&cf_pre_tfrmd_desc, &cf_tfrmd_desc,
                                          &cf_output_ztensor);
   assert(status == ZDNN_OK);
 
@@ -261,26 +221,15 @@ int main(int argc, char *argv[]) {
 
   void *work_area = NULL;
 
-  status = zdnn_lstm(&input, &h0, &c0, &weights, &biases, &hidden_weights,
-                     &hidden_biases, dir, work_area, &hn_output_ztensor,
-                     &cf_output_ztensor);
+  status =
+      zdnn_lstm(input, &h0, &c0, &weights, &biases, &hidden_weights,
+                &hidden_biases, dir, work_area, hn_output, &cf_output_ztensor);
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Output and Cleanup
+   * Cleanup and Return
    ***********************************************************************/
 
-  uint64_t hncf_data_size = num_batches * num_hidden * element_size;
-  void *hn_output_data = malloc(hncf_data_size);
-  void *cf_output_data = malloc(hncf_data_size);
-
-  status = zdnn_transform_origtensor(&hn_output_ztensor, hn_output_data);
-  assert(status == ZDNN_OK);
-  status = zdnn_transform_origtensor(&cf_output_ztensor, cf_output_data);
-  assert(status == ZDNN_OK);
-
-  status = zdnn_free_ztensor_buffer(&input);
-  assert(status == ZDNN_OK);
   status = zdnn_free_ztensor_buffer(&h0);
   assert(status == ZDNN_OK);
   status = zdnn_free_ztensor_buffer(&c0);
@@ -293,12 +242,9 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
   status = zdnn_free_ztensor_buffer(&hidden_biases);
   assert(status == ZDNN_OK);
-  status = zdnn_free_ztensor_buffer(&hn_output_ztensor);
-  assert(status == ZDNN_OK);
   status = zdnn_free_ztensor_buffer(&cf_output_ztensor);
   assert(status == ZDNN_OK);
 
-  free(input_data);
   free(hidden_state_data);
   free(cell_state_data);
   free(weights_data_f);
@@ -317,6 +263,103 @@ int main(int argc, char *argv[]) {
   free(hidden_biases_data_i);
   free(hidden_biases_data_c);
   free(hidden_biases_data_o);
-  free(hn_output_data);
-  free(cf_output_data);
+}
+
+// Sample: LSTM multi-layer BIDIR
+int main(int argc, char *argv[]) {
+  zdnn_status status;
+
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
+  uint32_t num_hidden[2] = {5, 4};
+
+  /***********************************************************************
+   * Create input zTensor
+   ***********************************************************************/
+
+  zdnn_tensor_desc input_pre_tfrmd_desc, input_tfrmd_desc;
+  zdnn_ztensor input;
+
+  uint32_t num_timesteps = 5;
+  uint32_t num_batches = 3;
+  uint32_t num_features = 32;
+
+  zdnn_data_types type = FP32;
+  short element_size = 4; // size of each element in bytes
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &input_pre_tfrmd_desc,
+                                 num_timesteps, num_batches, num_features);
+  status =
+      zdnn_generate_transformed_desc(&input_pre_tfrmd_desc, &input_tfrmd_desc);
+  assert(status == ZDNN_OK);
+  status = zdnn_init_ztensor_with_malloc(&input_pre_tfrmd_desc,
+                                         &input_tfrmd_desc, &input);
+  assert(status == ZDNN_OK);
+
+  uint64_t input_data_size =
+      num_timesteps * num_batches * num_features * element_size;
+  void *input_data = malloc(input_data_size);
+
+  status = zdnn_transform_ztensor(&input, input_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create 2 hn output zTensors
+   ***********************************************************************/
+
+  zdnn_tensor_desc hn_pre_tfrmd_desc[2], hn_tfrmd_desc[2];
+  zdnn_ztensor hn_output[2];
+
+  for (int i = 0; i < 2; i++) {
+    zdnn_init_pre_transformed_desc(ZDNN_4DS, type, &hn_pre_tfrmd_desc[i],
+                                   num_timesteps, 2, num_batches,
+                                   num_hidden[i]);
+    status = zdnn_generate_transformed_desc(&hn_pre_tfrmd_desc[i],
+                                            &hn_tfrmd_desc[i]);
+    assert(status == ZDNN_OK);
+
+    status = zdnn_init_ztensor_with_malloc(&hn_pre_tfrmd_desc[i],
+                                           &hn_tfrmd_desc[i], &hn_output[i]);
+    assert(status == ZDNN_OK);
+  }
+
+  /***********************************************************************
+   * Do the layers
+   ***********************************************************************/
+
+  // call the first layer with input, previous layer bidir = false, output goes
+  // to hn_output[0]
+  do_bidir_layer(&input, num_hidden[0], &hn_output[0], false);
+
+  // call the second layer with hn_output[0] from layer 1, previous layer bidir
+  // = true, output goes to hn_output[1]
+  do_bidir_layer(&hn_output[0], num_hidden[1], &hn_output[1], true);
+
+  /***********************************************************************
+   * Output and Cleanup
+   ***********************************************************************/
+
+  void *hn_output_data[2];
+
+  for (int i = 0; i < 2; i++) {
+    uint64_t hn_output_data_size = (uint64_t)num_timesteps * num_batches *
+                                   num_hidden[i] * 2 * element_size;
+    hn_output_data[i] = malloc(hn_output_data_size);
+
+    status = zdnn_transform_origtensor(&hn_output[i], hn_output_data[i]);
+    assert(status == ZDNN_OK);
+  }
+
+  status = zdnn_free_ztensor_buffer(&input);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&hn_output[0]);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&hn_output[1]);
+  assert(status == ZDNN_OK);
+
+  free(input_data);
+  free(hn_output_data[0]);
+  free(hn_output_data[1]);
 }

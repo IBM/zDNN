@@ -248,7 +248,7 @@ void test_elwise_api_1_input(uint32_t *shape, zdnn_data_layouts layout,
 #ifdef TEST_AIU // Test requires AIU
 
   // calculate number of values in each tensor buffer for helper function
-  uint64_t num_elements = get_num_elements(output_ztensor, ELEMENTS_ALL);
+  uint64_t num_elements = get_num_elements(output_ztensor, ELEMENTS_PRE);
 
   // Values in ZDNN_NHWC order
   float expected_values[num_elements];
@@ -320,7 +320,7 @@ void test_elwise_api_2_inputs_adv(uint32_t *shape, zdnn_data_layouts layout,
 #ifdef TEST_AIU // Test requires AIU
 
   // calculate number of values in each tensor buffer for helper function
-  uint64_t num_elements = get_num_elements(output_ztensor, ELEMENTS_ALL);
+  uint64_t num_elements = get_num_elements(output_ztensor, ELEMENTS_PRE);
 
   // Values in ZDNN_NHWC order
   float expected_values[num_elements];

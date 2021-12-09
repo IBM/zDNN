@@ -378,6 +378,95 @@ void test_slicing_3DS_5x33x65() {
   verify_ztensor_slicing(num_slices, shape, ZDNN_3DS, 0, ZDNN_OK);
 }
 
+void verify_transformed_layout(zdnn_data_layouts from_layout, bool is_concat,
+                               uint32_t dim4, uint32_t dim3, uint32_t dim2,
+                               uint32_t dim1, zdnn_data_layouts exp_to_layout,
+                               zdnn_status exp_status) {
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_status status;
+
+  switch (from_layout) {
+  case ZDNN_2DS:
+    zdnn_init_pre_transformed_desc(from_layout, test_datatype, &pre_tfrmd_desc,
+                                   dim2, dim1);
+    break;
+  case ZDNN_3DS:
+    zdnn_init_pre_transformed_desc(from_layout, test_datatype, &pre_tfrmd_desc,
+                                   dim3, dim2, dim1);
+    break;
+  case ZDNN_4DS:
+    zdnn_init_pre_transformed_desc(from_layout, test_datatype, &pre_tfrmd_desc,
+                                   dim4, dim2, dim1);
+    break;
+  default:
+    TEST_FAIL_MESSAGE_FORMATTED("unknown from_layout %d", from_layout);
+  }
+
+  if (!is_concat) {
+    status = zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
+  } else {
+    if (from_layout == ZDNN_2DS) {
+      status = zdnn_generate_transformed_desc_concatenated(
+          &pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_BIASES | PREV_LAYER_NONE,
+          &tfrmd_desc);
+
+    } else if (from_layout == ZDNN_3DS) {
+      status = zdnn_generate_transformed_desc_concatenated(
+          &pre_tfrmd_desc, RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_NONE,
+          &tfrmd_desc);
+    } else {
+      // error test: caller will attempt to do is_concat = true with something
+      // other than 2DS/3DS
+      status = zdnn_generate_transformed_desc_concatenated(
+          &pre_tfrmd_desc,
+          RNN_TYPE_LSTM | USAGE_HIDDEN_WEIGHTS | PREV_LAYER_UNI, &tfrmd_desc);
+    }
+  }
+
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == exp_status,
+      "zdnn_generate_transformed_desc(_concatenated)() returned "
+      "status %08x \"%s\" but expected %08x \"%s\"",
+      status, zdnn_get_status_message(status), exp_status,
+      zdnn_get_status_message(exp_status));
+
+  if (exp_status == ZDNN_OK) {
+    TEST_ASSERT_MESSAGE_FORMATTED(
+        tfrmd_desc.layout == exp_to_layout,
+        "transformed layout is not %s (%d), found %s (%d)",
+        get_data_layout_str(exp_to_layout), exp_to_layout,
+        get_data_layout_str(tfrmd_desc.layout), tfrmd_desc.layout);
+  }
+}
+
+void verify_2ds_transformed_layout_normal() {
+  verify_transformed_layout(ZDNN_2DS, false, 9999, 9999, 1, 1, ZDNN_NHWC,
+                            ZDNN_OK);
+}
+
+void verify_2ds_transformed_layout_concat() {
+  verify_transformed_layout(ZDNN_2DS, true, 9999, 9999, 1, 1, ZDNN_FICO,
+                            ZDNN_OK);
+}
+
+void verify_3ds_transformed_layout_normal() {
+  verify_transformed_layout(ZDNN_3DS, false, 9999, 1, 1, 1, ZDNN_NHWC, ZDNN_OK);
+}
+
+void verify_3ds_transformed_layout_concat() {
+  verify_transformed_layout(ZDNN_3DS, true, 9999, 1, 1, 1, ZDNN_FICO, ZDNN_OK);
+}
+
+void verify_4ds_transformed_layout_normal() {
+  verify_transformed_layout(ZDNN_4DS, false, 1, 1, 1, 1, ZDNN_NHWC, ZDNN_OK);
+}
+
+void verify_4ds_transformed_layout_concat_fail() {
+  // exp_to_layout does not matter, supposed to error out
+  verify_transformed_layout(ZDNN_4DS, true, 1, 1, 1, 1, ZDNN_NHWC,
+                            ZDNN_INVALID_LAYOUT);
+}
+
 // ------------------------------------------------------------------------------------------------
 
 int main(void) {
@@ -398,6 +487,13 @@ int main(void) {
   RUN_TEST_ALL_TFRMD_DATATYPES(format_kernel_layout_notagree_fail);
   RUN_TEST_ALL_TFRMD_DATATYPES(format_feature_layout_undefined_fail);
   RUN_TEST_ALL_TFRMD_DATATYPES(format_kernel_layout_undefined_fail);
+
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_2ds_transformed_layout_normal);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_2ds_transformed_layout_concat);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_3ds_transformed_layout_normal);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_3ds_transformed_layout_concat);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_4ds_transformed_layout_normal);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_4ds_transformed_layout_concat_fail);
 
   RUN_TEST_ALL_DATATYPES(test_slicing_specified_buffer);
   RUN_TEST_ALL_DATATYPES(test_slicing_fail_input_has_only_one_dim4);

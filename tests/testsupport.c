@@ -40,81 +40,153 @@ float ZERO_ARRAY[1] = {0};
 // Custom FP tolerance for tests to set and use, if needed
 fp_tolerance tol_bfloat = {0, 0}, tol_fp16 = {0, 0}, tol_fp32 = {0, 0};
 
+zdnn_concat_info prev_layers[NUM_PREV_LAYERS] = {PREV_LAYER_UNI,
+                                                 PREV_LAYER_BIDIR};
+zdnn_concat_info biases_usages[NUM_BIASES_USAGES] = {USAGE_BIASES,
+                                                     USAGE_HIDDEN_BIASES};
+zdnn_concat_info no_vconcat_infos[NUM_NO_VCONCAT_INFOS] = {
+    PREV_LAYER_UNI | USAGE_HIDDEN_WEIGHTS,
+    PREV_LAYER_BIDIR | USAGE_HIDDEN_WEIGHTS,
+    PREV_LAYER_UNI | USAGE_WEIGHTS,
+};
+
 // Generate size_t offset array based on dimensions of ztensor.
-void quick_generate_offsets(zdnn_ztensor *ztensor, uint64_t total_elements,
-                            uint8_t num_concats, uint64_t elements_per_concat,
-                            size_t *offsets) {
+//
+// NOTE: when transformed dim1 is > 64, dim3 can not be > 1
+void quick_generate_offsets(zdnn_ztensor *ztensor, size_t *offsets) {
 
-  if (ztensor->transformed_desc->layout == ZDNN_BIDIR_OUTPUT) {
-    TEST_FAIL_MESSAGE_FORMATTED(
-        "does not support %s layout. Refactoring is required to get offsets to "
-        "return correctly when there are multiple batches.",
-        get_data_layout_str(ZDNN_BIDIR_OUTPUT));
-  }
+  uint64_t total_elements;
 
-  uint32_t dim2, dim1;
-  if (ztensor->pre_transformed_desc->layout == ZDNN_2DS ||
-      ztensor->pre_transformed_desc->layout == ZDNN_3DS) {
-    // Use transformed_desc due to dimension promotion in these layouts
-    dim2 = ztensor->transformed_desc->dim2;
-    dim1 = ztensor->transformed_desc->dim1;
+  // fail the testcase right now if dim1 > 64 && dim3 > 1
+  // the e1_offset_template[i] = <...> loop doesn't handle that case
+
+  TEST_ASSERT_MESSAGE_FORMATTED(!(ztensor->transformed_desc->dim3 > 1 &&
+                                  ztensor->transformed_desc->dim1 > 64),
+                                "incorrect quick_generate_offsets() usage: "
+                                "dim3 (%u) > 1 and dim1 (%u) > 64",
+                                ztensor->transformed_desc->dim3,
+                                ztensor->transformed_desc->dim1);
+
+  if ((ztensor->transformed_desc->layout == ZDNN_ZRH) ||
+      (ztensor->transformed_desc->layout == ZDNN_FICO) ||
+      (ztensor->transformed_desc->layout == ZDNN_BIDIR_ZRH) ||
+      (ztensor->transformed_desc->layout == ZDNN_BIDIR_FICO)) {
+    total_elements = get_num_elements(ztensor, ELEMENTS_PRE_ALL_GATES);
   } else {
-    dim2 = (get_data_layout_dims(ztensor->pre_transformed_desc->layout) >= 2)
-               ? ztensor->pre_transformed_desc->dim2
-               : 1;
-    dim1 = ztensor->pre_transformed_desc->dim1;
+    total_elements = get_num_elements(ztensor, ELEMENTS_PRE);
   }
 
-  // Build an offset template for e1 elements. These offsets will be added to
-  // the e1 loop when determining correct offsets for test cases.
-  size_t e1_offset_template[dim1];
-  for (uint32_t i = 0; i < dim1; i++) {
-    e1_offset_template[i] =
-        ((i / AIU_2BYTE_CELLS_PER_STICK) * CEIL(dim2, AIU_STICKS_PER_PAGE) *
-         AIU_PAGESIZE_IN_BYTES) +
-        (i % AIU_2BYTE_CELLS_PER_STICK) * get_data_type_size(ZDNN_DLFLOAT16);
-  }
-
-  // Concatenated trfmd->dim1 includes padding so get the pre-padded dim1.
-  // Non-concatenated this will be equal to dim1.
+  // Concatenated trfmd->dim1/dim2 includes padding so get the pre-padded ones.
+  // Non-concatenated this will be equal to pre-trfmd's.
   uint32_t unpadded_dim1 = ztensor->pre_transformed_desc->dim1;
-  // Concatenated 2DS/3DS tensors are "sliced" along dim4
-  uint32_t num_slices = ztensor->transformed_desc->dim4;
-  LOG_TRACE("elements_per_concat = %d, num_slices = %d", elements_per_concat,
-            num_slices);
+  uint32_t unpadded_dim2;
 
-  uint64_t offset_i = 0;
-  size_t e1_offset_start = 0;
-  // Generate an offset for each element. Note: For concatenated ztensors,
-  // padding elements will not be included in the offsets.
-  while (unpadded_dim1 && offset_i < total_elements) {
-    // Add relative e1 template to current stick start to get target offset.
-    for (uint32_t dim1_i = 0; dim1_i < unpadded_dim1; dim1_i++) {
-      offsets[offset_i] = e1_offset_start + e1_offset_template[dim1_i];
-      LOG_TRACE("offsets[%d] = %+08x", offset_i, offsets[offset_i]);
-      offset_i++;
+  // Offset template for e1 elements. These offsets will be added to the e1 loop
+  // when determining correct offsets for test cases.
+  size_t e1_offset_template[unpadded_dim1];
+
+  if (ztensor->transformed_desc->layout != ZDNN_BIDIR_FICO &&
+      ztensor->transformed_desc->layout != ZDNN_BIDIR_ZRH) {
+
+    // transformed_desc->dim2 has the correct value we need
+    unpadded_dim2 = ztensor->transformed_desc->dim2;
+
+    for (uint32_t i = 0; i < unpadded_dim1; i++) {
+      // build an offset template for the unpadded_dim1 number of elements.  all
+      // eventual offsets are going to follow that pattern
+      e1_offset_template[i] =
+          ((i / AIU_2BYTE_CELLS_PER_STICK) *
+           CEIL(unpadded_dim2, AIU_STICKS_PER_PAGE) * AIU_PAGESIZE_IN_BYTES) +
+          (i % AIU_2BYTE_CELLS_PER_STICK) * get_data_type_size(ZDNN_DLFLOAT16);
+      LOG_TRACE("e1_offset_template[%d] = %d", i, e1_offset_template[i]);
     }
 
-    // The e1 templates can skip over whole sticks if the number of elements is
-    // larger than a single stick. Once the current dim1 row is fully processed,
-    // reset e1_offset_start to jump back to the start of the first empty stick.
-    e1_offset_start += AIU_2BYTE_CELLS_PER_STICK * AIU_2BYTE_CELL_SIZE;
-    LOG_TRACE("Jumped to start of first empty stick = %+08x", e1_offset_start);
+    uint64_t offset_i = 0;
+    size_t e1_offset_start = 0;
 
-    // Jump e1_offset_start to the start of the next unused page as soon as...
-    if (
-        // all dim1 elements for each dim2 are processed
-        (offset_i % (dim1 * dim2) == 0) ||
-        // or all elements of the current dim4 "slice" are processed.
-        (num_concats > 1 &&
-         offset_i % (elements_per_concat / num_slices) == 0)) {
-      // We already incremented offset_i so use previous offset_i to determine
-      // current page number.
+    // Generate an offset for each element. Note: For concatenated ztensors,
+    // padding elements will not be included in the offsets.
+    while (unpadded_dim1 && offset_i < total_elements) {
+      // Add relative e1 template to current stick start to get target offset.
+      for (uint32_t dim1_i = 0; dim1_i < unpadded_dim1; dim1_i++) {
+        offsets[offset_i] = e1_offset_start + e1_offset_template[dim1_i];
+        LOG_TRACE("offsets[%d] = %+08x", offset_i, offsets[offset_i]);
+        offset_i++;
+      }
+
+      // Jump e1_offset_start to the start of the next unused page as soon as
+      // all dim1 elements for each dim2 are processed
+      if (offset_i % (unpadded_dim2 * unpadded_dim1) == 0) {
+        // We already incremented offset_i so use previous offset_i to determine
+        // current page number.
+        uint32_t curr_page_num = offsets[offset_i - 1] / AIU_PAGESIZE_IN_BYTES;
+        // Reset the e1 offset start to start of next page.
+        e1_offset_start = (curr_page_num + 1) * AIU_PAGESIZE_IN_BYTES;
+        LOG_TRACE("Jumped to start of next page location = %+08x",
+                  e1_offset_start);
+      } else {
+        // The e1 templates can skip over whole sticks if the number of elements
+        // is larger than a single stick. Once the current dim1 row is fully
+        // processed, reset e1_offset_start to jump back to the start of the
+        // first empty stick.
+        e1_offset_start += AIU_2BYTE_CELLS_PER_STICK * AIU_2BYTE_CELL_SIZE;
+        LOG_TRACE("Jumped to start of first empty stick = %+08x",
+                  e1_offset_start);
+      }
+    }
+  } else {
+
+    // transformed_desc->dim2 is vertically concatenated, so instead grab the
+    // actual dim2 from pre_transformed_desc
+    unpadded_dim2 = ztensor->pre_transformed_desc->dim2;
+
+    // number of pages needed to store a single c-stick (max:
+    // AIU_2BYTE_CELLS_PER_STICK) worth of elements
+    uint32_t num_pages_vertical =
+        PADDED(unpadded_dim2 / 2) / AIU_STICKS_PER_PAGE * 2;
+
+    for (uint32_t i = 0; i < unpadded_dim1; i++) {
+      e1_offset_template[i] =
+          ((i / AIU_2BYTE_CELLS_PER_STICK) * num_pages_vertical *
+           AIU_PAGESIZE_IN_BYTES) +
+          (i % AIU_2BYTE_CELLS_PER_STICK) * get_data_type_size(ZDNN_DLFLOAT16);
+      LOG_TRACE("e1_offset_template[%d] = %d", i, e1_offset_template[i]);
+    }
+
+    uint64_t offset_i = 0;
+    size_t e1_offset_start = 0;
+    size_t e1_offset_start_slice = 0;
+
+    while (unpadded_dim1 && offset_i < total_elements) {
+      // build an offset template like the other case
+      for (uint32_t dim1_i = 0; dim1_i < unpadded_dim1; dim1_i++) {
+        offsets[offset_i] = e1_offset_start + e1_offset_template[dim1_i];
+        LOG_TRACE("offsets[%d] = %+08x", offset_i, offsets[offset_i]);
+        offset_i++;
+      }
+
       uint32_t curr_page_num = offsets[offset_i - 1] / AIU_PAGESIZE_IN_BYTES;
-      // Reset the e1 offset start to start of next page.
-      e1_offset_start = (curr_page_num + 1) * AIU_PAGESIZE_IN_BYTES;
-      LOG_TRACE("Jumped to start of next page location = %+08x",
-                e1_offset_start);
+      if (offset_i % (unpadded_dim2 * unpadded_dim1) == 0) {
+        // when we're done with this slice, reset the e1 offset start.  the new
+        // page number is always in multiples of 2 due to vertical concatenation
+        e1_offset_start =
+            CEIL(curr_page_num + 1, 2) * 2 * AIU_PAGESIZE_IN_BYTES;
+        // save the offset start of this new slice to jump back to later
+        e1_offset_start_slice = e1_offset_start;
+        LOG_TRACE("Jumped to start of new page location = %+08x",
+                  e1_offset_start);
+      } else if (offset_i % (unpadded_dim2 / 2 * unpadded_dim1) == 0) {
+        // when we're done with 1st half of dim2, reset e1_offset_start to
+        // beginning of this slice + half num_pages_vertical worth of bytes
+        e1_offset_start = e1_offset_start_slice +
+                          num_pages_vertical / 2 * AIU_PAGESIZE_IN_BYTES;
+        LOG_TRACE("Jumped back to start of 2nd half = %+08x", e1_offset_start);
+      } else {
+        // go to the next c-stick
+        e1_offset_start += AIU_2BYTE_CELLS_PER_STICK * AIU_2BYTE_CELL_SIZE;
+        LOG_TRACE("Jumped to start of first empty stick = %+08x",
+                  e1_offset_start);
+      }
     }
   }
 }
@@ -152,26 +224,26 @@ size_t *alloc_offsets(zdnn_ztensor *ztensor, offset_mode mode,
     TEST_FAIL_MESSAGE("path only valid for file mode");
   }
 
-  uint64_t elements_per_concat, total_elements;
+  uint64_t total_elements;
 
-  uint8_t num_concats =
-      get_data_layout_num_gates(ztensor->transformed_desc->layout);
-  if (!num_concats)
-    num_concats = 1; // simply means layout isn't a concat type
+  if ((ztensor->transformed_desc->layout == ZDNN_ZRH) ||
+      (ztensor->transformed_desc->layout == ZDNN_FICO) ||
+      (ztensor->transformed_desc->layout == ZDNN_BIDIR_ZRH) ||
+      (ztensor->transformed_desc->layout == ZDNN_BIDIR_FICO)) {
+    total_elements = get_num_elements(ztensor, ELEMENTS_PRE_ALL_GATES);
+  } else {
+    total_elements = get_num_elements(ztensor, ELEMENTS_PRE);
+  }
 
-  elements_per_concat = get_num_elements(ztensor, ELEMENTS_CONCAT_SINGLE);
-  total_elements = get_num_elements(ztensor, ELEMENTS_CONCAT_WO_PAD);
-  LOG_TRACE("ztensor->transformed_desc->layout = %s, elements_per_concat = "
-            "%ld, num_concats = %d, total_elements = %ld",
+  LOG_TRACE("ztensor->transformed_desc->layout = %s, total_elements = %ld",
             get_data_layout_str(ztensor->transformed_desc->layout),
-            elements_per_concat, num_concats, total_elements);
+            total_elements);
 
   size_t *offsets = malloc(total_elements * sizeof(size_t));
 
   switch (mode) {
   case QUICK_OFFSETS: {
-    quick_generate_offsets(ztensor, total_elements, num_concats,
-                           elements_per_concat, offsets);
+    quick_generate_offsets(ztensor, offsets);
     break;
   }
   case FILE_OFFSETS: {
@@ -193,6 +265,51 @@ size_t *alloc_offsets(zdnn_ztensor *ztensor, offset_mode mode,
   return offsets;
 }
 
+size_t *alloc_rnn_output_offsets(const zdnn_ztensor *ztensor) {
+
+  // basically the result is like (dim4 * dim3) pieces of ZDNN_2D (dim2, dim1)
+  // offsets stitched together, and everytime we replicate a piece we add some
+  // offset to it
+  zdnn_tensor_desc tmp_p_desc, tmp_t_desc;
+  zdnn_ztensor tmp_ztensor;
+
+  // create a ZDNN_2D (dim2, dim1) tensor and get the offsets of that via
+  // alloc_offsets()
+  zdnn_init_pre_transformed_desc(ZDNN_2D, test_datatype, &tmp_p_desc,
+                                 ztensor->pre_transformed_desc->dim2,
+                                 ztensor->pre_transformed_desc->dim1);
+  zdnn_generate_transformed_desc(&tmp_p_desc, &tmp_t_desc);
+
+  zdnn_status status =
+      zdnn_init_ztensor_with_malloc(&tmp_p_desc, &tmp_t_desc, &tmp_ztensor);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK, "zdnn_init_ztensor_with_malloc() failed status = %08x",
+      status);
+
+  size_t *piece_offsets = alloc_offsets(&tmp_ztensor, QUICK_OFFSETS, NULL);
+
+  // each replication is seperated by this many bytes
+  uint64_t piece_size = zdnn_getsize_ztensor(&tmp_t_desc);
+
+  size_t *offsets = malloc(get_num_elements(ztensor, ELEMENTS_PRE_SINGLE_GATE) *
+                           sizeof(size_t));
+
+  // replicate the offsets dim4*dim3 times
+  uint64_t c = 0;
+  for (uint32_t i = 0; i < ztensor->pre_transformed_desc->dim4 *
+                               ztensor->pre_transformed_desc->dim3;
+       i++) {
+    for (uint32_t j = 0; j < ztensor->pre_transformed_desc->dim2 *
+                                 ztensor->pre_transformed_desc->dim1;
+         j++) {
+      offsets[c] = piece_size * i + piece_offsets[j];
+      c++;
+    }
+  }
+
+  return offsets;
+}
 /// Creates a data buffer with the provided float values converted to the
 /// specified type
 ///
@@ -275,22 +392,21 @@ void *alloc_and_convert_float_values(zdnn_data_types type, uint64_t num_values,
 /// \param[in] shape array of dimensions
 /// \param[in] pre_tfrmd_layout pre-transformed data layout
 /// \param[in] type data type
-/// \param[in] zdnn_ztensor_concat_type
+/// \param[in] zdnn_concat_info
 ///                     indicates the type of concatenation to use
-///                     This indirectly sets the transformed ztensor layout and
-///                     the number of values arrays to expect.
+///                     This indirectly sets the transformed ztensor layout
+///                     and the number of values arrays to expect.
 /// \param[in] repeat_first_value if true, ztensor will be poplulated with
 ///                               values[0]
-/// \param[in] ... 0, 1, 3, or 4 float arrays with values. (0 for
-///            CONCAT_BIDIR_OUTPUT, 1 for NO_CONCAT, 3 for CONCAT_GRU, or 4 for
-///            CONCAT_LSTM)
+/// \param[in] ... float array(s) to tensor data or gates data.
+///                1 array for NO_CONCAT, 3 arrays for GRU, 4 arrays for LSTM
 ///
 /// \return zdnn_ztensor* Pointer to a malloc'd ztensor with transformed data
 ///
 zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
                                         zdnn_data_layouts pre_tfrmd_layout,
                                         zdnn_data_types type,
-                                        unsigned char zdnn_ztensor_concat_type,
+                                        zdnn_concat_info info,
                                         int repeat_first_value, ...) {
   zdnn_status status = GENERAL_TESTCASE_FAILURE;
 
@@ -314,6 +430,7 @@ zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
                                    shape[0], shape[1], shape[2]);
     break;
   case (ZDNN_4D):
+  case (ZDNN_4DS):
   case (ZDNN_NHWC):
   case (ZDNN_NCHW):
   case (ZDNN_HWCK):
@@ -331,31 +448,24 @@ zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
   // Create the transformed description
   zdnn_tensor_desc *tfrmd_desc =
       (zdnn_tensor_desc *)malloc(sizeof(zdnn_tensor_desc));
-  switch (zdnn_ztensor_concat_type) {
-  case CONCAT_LSTM:
-  case CONCAT_GRU:
-  case CONCAT_BIDIR_OUTPUT:
-    status = zdnn_generate_transformed_desc_concatenated(
-        pre_tfrmd_desc, zdnn_ztensor_concat_type, tfrmd_desc);
-    break;
-  case NO_CONCAT:
+
+  if (info == NO_CONCAT) {
     status = zdnn_generate_transformed_desc(pre_tfrmd_desc, tfrmd_desc);
-    break;
-  default:
-    TEST_FAIL_MESSAGE_FORMATTED(
-        "I'm dreadfully sorry but I don't seem to know how to deal with a %d "
-        "zdnn_ztensor_concat_type. Could you teach me?",
-        zdnn_ztensor_concat_type);
-    break;
+    TEST_ASSERT_MESSAGE_FORMATTED(
+        status == ZDNN_OK,
+        "zdnn_generate_transformed_desc failed (status = %08x)", status);
+  } else {
+    status = zdnn_generate_transformed_desc_concatenated(pre_tfrmd_desc, info,
+                                                         tfrmd_desc);
+    TEST_ASSERT_MESSAGE_FORMATTED(status == ZDNN_OK,
+                                  "zdnn_generate_transformed_desc_concatenated "
+                                  "with info %08x failed (status = %08x)",
+                                  info, status);
   }
-  TEST_ASSERT_MESSAGE_FORMATTED(
-      status == ZDNN_OK,
-      "zdnn_generate_transformed_desc with zdnn_ztensor_concat_type %d failed "
-      "(status = %08x)",
-      zdnn_ztensor_concat_type, status);
 
   // Create the ztensor with malloc'd buffer pointer
   zdnn_ztensor *ztensor = (zdnn_ztensor *)malloc(sizeof(zdnn_ztensor));
+
   status = zdnn_init_ztensor_with_malloc(pre_tfrmd_desc, tfrmd_desc, ztensor);
   TEST_ASSERT_MESSAGE_FORMATTED(
       status == ZDNN_OK, "zdnn_init_ztensor_with_malloc failed (status = %08x)",
@@ -364,73 +474,54 @@ zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
   // Prepare to iterate over the passed in values arrays
   va_list values_list;
   va_start(values_list, repeat_first_value);
-  uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_CONCAT_SINGLE);
+  uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_PRE_SINGLE_GATE);
 
-  // Create ztensor_list to handle the multple input ztensors passed in.
-  switch (zdnn_ztensor_concat_type) {
-  case CONCAT_LSTM: {
-    void *forget_gate_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
-    void *input_gate_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
-    void *cell_gate_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
-    void *output_gate_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
-
-    // Stickify ztensor using data that we type converted above
-    status = zdnn_transform_ztensor(ztensor, forget_gate_data, input_gate_data,
-                                    cell_gate_data, output_gate_data);
-    TEST_ASSERT_MESSAGE_FORMATTED(
-        status == ZDNN_OK,
-        "zdnn_transform_ztensor (FICO) failed (status =%08x)", status);
-
-    // Cleanup gate data buffers
-    free(forget_gate_data);
-    free(input_gate_data);
-    free(cell_gate_data);
-    free(output_gate_data);
-    break;
-  }
-  case CONCAT_GRU: {
-    void *update_gate_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
-    void *reset_gate_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
-    void *hidden_state_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
-
-    // Stickify ztensor using data that we type converted above
-    status = zdnn_transform_ztensor(ztensor, update_gate_data, reset_gate_data,
-                                    hidden_state_data);
-    TEST_ASSERT_MESSAGE_FORMATTED(
-        status == ZDNN_OK,
-        "zdnn_transform_ztensor (ZRH) failed (status = %08x)", status);
-    free(update_gate_data);
-    free(reset_gate_data);
-    free(hidden_state_data);
-    break;
-  }
-  case CONCAT_BIDIR_OUTPUT: {
-    // For testing outputs, we want to be able initialize these ztensors to
+  if (pre_tfrmd_layout == ZDNN_4DS) {
+    // For testing outputs, we want to be able initialize rnn output ztensors to
     // zeros but we don't need to support setting arbitrary values
     memset(ztensor->buffer, 0, ztensor->buffer_size);
-    break;
-  }
-  default: {
-    void *values_data = alloc_and_convert_float_values(
-        type, num_elements, repeat_first_value, va_arg(values_list, float *));
+  } else {
+    uint32_t num_things;
+
+    // Find out how many things to stickify
+    if (CONCAT_RNN_TYPE(info) == RNN_TYPE_LSTM) {
+      num_things = get_func_code_num_gates(NNPA_LSTMACT);
+    } else if (CONCAT_RNN_TYPE(info) == RNN_TYPE_GRU) {
+      num_things = get_func_code_num_gates(NNPA_GRUACT);
+    } else {
+      num_things = 1;
+      // the NO_CONCAT case, so we have 1 thing
+    }
+
+    void *values_data[num_things];
+
+    // Convert that many things
+    for (uint32_t i = 0; i < num_things; i++) {
+      values_data[i] = alloc_and_convert_float_values(
+          type, num_elements, repeat_first_value, va_arg(values_list, float *));
+    }
 
     // Stickify ztensor using data that we type converted above
-    status = zdnn_transform_ztensor(ztensor, values_data);
+    if (CONCAT_RNN_TYPE(info) == RNN_TYPE_LSTM) {
+      status = zdnn_transform_ztensor(ztensor, values_data[0], values_data[1],
+                                      values_data[2], values_data[3]);
+    } else if (CONCAT_RNN_TYPE(info) == RNN_TYPE_GRU) {
+      status = zdnn_transform_ztensor(ztensor, values_data[0], values_data[1],
+                                      values_data[2]);
+    } else {
+      status = zdnn_transform_ztensor(ztensor, values_data[0]);
+    }
+
     TEST_ASSERT_MESSAGE_FORMATTED(
         status == ZDNN_OK,
         "zdnn_transform_ztensor failed with status %08x \"%s\"", status,
         zdnn_get_status_message(status));
-    free(values_data);
-    break;
+
+    for (uint32_t i = 0; i < num_things; i++) {
+      free(values_data[i]);
+    }
   }
-  }
+
   va_end(values_list);
   return ztensor;
 }
@@ -441,6 +532,7 @@ zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
 
 // used to get around "breaking strict-aliasing rules"
 typedef union float_int_u {
+  // cppcheck-suppress unusedStructMember
   float f;
   int i;
 } float_int_u;
@@ -604,15 +696,9 @@ void assert_ztensor_values_adv(zdnn_ztensor *ztensor,
   case ZDNN_3D:
   case ZDNN_3DS:
   case ZDNN_4D:
+  case ZDNN_4DS:
   case ZDNN_NHWC:
-    num_elements = get_num_elements(ztensor, ELEMENTS_ALL);
-    break;
-  case ZDNN_BIDIR_OUTPUT:
-    TEST_FAIL_MESSAGE_FORMATTED(
-        "does not support %s layout as we don't support unstickifying "
-        "concatenated ztensors. Use assert_bidir_output() instead.",
-        get_data_layout_str(ztensor->transformed_desc->layout));
-
+    num_elements = get_num_elements(ztensor, ELEMENTS_PRE);
     break;
   case ZDNN_FICO:
   case ZDNN_ZRH:
@@ -838,7 +924,7 @@ unsigned char *create_and_fill_random_fp_data(zdnn_ztensor *ztensor) {
   // size for everything but concat cases. For concat tests that use this, we
   // want the single concat size specifically because we generate the data for
   // each concat (RNN gate) separately.
-  uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_CONCAT_SINGLE);
+  uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_PRE_SINGLE_GATE);
   zdnn_data_types dtype = ztensor->pre_transformed_desc->type;
   void *data = malloc(num_elements * get_data_type_size(dtype));
 
@@ -988,33 +1074,71 @@ void fill_all_with_zero_float_array(int size, float arr[]) {
   }
 }
 
-int redir_stdstream_to_buf(char *buf, int stream_num) {
-  // save the state
-  int stdstream_save = dup(stream_num);
+int stdout_pipe[2];
+int stderr_pipe[2];
+int saved_stdout;
+int saved_stderr;
 
-  FILE *stream_to_mod = (stream_num == STDOUT_FILENO) ? stdout : stderr;
+void stdout_to_pipe() {
+  // save stream for display later
+  saved_stdout = dup(STDOUT_FILENO);
+  fflush(stdout);
 
-  fflush(stream_to_mod);
+  // make a pipe
+  if (pipe(stdout_pipe) != 0) {
+    TEST_FAIL_MESSAGE("Can't open pipe()");
+  }
 
-  // mute the stream so nothing goes to the terminal
-  freopen("/dev/null", "a", stream_to_mod);
+  // redirect to pipe
+  dup2(stdout_pipe[1], STDOUT_FILENO);
+  close(stdout_pipe[1]);
 
-  // use "buf" as the new stdout buffer
-  setbuf(stream_to_mod, buf);
-
-  return stdstream_save;
+  return;
 }
 
-void restore_stdstream(int stdout_saved, int stream_num) {
-  FILE *stream_to_mod = (stream_num == STDOUT_FILENO) ? stdout : stderr;
+void stderr_to_pipe() {
+  // save stream for display later
+  saved_stderr = dup(STDERR_FILENO);
+  fflush(stderr);
 
-  freopen("/dev/null", "a", stream_to_mod);
+  // make a pipe
+  if (pipe(stderr_pipe) != 0) {
+    TEST_FAIL_MESSAGE("Can't open pipe()");
+  }
 
-  // restore state
-  dup2(stdout_saved, stream_num);
+  // redirect to pipe
+  dup2(stderr_pipe[1], STDERR_FILENO);
+  close(stderr_pipe[1]);
 
-  // restore back to standard stream buffer
-  setbuf(stream_to_mod, NULL);
+  return;
+}
+
+void restore_stdout(char *buf, int buf_size) {
+  // the read() below blocks if nothing to read, so printf something
+  fprintf(stdout, " ");
+
+  fflush(stdout);
+
+  // read from pipe into buffer
+  read(stdout_pipe[0], buf, buf_size);
+  close(stdout_pipe[0]);
+
+  // restore stream to display
+  dup2(saved_stdout, STDOUT_FILENO);
+}
+
+void restore_stderr(char *buf, int buf_size) {
+  // the read() below blocks if nothing to read, so printf something
+  fprintf(stderr, "x");
+
+  fflush(stderr);
+
+  // read from pipe into buffer
+  read(stderr_pipe[0], buf, buf_size);
+  close(stderr_pipe[0]);
+
+  // restore stream to display
+  dup2(saved_stderr, STDERR_FILENO);
 }
 
 /**********************************************************
@@ -1031,8 +1155,8 @@ zdnn_data_types tfrmd_types[NUM_TFRMD_TYPES] = {ZDNN_DLFLOAT16};
 // testing
 zdnn_data_types test_datatype = 128; // set initial value to something invalid
 
-// Wrapper of Unity's UnityDefaultTestRun() that runs func() against all input
-// data-types.  Uses CamelCase intentionally to align with Unity
+// Wrapper of Unity's UnityDefaultTestRun() that runs func() against all
+// input data-types.  Uses CamelCase intentionally to align with Unity
 void UnityDefaultTestRunWithDataType(UnityTestFunction Func,
                                      const char *FuncName,
                                      const int FuncLineNum) {

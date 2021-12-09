@@ -36,4 +36,4 @@ $(OBJDIR)/%.expo.o: %.cpp
 ${SODIR}/${LIBNAME}.x: $(SODIR)/$(LIBNAME).so
 # xlc generates the .x file while linking .so file, but outputs it to
 # current directory instead of SODIR.
-	mv ${LIBNAME}.x ${SODIR}/${LIBNAME}.x 
+	mv ${LIBNAME}.x ${SODIR}/${LIBNAME}.x

@@ -93,9 +93,9 @@ uint16_t cnvt_1_bfloat_to_dlf16(uint16_t a);
 /*  cnvt_1_dlf16_to_bfloat */
 uint16_t cnvt_1_dlf16_to_bfloat(uint16_t a);
 
-float cnvt_1_bfloat_to_fp32(uint16_t f);
+float cnvt_1_bfloat_to_fp32(uint16_t a);
 
-float cnvt_1_fp16_to_fp32(uint16_t f);
+float cnvt_1_fp16_to_fp32(uint16_t a);
 
 uint16_t cnvt_1_fp32_to_bfloat(float a);
 

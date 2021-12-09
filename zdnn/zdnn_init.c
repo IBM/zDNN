@@ -167,9 +167,8 @@ static inline int check_bitfield(uint8_t *bitfield, int bitno) {
 bool zdnn_is_nnpa_installed() {
 #ifndef __MVS__
   int nnpa_supported;
-  unsigned char *facilities = alloca(STFLE_LENGTH);
+  unsigned char facilities[STFLE_LENGTH] = {0};
   int cc;
-  memset(facilities, 0, STFLE_LENGTH);
   cc = invoke_stfle(facilities);
 
   if (cc) {
@@ -179,10 +178,8 @@ bool zdnn_is_nnpa_installed() {
 
   nnpa_supported = check_bitfield(facilities, STFLE_NNPA);
 
-  if (nnpa_supported)
-    LOG_INFO("Hardware NNPA support available", NO_ARG);
-  else
-    LOG_INFO("Hardware NNPA support not available", NO_ARG);
+  LOG_INFO("Hardware NNPA support available - %s",
+           nnpa_supported ? "TRUE" : "FALSE");
 
   return nnpa_supported;
 #else

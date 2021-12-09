@@ -68,7 +68,7 @@ void tearDown(void) {}
  */
 void verify_populate_descriptor(nnpa_tensor_descriptor *descriptor,
                                 zdnn_ztensor *ztensor) {
-  LOG_DEBUG("Verifying descriptor", NULL);
+  LOG_DEBUG("Verifying descriptor", NO_ARG);
   TEST_ASSERT_EQUAL_UINT8_MESSAGE(ztensor->transformed_desc->format,
                                   descriptor->data_layout_format,
                                   "Incorrect data layout format.");
