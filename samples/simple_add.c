@@ -95,6 +95,14 @@ int main(int argc, char *argv[]) {
     printf("out element %" PRIu64 " %f\n", i, ((float *)data_out)[i]);
   }
 
+  // Free zTensors
+  status = zdnn_free_ztensor_buffer(&ztensor_a);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&ztensor_b);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&ztensor_out);
+  assert(status == ZDNN_OK);
+
   free(data1);
   free(data2);
   free(data_out);
