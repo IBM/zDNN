@@ -285,10 +285,10 @@ typedef struct zdnn_ztensor {
   char reserved[31];   // not currently used, should contain zeros.
 } zdnn_ztensor;
 
-#define ZDNN_VERSION "0.4.0"
-#define ZDNN_VERNUM 0x000400 // 0x[major][minor][patch]
-#define ZDNN_VER_MAJOR 0
-#define ZDNN_VER_MINOR 4
+#define ZDNN_VERSION "1.0.0"
+#define ZDNN_VERNUM 0x010000 // 0x[major][minor][patch]
+#define ZDNN_VER_MAJOR 1
+#define ZDNN_VER_MINOR 0
 #define ZDNN_VER_PATCH 0
 
 // -----------------------------------------------------------------------------
