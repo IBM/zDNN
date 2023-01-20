@@ -14,10 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+.DEFAULT_GOAL := all
+
 .PHONY: all
 all: config.make
 	$(MAKE) all -C zdnn
 	$(MAKE) all -C tests
+
+.PHONY: help
+help:
+	@echo "Available targets:"
+	@egrep '^[a-z]+:' Makefile | cut -d: -f1 | sort | xargs -n 1 echo "    "
 
 .PHONY: build
 build: config.make
@@ -44,6 +51,5 @@ install: build
 config.make:
 # Use this additional check to allow make invocation "make -B build" in jenkins.
 ifeq ($(wildcard config.make),)
-	@echo "Please use configure first";
-	exit 1
+	$(error "Please use configure first")
 endif

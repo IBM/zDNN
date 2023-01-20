@@ -7,7 +7,7 @@
 
 ## Version
 
-0.4.0
+1.0.0
 
 ## Table of Contents <a id="TOC"></a>
 
@@ -161,10 +161,10 @@ Include Files: `zdnn.h`
 [Back to Table of Contents](#TOC)
 
 ```
-#define ZDNN_VERSION "0.4.0"
-#define ZDNN_VERNUM 0x000400 // 0x[major][minor][patch]
-#define ZDNN_VER_MAJOR 0
-#define ZDNN_VER_MINOR 4
+#define ZDNN_VERSION "1.0.0"
+#define ZDNN_VERNUM 0x010000 // 0x[major][minor][patch]
+#define ZDNN_VER_MAJOR 1
+#define ZDNN_VER_MINOR 0
 #define ZDNN_VER_PATCH 0
 ```
 
@@ -2705,7 +2705,7 @@ the usage example section.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_2DS`.
   - Expects `zdnn_concat_info` having the following flags turned on:
     - `RNN_TYPE_LSTM`
-    - `USAGE_HIDDEN_WEIGHTS`
+    - `USAGE_BIASES`
     - Appropriate `PREV_LAYER` flag:
       - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
       - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
@@ -2724,7 +2724,7 @@ the usage example section.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
   - Expects `zdnn_concat_info` having the following flags turned on:
     - `RNN_TYPE_LSTM`
-    - `USAGE_BIASES`
+    - `USAGE_HIDDEN_WEIGHTS`
     - Appropriate `PREV_LAYER` flag:
       - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
       - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
@@ -2984,7 +2984,7 @@ the usage example section.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_2DS`.
   - Expects `zdnn_concat_info` having the following flags turned on:
     - `RNN_TYPE_GRU`
-    - `USAGE_HIDDEN_WEIGHTS`
+    - `USAGE_BIASES`
     - Appropriate `PREV_LAYER` flag:
       - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
       - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
@@ -3003,7 +3003,7 @@ the usage example section.
   - Expects `pre_transformed_desc->layout` to be `ZDNN_3DS`.
   - Expects `zdnn_concat_info` having the following flags turned on:
     - `RNN_TYPE_GRU`
-    - `USAGE_BIASES`
+    - `USAGE_HIDDEN_WEIGHTS`
     - Appropriate `PREV_LAYER` flag:
       - `PREV_LAYER_NONE` if `input` tensor is not from a previous RNN layer
       - `PREV_LAYER_UNI` if `input` tensor is uni-directional output from a
@@ -3695,6 +3695,14 @@ int main(int argc, char *argv[]) {
   for (uint64_t i = 0; i < num_elements; i++) {
     printf("out element %" PRIu64 " %f\n", i, ((float *)data_out)[i]);
   }
+
+  // Free zTensors
+  status = zdnn_free_ztensor_buffer(&ztensor_a);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&ztensor_b);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&ztensor_out);
+  assert(status == ZDNN_OK);
 
   free(data1);
   free(data2);
