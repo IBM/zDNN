@@ -223,7 +223,7 @@ void gru_fwd_to_fwd() {
       0x3eba1ae9, 0x3dcca13b, 0x3edeb73c, 0x3e1b0164, 0x3e316c76, 0x3e5809ce,
       0x3eaea292, 0x3ec931ed};
 
-  zdnn_ztensor all_ts_out1 = *test_layer(
+  zdnn_ztensor *all_ts_out1 = test_layer(
       all_ts_out0, h01_shape, (void *)h01_values, weights1_shape,
       (void *)weights1_values, biases1_shape, (void *)biases1_values,
       hidden_weights1_shape, (void *)hidden_weights1_values,
@@ -396,7 +396,7 @@ void gru_fwd_to_bidir() {
       0x3f02832e, 0x3f97b462, 0x3e814796, 0x3f4e1d12, 0x3e7082c4, 0x3ea66204,
       0x3f147ff7, 0x3ebb4a06, 0x3f477b01, 0x3f2985fa};
 
-  zdnn_ztensor all_ts_out1 = *test_layer(
+  zdnn_ztensor *all_ts_out1 = test_layer(
       all_ts_out0, h01_shape, (void *)h01_values, weights1_shape,
       (void *)weights1_values, biases1_shape, (void *)biases1_values,
       hidden_weights1_shape, (void *)hidden_weights1_values,
@@ -618,7 +618,7 @@ void gru_bidir_to_bidir() {
       0x3f2e37ae, 0x3eea935e, 0xbe97bb49, 0x3eefdd22, 0x3f84dd69, 0x3f3c21fd,
       0x3f0577d9, 0xbceedc60, 0x3f1a0c27, 0xbd85eeb0};
 
-  zdnn_ztensor all_ts_out1 = *test_layer(
+  zdnn_ztensor *all_ts_out1 = test_layer(
       all_ts_out0, h01_shape, (void *)h01_values, weights1_shape,
       (void *)weights1_values, biases1_shape, (void *)biases1_values,
       hidden_weights1_shape, (void *)hidden_weights1_values,
@@ -803,7 +803,7 @@ void gru_bidir_to_fwd() {
       0x3ec71822, 0xbef39d98, 0xbf09c6e7, 0x3f1c7ff1, 0xbe53e20e, 0xbef9fb1e,
       0x3cfaaa80, 0x3e6a580a, 0x3ee7dd5b, 0xbf2cbac5};
 
-  zdnn_ztensor all_ts_out1 = *test_layer(
+  zdnn_ztensor *all_ts_out1 = test_layer(
       all_ts_out0, h01_shape, (void *)h01_values, weights1_shape,
       (void *)weights1_values, biases1_shape, (void *)biases1_values,
       hidden_weights1_shape, (void *)hidden_weights1_values,
