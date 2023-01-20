@@ -201,6 +201,8 @@ static void setup_internal_ztensors(uint8_t function_code, const uint32_t *nums,
 
   // Setup TS_FUSED which will point to a slice of FUSED which matches the
   // current timestep in the loop.
+  // Note: If TS is 0, it will result in ABEND. Pre-check will catch this if
+  // enabled.
   internal_ztens[TS_FUSED].pre_transformed_desc = NULL;
   internal_ztens[TS_FUSED].transformed_desc =
       &int_descs[RNN_IN_TSFUSED_BIASADD_DESC];

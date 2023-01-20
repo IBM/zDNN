@@ -233,6 +233,25 @@ void verify_pass() {
 }
 
 /*
+ * Verify num_timesteps is 0 situation
+ */
+void verify_timestep_zero_fail() {
+  LOOP_LSTM_AND_GRU(act) {
+    LOOP_ALL_LSTM_GRU_DIRECTIONS(direction) {
+      LOOP_TRUE_AND_FALSE(all_timesteps_out) {
+        snprintf(msg, MAX_DESC_LEN, "%s %s %s all_timesteps_out: %s", __func__,
+                 act == NNPA_LSTMACT ? "LSTM" : "GRU",
+                 get_rnn_direction_str(direction),
+                 all_timesteps_out ? "true" : "false");
+
+        verify_shape(act, direction, all_timesteps_out, INPUT, 3, 0,
+                     ZDNN_INVALID_SHAPE, msg);
+      }
+    }
+  }
+}
+
+/*
  * Verify num_timesteps mismatch situations
  */
 void verify_timestep_mismatch_fail() {
@@ -479,6 +498,7 @@ int main() {
   UNITY_BEGIN();
 
   RUN_TEST(verify_pass);
+  RUN_TEST(verify_timestep_zero_fail);
   RUN_TEST(verify_timestep_mismatch_fail);
   RUN_TEST(verify_batches_mismatch_fail);
   RUN_TEST(verify_features_mismatch_fail);

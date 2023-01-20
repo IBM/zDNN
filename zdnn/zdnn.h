@@ -62,7 +62,7 @@ typedef enum zdnn_status {
   ZDNN_INVALID_TYPE,                                  // Invalid type information in one (or more) of the input/output tensor(s).
   ZDNN_INVALID_FORMAT,                                // Invalid format information in one (or more) of the input/output tensor(s).
   ZDNN_INVALID_DIRECTION,                             // Invalid RNN direction.
-  ZDNN_INVALID_CONCAT_INFO,                           // Invalid concatenation type.
+  ZDNN_INVALID_CONCAT_INFO,                           // Invalid concatenation info.
   ZDNN_INVALID_STRIDE_PADDING,                        // Invalid padding type parameter for current strides
   ZDNN_INVALID_STRIDES,                               // Invalid stride height or width parameter.
   ZDNN_MISALIGNED_PARMBLOCK,                          // NNPA parameter block is not on double word boundary.
@@ -285,11 +285,11 @@ typedef struct zdnn_ztensor {
   char reserved[31];   // not currently used, should contain zeros.
 } zdnn_ztensor;
 
-#define ZDNN_VERSION "1.0.0"
-#define ZDNN_VERNUM 0x010000 // 0x[major][minor][patch]
+#define ZDNN_VERSION "1.0.1"
+#define ZDNN_VERNUM 0x010001 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
 #define ZDNN_VER_MINOR 0
-#define ZDNN_VER_PATCH 0
+#define ZDNN_VER_PATCH 1
 
 // -----------------------------------------------------------------------------
 // External Tensor Functions
