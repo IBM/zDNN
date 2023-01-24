@@ -60,7 +60,7 @@ DECLARE_STATUS_STR_N_MSG(
     "Invalid format in one (or more) of the input/output tensor(s).")
 DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_DIRECTION, "Invalid RNN direction.")
 DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_CONCAT_INFO,
-                         "Invalid concatenation type.")
+                         "Invalid concatenation info.")
 DECLARE_STATUS_STR_N_MSG(
     ZDNN_INVALID_STRIDE_PADDING,
     "Padding type is not valid for the current stride inputs.")
@@ -304,10 +304,11 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
     snprintf(dump_title, DUMP_TITLE_SIZE, "zDNN ctrace for status %08x",
              status);
     int rtn = ctrace(dump_title);
-    if (rtn) {
+    // ctrace() returns 0 when successful.
+    if (rtn == 0) {
       printf("Successfully invoked CEE3DMP.\n");
     } else {
-      printf("Failed to invoke CEE3DMP.\n");
+      printf("Failed to invoke CEE3DMP. Return Code: %d.\n", rtn);
     }
 
 #else

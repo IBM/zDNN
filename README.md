@@ -7,7 +7,7 @@
 
 ## Version
 
-1.0.0
+1.0.1
 
 ## Table of Contents <a id="TOC"></a>
 
@@ -64,8 +64,8 @@ enablement technology provided by IBM to meet the following requirements:
   format the tensor appropriately on behalf of the caller, and it will do so
   using an optimized approach.
 - For deep learning operations, zAIU requires the use of an internal data type
-  (DLFLOAT16). This is a 2-byte data type, similar in concept to Brain
-  float (BFLOAT); that is, it is an AI optimized format that is used to speed up
+  (DLFLOAT16). This is a 2-byte data type, similar in concept to Brain float
+  (BFLOAT); that is, it is an AI optimized format that is used to speed up
   training and inference (from 4-byte formats) while minimizing the loss of
   accuracy at inference time.
 
@@ -146,9 +146,9 @@ provided by the zDNN library itself.
 
 **Linux on Z:**
 
-On Linux on Z we expect to ship source as well a package-installable
-library and header. The library installation will conform to the standards of
-the packaging method chosen.
+On Linux on Z we expect to ship source as well a package-installable library and
+header. The library installation will conform to the standards of the packaging
+method chosen.
 
 ---
 
@@ -161,11 +161,11 @@ Include Files: `zdnn.h`
 [Back to Table of Contents](#TOC)
 
 ```
-#define ZDNN_VERSION "1.0.0"
-#define ZDNN_VERNUM 0x010000 // 0x[major][minor][patch]
+#define ZDNN_VERSION "1.0.1"
+#define ZDNN_VERNUM 0x010001 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
 #define ZDNN_VER_MINOR 0
-#define ZDNN_VER_PATCH 0
+#define ZDNN_VER_PATCH 1
 ```
 
 1. zDNN major version (_ZDNN_VER_MAJOR_) will be incremented if any backwards
@@ -3566,11 +3566,11 @@ zdnn_status zdnn_conv2d(const zdnn_ztensor *input,
 
 #### Convolution 2D Requirements
 
-| strides and padding                       | input (num_batches, height_in, width_in, channels_in)                | kernel (kernel_height, kernel_width, channels_in, channels_out) | bias (channels_out) | output (num_batches, height_out, width_out, channels_out)                                                                        |
-| ----------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| both strides > 0 and =< 13, SAME padding  |                                                                      | both kernel_height and kernel_width must be =< 64               |                     | height_out = ceil(kernel_height/stride_height)<br>width_out = ceil(kernel_width/stride_width)                                    |
-| both strides > 0 and =< 13, VALID padding | height_in must be > kernel_height<br>width_in must be > kernel_width | both kernel_height and kernel_width must be =< 64               |                     | height_out = ceil((height_in - kernel_height + 1)/stride_height)<br>width_out = ceil((width_in - kernel_width + 1)/stride_width) |
-| both strides = 0, VALID padding           | height_in must be = kernel_height<br>width_in must be = kernel_width | both kernel_height and kernel_width must be =< 448              |                     | both height_out and width_out must be 1                                                                                          |
+| strides and padding                       | input (num_batches, height_in, width_in, channels_in)                  | kernel (kernel_height, kernel_width, channels_in, channels_out) | bias (channels_out) | output (num_batches, height_out, width_out, channels_out)                                                                        |
+| ----------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| both strides > 0 and =< 13, SAME padding  |                                                                        | both kernel_height and kernel_width must be =< 64               |                     | height_out = ceil(height_in/stride_height)<br>width_out = ceil(width_in/stride_width)                                            |
+| both strides > 0 and =< 13, VALID padding | height_in must be >= kernel_height<br>width_in must be >= kernel_width | both kernel_height and kernel_width must be =< 64               |                     | height_out = ceil((height_in - kernel_height + 1)/stride_height)<br>width_out = ceil((width_in - kernel_width + 1)/stride_width) |
+| both strides = 0, VALID padding           | height_in must be = kernel_height<br>width_in must be = kernel_width   | both kernel_height and kernel_width must be =< 448              |                     | both height_out and width_out must be 1                                                                                          |
 
 #### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
 
@@ -3719,20 +3719,20 @@ int main(int argc, char *argv[]) {
 ```
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+ * Copyright IBM Corp. 2021
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <assert.h>
 #include <stdio.h>
@@ -4052,20 +4052,20 @@ int main(int argc, char *argv[]) {
 ```
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+ * Copyright IBM Corp. 2021
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <assert.h>
 #include <stdio.h>
@@ -4392,20 +4392,20 @@ int main(int argc, char *argv[]) {
 ```
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+ * Copyright IBM Corp. 2021
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <assert.h>
 #include <stdio.h>
@@ -4769,20 +4769,20 @@ int main(int argc, char *argv[]) {
 ```
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+ * Copyright IBM Corp. 2021
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <assert.h>
 #include <stdio.h>

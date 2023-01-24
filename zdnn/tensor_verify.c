@@ -383,6 +383,14 @@ zdnn_status verify_zdnn_lstm_or_gru_tensors(
   // layouts aren't checked as it doesn't impact the actual aiu_lstm_gru()
   // operation
 
+  // input_tfrmd_desc dim4 (ts) must not be 0 as it is used for division and
+  // will result in ABEND.
+  if (input_tfrmd_desc->dim4 == 0) {
+    return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
+                       "input dim4 tensor shape is invalid (found %d)",
+                       input_tfrmd_desc->dim4);
+  }
+
   // hn_output dim4 (ts) must be either 1 or same as input's
   // not using VERIFY_DIM4 macro because we have 2 valid values
   if ((hn_output->transformed_desc->dim4 != input_tfrmd_desc->dim4) &&
@@ -941,7 +949,7 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
       if (input_desc->dim2 < input_kernel_desc->dim3) {
         return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
                            "input_desc->dim2"
-                           " (%d) must be greater than "
+                           " (%d) must be greater than or equal to "
                            "input_kernel_desc->dim3"
                            " (%d)\n",
                            input_desc->dim2, input_kernel_desc->dim3);
@@ -952,7 +960,7 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
       if (input_desc->dim3 < input_kernel_desc->dim4) {
         return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
                            "input_desc->dim3"
-                           " (%d) must be greater than "
+                           " (%d) must be greater than or equal to "
                            "input_kernel_desc->dim4"
                            " (%d)\n",
                            input_desc->dim3, input_kernel_desc->dim4);
