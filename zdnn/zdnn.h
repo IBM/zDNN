@@ -285,11 +285,11 @@ typedef struct zdnn_ztensor {
   char reserved[31];   // not currently used, should contain zeros.
 } zdnn_ztensor;
 
-#define ZDNN_VERSION "1.0.1"
-#define ZDNN_VERNUM 0x010001 // 0x[major][minor][patch]
+#define ZDNN_VERSION "1.1.0"
+#define ZDNN_VERNUM 0x010100 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
-#define ZDNN_VER_MINOR 0
-#define ZDNN_VER_PATCH 1
+#define ZDNN_VER_MINOR 1
+#define ZDNN_VER_PATCH 0
 
 // -----------------------------------------------------------------------------
 // External Tensor Functions
