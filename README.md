@@ -7,7 +7,7 @@
 
 ## Version
 
-1.0.1
+1.1.0
 
 ## Table of Contents <a id="TOC"></a>
 
@@ -161,11 +161,11 @@ Include Files: `zdnn.h`
 [Back to Table of Contents](#TOC)
 
 ```
-#define ZDNN_VERSION "1.0.1"
-#define ZDNN_VERNUM 0x010001 // 0x[major][minor][patch]
+#define ZDNN_VERSION "1.1.0"
+#define ZDNN_VERNUM 0x010100 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
-#define ZDNN_VER_MINOR 0
-#define ZDNN_VER_PATCH 1
+#define ZDNN_VER_MINOR 1
+#define ZDNN_VER_PATCH 0
 ```
 
 1. zDNN major version (_ZDNN_VER_MAJOR_) will be incremented if any backwards
