@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,9 @@
 //     relu(x) -> if (x>0) {return x; else return 0;}
 // -----------------------------------------------------------------------------
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 /**
  * zdnn_relu_test
  *
@@ -58,11 +55,9 @@ void zdnn_relu_test(uint32_t *io_dims, zdnn_data_layouts layout, float *input,
       "call to zdnn_relu() to returned status %08x but expected  %08x\n",
       status, expected_status);
 
-#ifdef TEST_AIU
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values(output_ztensor, false, expected_values);
   }
-#endif
 
   // All done--clean up the tensor buffers
   free_ztensor_buffers(2, input_ztensor, output_ztensor);
@@ -364,13 +359,13 @@ void zdnn_relu_balance_nhwc_large() {
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_basic_nhwc_basic);
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_basic_nhwc_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_deadneuron_3d_basic);
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_balance_nhwc_basic);
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_deadneuron_3d_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_balance_nhwc_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_basic_nhwc_basic_clip6);
-  RUN_TEST_ALL_DATATYPES(zdnn_relu_balance_nhwc_basic_clip50);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_basic_nhwc_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_basic_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_deadneuron_3d_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_balance_nhwc_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_deadneuron_3d_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_balance_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_basic_nhwc_basic_clip6);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_relu_balance_nhwc_basic_clip50);
   return UNITY_END();
 }

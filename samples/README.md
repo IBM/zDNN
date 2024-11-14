@@ -2,7 +2,7 @@
 
 ## Compile
 
-Assume current directroy is `/samples`
+Assume current directory is `/samples`
 
 z/OS:
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,7 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 
@@ -32,8 +30,7 @@ void tearDown(void) {}
 // tests for stickify
 
 void test_stickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
-                   zdnn_data_layouts layout, offset_mode offset_mode,
-                   const char *path) {
+                   zdnn_data_layouts layout) {
 
   /*
     Use 1x4x4x1 as example:
@@ -107,7 +104,7 @@ void test_stickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
   }
 
   uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
-  size_t *offsets = alloc_offsets(&ztensor, offset_mode, path);
+  size_t *offsets = alloc_offsets(&ztensor);
 
   for (uint64_t i = 0; i < num_elements; i++) {
 
@@ -151,11 +148,6 @@ void test_stickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
  * NHWC
  **************************************************************/
 
-#define NHWC_TEST_BASIC(n, h, w, c)                                            \
-  void test_nhwc_##n##x##h##x##w##x##c() {                                     \
-    test_stickify(n, h, w, c, ZDNN_NHWC, QUICK_OFFSETS, NULL);                 \
-  }
-
 /*
  * Tensor with 16 entries, NHWC
  * 1,4,4,1 NHWC will use one cell per stick, 4 sticks per page and a total of 4
@@ -166,94 +158,94 @@ void test_stickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
  *  8192, 8320, 8448, 8576,     (H = 2)
  *  12288, 12416, 12544, 12672] (H = 3)
  */
-NHWC_TEST_BASIC(1, 4, 4, 1);
+void test_nhwc_1x4x4x1() { test_stickify(1, 4, 4, 1, ZDNN_NHWC); };
 
-NHWC_TEST_BASIC(1, 4, 4, 2);
+void test_nhwc_1x4x4x2() { test_stickify(1, 4, 4, 2, ZDNN_NHWC); };
 
-NHWC_TEST_BASIC(1, 32, 32, 1);
-NHWC_TEST_BASIC(1, 32, 32, 2);
+void test_nhwc_1x32x32x1() { test_stickify(1, 32, 32, 1, ZDNN_NHWC); };
+void test_nhwc_1x32x32x2() { test_stickify(1, 32, 32, 2, ZDNN_NHWC); };
 
 /*
  * 3K entries in tensor, send to NHWC sticks
  * Each stick uses 3 cells, and all 32 sticks of the page are used.
  * 32 pages are used to store the values.
  */
-NHWC_TEST_BASIC(1, 32, 32, 3);
+void test_nhwc_1x32x32x3() { test_stickify(1, 32, 32, 3, ZDNN_NHWC); };
 
-NHWC_TEST_BASIC(1, 1, 2, 1);
-NHWC_TEST_BASIC(1, 1, 2, 2);
-NHWC_TEST_BASIC(1, 1, 2, 4);
-NHWC_TEST_BASIC(1, 1, 2, 7);
-NHWC_TEST_BASIC(1, 1, 4, 1);
-NHWC_TEST_BASIC(1, 1, 4, 2);
-NHWC_TEST_BASIC(1, 1, 4, 4);
-NHWC_TEST_BASIC(1, 1, 4, 7);
-NHWC_TEST_BASIC(1, 1, 7, 1);
-NHWC_TEST_BASIC(1, 1, 7, 2);
-NHWC_TEST_BASIC(1, 1, 7, 4);
-NHWC_TEST_BASIC(1, 1, 7, 7);
-NHWC_TEST_BASIC(1, 1, 8, 1);
-NHWC_TEST_BASIC(1, 1, 8, 2);
-NHWC_TEST_BASIC(1, 1, 8, 4);
-NHWC_TEST_BASIC(1, 1, 8, 7);
-NHWC_TEST_BASIC(1, 1, 13, 1);
-NHWC_TEST_BASIC(1, 1, 13, 2);
-NHWC_TEST_BASIC(1, 1, 13, 4);
-NHWC_TEST_BASIC(1, 1, 13, 7);
-NHWC_TEST_BASIC(1, 1, 100, 1);
-NHWC_TEST_BASIC(1, 1, 100, 2);
-NHWC_TEST_BASIC(1, 1, 100, 4);
-NHWC_TEST_BASIC(1, 1, 100, 7);
+void test_nhwc_1x1x2x1() { test_stickify(1, 1, 2, 1, ZDNN_NHWC); };
+void test_nhwc_1x1x2x2() { test_stickify(1, 1, 2, 2, ZDNN_NHWC); };
+void test_nhwc_1x1x2x4() { test_stickify(1, 1, 2, 4, ZDNN_NHWC); };
+void test_nhwc_1x1x2x7() { test_stickify(1, 1, 2, 7, ZDNN_NHWC); };
+void test_nhwc_1x1x4x1() { test_stickify(1, 1, 4, 1, ZDNN_NHWC); };
+void test_nhwc_1x1x4x2() { test_stickify(1, 1, 4, 2, ZDNN_NHWC); };
+void test_nhwc_1x1x4x4() { test_stickify(1, 1, 4, 4, ZDNN_NHWC); };
+void test_nhwc_1x1x4x7() { test_stickify(1, 1, 4, 7, ZDNN_NHWC); };
+void test_nhwc_1x1x7x1() { test_stickify(1, 1, 7, 1, ZDNN_NHWC); };
+void test_nhwc_1x1x7x2() { test_stickify(1, 1, 7, 2, ZDNN_NHWC); };
+void test_nhwc_1x1x7x4() { test_stickify(1, 1, 7, 4, ZDNN_NHWC); };
+void test_nhwc_1x1x7x7() { test_stickify(1, 1, 7, 7, ZDNN_NHWC); };
+void test_nhwc_1x1x8x1() { test_stickify(1, 1, 8, 1, ZDNN_NHWC); };
+void test_nhwc_1x1x8x2() { test_stickify(1, 1, 8, 2, ZDNN_NHWC); };
+void test_nhwc_1x1x8x4() { test_stickify(1, 1, 8, 4, ZDNN_NHWC); };
+void test_nhwc_1x1x8x7() { test_stickify(1, 1, 8, 7, ZDNN_NHWC); };
+void test_nhwc_1x1x13x1() { test_stickify(1, 1, 13, 1, ZDNN_NHWC); };
+void test_nhwc_1x1x13x2() { test_stickify(1, 1, 13, 2, ZDNN_NHWC); };
+void test_nhwc_1x1x13x4() { test_stickify(1, 1, 13, 4, ZDNN_NHWC); };
+void test_nhwc_1x1x13x7() { test_stickify(1, 1, 13, 7, ZDNN_NHWC); };
+void test_nhwc_1x1x100x1() { test_stickify(1, 1, 100, 1, ZDNN_NHWC); };
+void test_nhwc_1x1x100x2() { test_stickify(1, 1, 100, 2, ZDNN_NHWC); };
+void test_nhwc_1x1x100x4() { test_stickify(1, 1, 100, 4, ZDNN_NHWC); };
+void test_nhwc_1x1x100x7() { test_stickify(1, 1, 100, 7, ZDNN_NHWC); };
 
-NHWC_TEST_BASIC(2, 3, 2, 1);
-NHWC_TEST_BASIC(2, 3, 2, 2);
-NHWC_TEST_BASIC(2, 3, 2, 4);
-NHWC_TEST_BASIC(2, 3, 2, 7);
-NHWC_TEST_BASIC(2, 3, 4, 1);
-NHWC_TEST_BASIC(2, 3, 4, 2);
-NHWC_TEST_BASIC(2, 3, 4, 4);
-NHWC_TEST_BASIC(2, 3, 4, 7);
-NHWC_TEST_BASIC(2, 3, 7, 1);
-NHWC_TEST_BASIC(2, 3, 7, 2);
-NHWC_TEST_BASIC(2, 3, 7, 4);
-NHWC_TEST_BASIC(2, 3, 7, 7);
-NHWC_TEST_BASIC(2, 3, 8, 1);
-NHWC_TEST_BASIC(2, 3, 8, 2);
-NHWC_TEST_BASIC(2, 3, 8, 4);
-NHWC_TEST_BASIC(2, 3, 8, 7);
-NHWC_TEST_BASIC(2, 3, 13, 1);
-NHWC_TEST_BASIC(2, 3, 13, 2);
-NHWC_TEST_BASIC(2, 3, 13, 4);
-NHWC_TEST_BASIC(2, 3, 13, 7);
-NHWC_TEST_BASIC(2, 3, 100, 1);
-NHWC_TEST_BASIC(2, 3, 100, 2);
-NHWC_TEST_BASIC(2, 3, 100, 4);
-NHWC_TEST_BASIC(2, 3, 100, 7);
+void test_nhwc_2x3x2x1() { test_stickify(2, 3, 2, 1, ZDNN_NHWC); };
+void test_nhwc_2x3x2x2() { test_stickify(2, 3, 2, 2, ZDNN_NHWC); };
+void test_nhwc_2x3x2x4() { test_stickify(2, 3, 2, 4, ZDNN_NHWC); };
+void test_nhwc_2x3x2x7() { test_stickify(2, 3, 2, 7, ZDNN_NHWC); };
+void test_nhwc_2x3x4x1() { test_stickify(2, 3, 4, 1, ZDNN_NHWC); };
+void test_nhwc_2x3x4x2() { test_stickify(2, 3, 4, 2, ZDNN_NHWC); };
+void test_nhwc_2x3x4x4() { test_stickify(2, 3, 4, 4, ZDNN_NHWC); };
+void test_nhwc_2x3x4x7() { test_stickify(2, 3, 4, 7, ZDNN_NHWC); };
+void test_nhwc_2x3x7x1() { test_stickify(2, 3, 7, 1, ZDNN_NHWC); };
+void test_nhwc_2x3x7x2() { test_stickify(2, 3, 7, 2, ZDNN_NHWC); };
+void test_nhwc_2x3x7x4() { test_stickify(2, 3, 7, 4, ZDNN_NHWC); };
+void test_nhwc_2x3x7x7() { test_stickify(2, 3, 7, 7, ZDNN_NHWC); };
+void test_nhwc_2x3x8x1() { test_stickify(2, 3, 8, 1, ZDNN_NHWC); };
+void test_nhwc_2x3x8x2() { test_stickify(2, 3, 8, 2, ZDNN_NHWC); };
+void test_nhwc_2x3x8x4() { test_stickify(2, 3, 8, 4, ZDNN_NHWC); };
+void test_nhwc_2x3x8x7() { test_stickify(2, 3, 8, 7, ZDNN_NHWC); };
+void test_nhwc_2x3x13x1() { test_stickify(2, 3, 13, 1, ZDNN_NHWC); };
+void test_nhwc_2x3x13x2() { test_stickify(2, 3, 13, 2, ZDNN_NHWC); };
+void test_nhwc_2x3x13x4() { test_stickify(2, 3, 13, 4, ZDNN_NHWC); };
+void test_nhwc_2x3x13x7() { test_stickify(2, 3, 13, 7, ZDNN_NHWC); };
+void test_nhwc_2x3x100x1() { test_stickify(2, 3, 100, 1, ZDNN_NHWC); };
+void test_nhwc_2x3x100x2() { test_stickify(2, 3, 100, 2, ZDNN_NHWC); };
+void test_nhwc_2x3x100x4() { test_stickify(2, 3, 100, 4, ZDNN_NHWC); };
+void test_nhwc_2x3x100x7() { test_stickify(2, 3, 100, 7, ZDNN_NHWC); };
 
-NHWC_TEST_BASIC(3, 2, 2, 1);
-NHWC_TEST_BASIC(3, 2, 2, 2);
-NHWC_TEST_BASIC(3, 2, 2, 4);
-NHWC_TEST_BASIC(3, 2, 2, 7);
-NHWC_TEST_BASIC(3, 2, 4, 1);
-NHWC_TEST_BASIC(3, 2, 4, 2);
-NHWC_TEST_BASIC(3, 2, 4, 4);
-NHWC_TEST_BASIC(3, 2, 4, 7);
-NHWC_TEST_BASIC(3, 2, 7, 1);
-NHWC_TEST_BASIC(3, 2, 7, 2);
-NHWC_TEST_BASIC(3, 2, 7, 4);
-NHWC_TEST_BASIC(3, 2, 7, 7);
-NHWC_TEST_BASIC(3, 2, 8, 1);
-NHWC_TEST_BASIC(3, 2, 8, 2);
-NHWC_TEST_BASIC(3, 2, 8, 4);
-NHWC_TEST_BASIC(3, 2, 8, 7);
-NHWC_TEST_BASIC(3, 2, 13, 1);
-NHWC_TEST_BASIC(3, 2, 13, 2);
-NHWC_TEST_BASIC(3, 2, 13, 4);
-NHWC_TEST_BASIC(3, 2, 13, 7);
-NHWC_TEST_BASIC(3, 2, 100, 1);
-NHWC_TEST_BASIC(3, 2, 100, 2);
-NHWC_TEST_BASIC(3, 2, 100, 4);
-NHWC_TEST_BASIC(3, 2, 100, 7);
+void test_nhwc_3x2x2x1() { test_stickify(3, 2, 2, 1, ZDNN_NHWC); };
+void test_nhwc_3x2x2x2() { test_stickify(3, 2, 2, 2, ZDNN_NHWC); };
+void test_nhwc_3x2x2x4() { test_stickify(3, 2, 2, 4, ZDNN_NHWC); };
+void test_nhwc_3x2x2x7() { test_stickify(3, 2, 2, 7, ZDNN_NHWC); };
+void test_nhwc_3x2x4x1() { test_stickify(3, 2, 4, 1, ZDNN_NHWC); };
+void test_nhwc_3x2x4x2() { test_stickify(3, 2, 4, 2, ZDNN_NHWC); };
+void test_nhwc_3x2x4x4() { test_stickify(3, 2, 4, 4, ZDNN_NHWC); };
+void test_nhwc_3x2x4x7() { test_stickify(3, 2, 4, 7, ZDNN_NHWC); };
+void test_nhwc_3x2x7x1() { test_stickify(3, 2, 7, 1, ZDNN_NHWC); };
+void test_nhwc_3x2x7x2() { test_stickify(3, 2, 7, 2, ZDNN_NHWC); };
+void test_nhwc_3x2x7x4() { test_stickify(3, 2, 7, 4, ZDNN_NHWC); };
+void test_nhwc_3x2x7x7() { test_stickify(3, 2, 7, 7, ZDNN_NHWC); };
+void test_nhwc_3x2x8x1() { test_stickify(3, 2, 8, 1, ZDNN_NHWC); };
+void test_nhwc_3x2x8x2() { test_stickify(3, 2, 8, 2, ZDNN_NHWC); };
+void test_nhwc_3x2x8x4() { test_stickify(3, 2, 8, 4, ZDNN_NHWC); };
+void test_nhwc_3x2x8x7() { test_stickify(3, 2, 8, 7, ZDNN_NHWC); };
+void test_nhwc_3x2x13x1() { test_stickify(3, 2, 13, 1, ZDNN_NHWC); };
+void test_nhwc_3x2x13x2() { test_stickify(3, 2, 13, 2, ZDNN_NHWC); };
+void test_nhwc_3x2x13x4() { test_stickify(3, 2, 13, 4, ZDNN_NHWC); };
+void test_nhwc_3x2x13x7() { test_stickify(3, 2, 13, 7, ZDNN_NHWC); };
+void test_nhwc_3x2x100x1() { test_stickify(3, 2, 100, 1, ZDNN_NHWC); };
+void test_nhwc_3x2x100x2() { test_stickify(3, 2, 100, 2, ZDNN_NHWC); };
+void test_nhwc_3x2x100x4() { test_stickify(3, 2, 100, 4, ZDNN_NHWC); };
+void test_nhwc_3x2x100x7() { test_stickify(3, 2, 100, 7, ZDNN_NHWC); };
 
 /*
  * This routine is a generic test routine, allowing various 'e1' values
@@ -263,9 +255,7 @@ NHWC_TEST_BASIC(3, 2, 100, 7);
  * examining values stored in the stick.  e1 can range from 1 to 128,
  * i.e. one or two pages of 64 values per stick.
  */
-void test_nhwc_1x1x1xe1(uint32_t e1) {
-  test_stickify(1, 1, 1, e1, ZDNN_NHWC, QUICK_OFFSETS, NULL);
-}
+void test_nhwc_1x1x1xe1(uint32_t e1) { test_stickify(1, 1, 1, e1, ZDNN_NHWC); }
 
 void test_nhwc_1x1x1x4() { test_nhwc_1x1x1xe1(4); }
 void test_nhwc_1x1x1x5() { test_nhwc_1x1x1xe1(5); }
@@ -277,25 +267,19 @@ void test_nhwc_1x1x1x65() { test_nhwc_1x1x1xe1(65); }
 void test_nhwc_1x1x1x127() { test_nhwc_1x1x1xe1(127); }
 void test_nhwc_1x1x1x128() { test_nhwc_1x1x1xe1(128); }
 
-#define NHWC_TEST_WITH_FILE(n, h, w, c)                                        \
-  void test_nhwc_##n##x##h##x##w##x##c() {                                     \
-    test_stickify(n, h, w, c, ZDNN_NHWC, FILE_OFFSETS,                         \
-                  OFFSET_FILE(nhwc, n, h, w, c));                              \
-  }
-
-NHWC_TEST_WITH_FILE(1, 2, 3, 4)
-NHWC_TEST_WITH_FILE(1, 1, 31, 64)
-NHWC_TEST_WITH_FILE(1, 1, 32, 64)
-NHWC_TEST_WITH_FILE(1, 1, 33, 64)
-NHWC_TEST_WITH_FILE(1, 1, 32, 63)
-NHWC_TEST_WITH_FILE(1, 1, 32, 65)
-NHWC_TEST_WITH_FILE(1, 1, 4, 127)
-NHWC_TEST_WITH_FILE(1, 1, 4, 128)
-NHWC_TEST_WITH_FILE(1, 1, 4, 129)
-NHWC_TEST_WITH_FILE(1, 1, 63, 4)
-NHWC_TEST_WITH_FILE(1, 1, 64, 4)
-NHWC_TEST_WITH_FILE(1, 1, 65, 4)
-NHWC_TEST_WITH_FILE(2, 3, 33, 129)
+void test_nhwc_1x2x3x4() { test_stickify(1, 2, 3, 4, ZDNN_NHWC); }
+void test_nhwc_1x1x31x64() { test_stickify(1, 1, 31, 64, ZDNN_NHWC); }
+void test_nhwc_1x1x32x64() { test_stickify(1, 1, 32, 64, ZDNN_NHWC); }
+void test_nhwc_1x1x33x64() { test_stickify(1, 1, 33, 64, ZDNN_NHWC); }
+void test_nhwc_1x1x32x63() { test_stickify(1, 1, 32, 63, ZDNN_NHWC); }
+void test_nhwc_1x1x32x65() { test_stickify(1, 1, 32, 65, ZDNN_NHWC); }
+void test_nhwc_1x1x4x127() { test_stickify(1, 1, 4, 127, ZDNN_NHWC); }
+void test_nhwc_1x1x4x128() { test_stickify(1, 1, 4, 128, ZDNN_NHWC); }
+void test_nhwc_1x1x4x129() { test_stickify(1, 1, 4, 129, ZDNN_NHWC); }
+void test_nhwc_1x1x63x4() { test_stickify(1, 1, 63, 4, ZDNN_NHWC); }
+void test_nhwc_1x1x64x4() { test_stickify(1, 1, 64, 4, ZDNN_NHWC); }
+void test_nhwc_1x1x65x4() { test_stickify(1, 1, 65, 4, ZDNN_NHWC); }
+void test_nhwc_2x3x33x129() { test_stickify(2, 3, 33, 129, ZDNN_NHWC); }
 
 /*
  * Tensor with 16 entries, 3DS
@@ -304,7 +288,7 @@ NHWC_TEST_WITH_FILE(2, 3, 33, 129)
  */
 void test_3ds_4x4x1() {
   // first entry doesn't matter
-  test_stickify(9999, 4, 4, 1, ZDNN_3DS, QUICK_OFFSETS, NULL);
+  test_stickify(9999, 4, 4, 1, ZDNN_3DS);
 }
 
 /*
@@ -315,7 +299,7 @@ void test_3ds_4x4x1() {
  */
 void test_3ds_32x32x3() {
   // first entry doesn't matter
-  test_stickify(9999, 32, 32, 3, ZDNN_3DS, QUICK_OFFSETS, NULL);
+  test_stickify(9999, 32, 32, 3, ZDNN_3DS);
 }
 
 /*
@@ -325,7 +309,7 @@ void test_3ds_32x32x3() {
  */
 void test_2ds_4x2() {
   // first two entries don't matter in 2DS
-  test_stickify(9999, 9999, 4, 2, ZDNN_2DS, QUICK_OFFSETS, NULL);
+  test_stickify(9999, 9999, 4, 2, ZDNN_2DS);
 }
 
 /*
@@ -336,7 +320,7 @@ void test_2ds_4x2() {
  */
 void test_2ds_2x2049() {
   // first two entries don't matter in 2DS
-  test_stickify(9999, 9999, 2, 2049, ZDNN_2DS, QUICK_OFFSETS, NULL);
+  test_stickify(9999, 9999, 2, 2049, ZDNN_2DS);
 }
 
 void test_concat_stickify(zdnn_concat_info info, uint32_t dim3, uint32_t dim2,
@@ -435,7 +419,7 @@ void test_concat_stickify(zdnn_concat_info info, uint32_t dim3, uint32_t dim2,
             "elements_per_concat_slice = %ld",
             elements_per_concat, slices_per_concat, elements_per_concat_slice);
 
-  size_t *offsets = alloc_offsets(&ztensor, QUICK_OFFSETS, NULL);
+  size_t *offsets = alloc_rnn_offsets(&ztensor);
 
   uint16_t input_stickified_value = 0;
   uint16_t output_stickified_value;
@@ -459,7 +443,7 @@ void test_concat_stickify(zdnn_concat_info info, uint32_t dim3, uint32_t dim2,
           input_stickified_value =
               cnvt_1_bfloat_to_dlf16(((uint16_t *)concat_slice_data)[elm_i]);
           LOG_TRACE(
-              "offsets[%d] (native %s) = %04x vs %04x for input from "
+              "offsets %d (native %s) = %04x vs %04x for input from "
               "slice %d of concat %d at element index %d (%s converted to %s)",
               offset_index, get_data_type_str(ZDNN_DLFLOAT16),
               output_stickified_value, input_stickified_value, slice, concat,
@@ -470,7 +454,7 @@ void test_concat_stickify(zdnn_concat_info info, uint32_t dim3, uint32_t dim2,
           input_stickified_value =
               cnvt_1_fp16_to_dlf16(((uint16_t *)concat_slice_data)[elm_i]);
           LOG_TRACE(
-              "offsets[%d] (native %s) = %04x vs %04x for input from "
+              "offsets %d (native %s) = %04x vs %04x for input from "
               "slice %d of concat %d at element index %d (%s converted to %s)",
               offset_index, get_data_type_str(ZDNN_DLFLOAT16),
               output_stickified_value, input_stickified_value, slice, concat,
@@ -481,7 +465,7 @@ void test_concat_stickify(zdnn_concat_info info, uint32_t dim3, uint32_t dim2,
           input_stickified_value =
               cnvt_1_fp32_to_dlf16(((float *)concat_slice_data)[elm_i]);
           LOG_TRACE(
-              "offsets[%d] (%s converted to %s) = %4f vs %4f for input from "
+              "offsets %d (%s converted to %s) = %4f vs %4f for input from "
               "slice %d of concat %d at element index %d (native %s)",
               offset_index, get_data_type_str(ZDNN_DLFLOAT16),
               get_data_type_str(test_datatype),
@@ -497,7 +481,7 @@ void test_concat_stickify(zdnn_concat_info info, uint32_t dim3, uint32_t dim2,
         }
         TEST_ASSERT_MESSAGE_FORMATTED(
             output_stickified_value == input_stickified_value,
-            "offsets[%u] = %04x (native %s) but expected %04x (%s "
+            "offsets %u = %04x (native %s) but expected %04x (%s "
             "converted to %s)",
             offset_index, output_stickified_value,
             get_data_type_str(ZDNN_DLFLOAT16), input_stickified_value,
@@ -816,7 +800,7 @@ void test_lstm_no_vconcat_weights_odd_dim2_pass() {
 }
 
 void test_lstm_prev_bidir_weights_odd_dim2_fail() {
-  test_concat_weights_dim2(RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_BIDIR, 3,
+  test_concat_weights_dim2(PREV_LAYER_BIDIR | RNN_TYPE_LSTM | USAGE_WEIGHTS, 3,
                            9, 10, ZDNN_INVALID_SHAPE);
 }
 
@@ -834,49 +818,21 @@ void test_gru_prev_bidir_weights_odd_dim2_fail() {
  * NCHW
  **************************************************************/
 
-#define NCHW_TEST_WITH_FILE(n, c, h, w)                                        \
-  void test_nchw_##n##x##c##x##h##x##w() {                                     \
-    test_stickify(n, c, h, w, ZDNN_NCHW, FILE_OFFSETS,                         \
-                  OFFSET_FILE(nchw, n, c, h, w));                              \
-  }
-
-NCHW_TEST_WITH_FILE(1, 1, 4, 4)
-NCHW_TEST_WITH_FILE(1, 4, 2, 3)
-NCHW_TEST_WITH_FILE(1, 3, 32, 32)
-NCHW_TEST_WITH_FILE(2, 129, 3, 33)
-NCHW_TEST_WITH_FILE(1, 64, 1, 31)
-NCHW_TEST_WITH_FILE(1, 64, 1, 32)
-NCHW_TEST_WITH_FILE(1, 64, 1, 33)
-NCHW_TEST_WITH_FILE(1, 63, 1, 32)
-NCHW_TEST_WITH_FILE(1, 65, 1, 32)
-NCHW_TEST_WITH_FILE(1, 127, 1, 4)
-NCHW_TEST_WITH_FILE(1, 128, 1, 4)
-NCHW_TEST_WITH_FILE(1, 129, 1, 4)
-NCHW_TEST_WITH_FILE(1, 4, 1, 63)
-NCHW_TEST_WITH_FILE(1, 4, 1, 64)
-NCHW_TEST_WITH_FILE(1, 4, 1, 65)
-
-// a simple (dumb) routine to convert a NHWC datastream to NCHW
-void nhwc_2_nchw(void *nhwc_ptr, uint32_t n, uint32_t h, uint32_t w, uint32_t c,
-                 int element_size, void *nchw_ptr) {
-  uint32_t nx, hx, wx, cx;
-
-  for (nx = 0; nx < n; nx++) {
-    for (hx = 0; hx < h; hx++) {
-      for (wx = 0; wx < w; wx++) {
-        for (cx = 0; cx < c; cx++) {
-          uint64_t nhwc_idx = nx * (h * w * c) + hx * (w * c) + wx * (c) + cx;
-          uint64_t nchw_idx = nx * (c * h * w) + cx * (h * w) + hx * (w) + wx;
-          if (element_size == 2) {
-            ((uint16_t *)nchw_ptr)[nchw_idx] = ((uint16_t *)nhwc_ptr)[nhwc_idx];
-          } else if (element_size == 4) {
-            ((uint32_t *)nchw_ptr)[nchw_idx] = ((uint32_t *)nhwc_ptr)[nhwc_idx];
-          }
-        }
-      }
-    }
-  }
-}
+void test_nchw_1x1x4x4() { test_stickify(1, 1, 4, 4, ZDNN_NCHW); }
+void test_nchw_1x4x2x3() { test_stickify(1, 4, 2, 3, ZDNN_NCHW); }
+void test_nchw_1x3x32x32() { test_stickify(1, 3, 32, 32, ZDNN_NCHW); }
+void test_nchw_2x129x3x33() { test_stickify(2, 129, 3, 33, ZDNN_NCHW); }
+void test_nchw_1x64x1x31() { test_stickify(1, 64, 1, 31, ZDNN_NCHW); }
+void test_nchw_1x64x1x32() { test_stickify(1, 64, 1, 32, ZDNN_NCHW); }
+void test_nchw_1x64x1x33() { test_stickify(1, 64, 1, 33, ZDNN_NCHW); }
+void test_nchw_1x63x1x32() { test_stickify(1, 63, 1, 32, ZDNN_NCHW); }
+void test_nchw_1x65x1x32() { test_stickify(1, 65, 1, 32, ZDNN_NCHW); }
+void test_nchw_1x127x1x4() { test_stickify(1, 127, 1, 4, ZDNN_NCHW); }
+void test_nchw_1x128x1x4() { test_stickify(1, 128, 1, 4, ZDNN_NCHW); }
+void test_nchw_1x129x1x4() { test_stickify(1, 129, 1, 4, ZDNN_NCHW); }
+void test_nchw_1x4x1x63() { test_stickify(1, 4, 1, 63, ZDNN_NCHW); }
+void test_nchw_1x4x1x64() { test_stickify(1, 4, 1, 64, ZDNN_NCHW); }
+void test_nchw_1x4x1x65() { test_stickify(1, 4, 1, 65, ZDNN_NCHW); }
 
 /* create a NHWC input tensor data stream, then create a NCHW-copy of it via
  * matrix-rotate, then stickify both.  Compare the stickified data areas via
@@ -1111,6 +1067,8 @@ void test_ztensor_null_buffer() {
   zdnn_init_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
   data = create_and_fill_random_fp_data(&ztensor);
 
+  // Store buffer pointer before setting to NULL.
+  void *save_buffer = ztensor.buffer;
   ztensor.buffer = NULL;
 
   status = zdnn_transform_ztensor(&ztensor, data);
@@ -1121,6 +1079,8 @@ void test_ztensor_null_buffer() {
 
   // Free allocated storage
   free(data);
+  // Reset buffer before freeing
+  ztensor.buffer = save_buffer;
   zdnn_free_ztensor_buffer(&ztensor);
 }
 
@@ -1163,12 +1123,12 @@ void test_ztensor_bad_value_FP16(uint16_t bad_value) {
 
 #define STICK_ENTRIES_FP16 7
 
-  uint32_t stick_entries_to_try[STICK_ENTRIES_FP16] = {0, 1, 7, 8, 9, 62, 63};
+  const uint32_t stick_entries_to_try[STICK_ENTRIES_FP16] = {0, 1,  7, 8,
+                                                             9, 62, 63};
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
   unsigned char *data;
   uint16_t *array; // Alternate view on data
-  zdnn_status status;
 
   zdnn_init_pre_transformed_desc(ZDNN_NHWC, FP16, &pre_tfrmd_desc, 1, 1, 1, 64);
   zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
@@ -1178,6 +1138,7 @@ void test_ztensor_bad_value_FP16(uint16_t bad_value) {
   array = (uint16_t *)data; /* use data as an INT array */
 
   for (int i = 0; i < STICK_ENTRIES_FP16; i++) {
+    zdnn_status status;
     array[stick_entries_to_try[i]] = bad_value;
 
     ztensor.is_transformed = false; /* set false for next attempt, required
@@ -1205,10 +1166,6 @@ void test_ztensor_bad_value_FP16(uint16_t bad_value) {
 
 void test_ztensor_fp16_bad_values() {
 
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE("needs NNPA to trigger overflow/invalid-op/etc");
-#endif
-
   test_ztensor_bad_value_FP16(
       INF_FP16_POS); // is not a number, will cause overflow
   test_ztensor_bad_value_FP16(
@@ -1234,13 +1191,12 @@ void test_ztensor_bad_value_FP32(uint32_t bad_value) {
 
 #define STICK_ENTRIES_FP32 9
 
-  uint32_t stick_entries_to_try[STICK_ENTRIES_FP32] = {0, 1, 3,  4, 7,
-                                                       8, 9, 15, 63};
+  const uint32_t stick_entries_to_try[STICK_ENTRIES_FP32] = {0, 1, 3,  4, 7,
+                                                             8, 9, 15, 63};
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
   unsigned char *data;
   uint32_t *array;
-  zdnn_status status;
 
   zdnn_init_pre_transformed_desc(ZDNN_NHWC, FP32, &pre_tfrmd_desc, 1, 1, 1, 64);
   zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
@@ -1250,41 +1206,58 @@ void test_ztensor_bad_value_FP32(uint32_t bad_value) {
   array = (uint32_t *)data; /* use data as an INT array */
 
   for (int i = 0; i < STICK_ENTRIES_FP32; i++) {
+    zdnn_status status;
     array[stick_entries_to_try[i]] = bad_value;
     ztensor.is_transformed = false; /* set false for next attempt, required
                                        for underflow case */
 
     status = zdnn_transform_ztensor(&ztensor, data);
 
+    zdnn_status expected_status;
+    bool is_transformed_overflow_result, is_transformed_underflow_result;
+
+    // Check if hardware will handle the transformation
+    if (zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM) == true) {
+      expected_status = ZDNN_ELEMENT_RANGE_VIOLATION;
+      is_transformed_overflow_result = true;
+      is_transformed_underflow_result = true;
+    } else {
+      expected_status = ZDNN_CONVERT_FAILURE;
+      is_transformed_overflow_result = false;
+      is_transformed_underflow_result = true;
+    }
+
     if (bad_value != TOO_SMALL_FP32_NEG &&
         bad_value != TOO_SMALL_FP32_POS) { // if not underflow case
 
       TEST_ASSERT_MESSAGE_FORMATTED(
-          status == ZDNN_CONVERT_FAILURE,
+          status == expected_status,
           "zdnn_transform_ztensor() with overflow succeeded (status = "
           "%08x, expects = "
           "%08x, i = %d, value = %08x)",
-          status, ZDNN_CONVERT_FAILURE, i, bad_value);
+          status, expected_status, i, bad_value);
 
       TEST_ASSERT_MESSAGE_FORMATTED(
-          ztensor.is_transformed == false,
-          "zdnn_transform_ztensor() set is_transformed (status = %08x, "
-          "expects = %08x, i = %d, value = %08x)",
-          status, ZDNN_CONVERT_FAILURE, i, bad_value);
+          ztensor.is_transformed == is_transformed_overflow_result,
+          "zdnn_transform_ztensor() is_transformed overflow did not get "
+          "expected %s, (status = %08x, expects = %08x, i = %d, value = %08x)",
+          is_transformed_overflow_result ? "true" : "false", status,
+          expected_status, i, bad_value);
     } else { // Must be underflow case
 
       TEST_ASSERT_MESSAGE_FORMATTED(
-          status != ZDNN_CONVERT_FAILURE,
+          status != expected_status,
           "zdnn_transform_ztensor() with underflow did not succeed (status "
           "= %08x, expects = "
           "%08x, i = %04x, value = %08x)",
-          status, ZDNN_CONVERT_FAILURE, i, bad_value);
+          status, expected_status, i, bad_value);
 
       TEST_ASSERT_MESSAGE_FORMATTED(
-          ztensor.is_transformed == true,
-          "zdnn_transform_ztensor() set is_transformed (status = %08x, "
-          "expects = %08x, i = %d, value = %08x))",
-          status, ZDNN_CONVERT_FAILURE, i, bad_value);
+          ztensor.is_transformed == is_transformed_underflow_result,
+          "zdnn_transform_ztensor() is_transformed underflow did not get "
+          "expected %s, (status = %08x, expects = %08x, i = %d, value = %08x))",
+          is_transformed_underflow_result ? "true" : "false", status,
+          expected_status, i, bad_value);
     }
 
     array[stick_entries_to_try[i]] = 0; // set entry to 0 for next iteration
@@ -1295,10 +1268,6 @@ void test_ztensor_bad_value_FP32(uint32_t bad_value) {
 }
 
 void test_ztensor_fp32_bad_values() {
-
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE("needs NNPA to trigger overflow/invalid-op/etc");
-#endif
 
   test_ztensor_bad_value_FP32(
       TOO_SMALL_FP32_POS); // non-zero converts to 0, cause underflow
@@ -1320,219 +1289,424 @@ void test_ztensor_fp32_bad_values() {
  * HWCK
  **************************************************************/
 
-#define HWCK_TEST_WITH_FILE(h, w, c, k)                                        \
-  void test_hwck_##h##x##w##x##c##x##k() {                                     \
-    test_stickify(h, w, c, k, ZDNN_HWCK, FILE_OFFSETS,                         \
-                  OFFSET_FILE(hwck, h, w, c, k));                              \
+void test_hwck_1x4x4x1() { test_stickify(1, 4, 4, 1, ZDNN_HWCK); }
+void test_hwck_1x2x3x4() { test_stickify(1, 2, 3, 4, ZDNN_HWCK); }
+void test_hwck_2x3x33x129() { test_stickify(2, 3, 33, 129, ZDNN_HWCK); }
+void test_hwck_1x32x32x3() { test_stickify(1, 32, 32, 3, ZDNN_HWCK); }
+void test_hwck_1x1x32x63() { test_stickify(1, 1, 32, 63, ZDNN_HWCK); }
+void test_hwck_1x1x31x64() { test_stickify(1, 1, 31, 64, ZDNN_HWCK); }
+void test_hwck_1x1x32x64() { test_stickify(1, 1, 32, 64, ZDNN_HWCK); }
+void test_hwck_1x1x33x64() { test_stickify(1, 1, 33, 64, ZDNN_HWCK); }
+void test_hwck_1x1x32x65() { test_stickify(1, 1, 32, 65, ZDNN_HWCK); }
+void test_hwck_1x1x4x127() { test_stickify(1, 1, 4, 127, ZDNN_HWCK); }
+void test_hwck_1x1x4x128() { test_stickify(1, 1, 4, 128, ZDNN_HWCK); }
+void test_hwck_1x1x4x129() { test_stickify(1, 1, 4, 129, ZDNN_HWCK); }
+void test_hwck_1x1x63x4() { test_stickify(1, 1, 63, 4, ZDNN_HWCK); }
+void test_hwck_1x1x64x4() { test_stickify(1, 1, 64, 4, ZDNN_HWCK); }
+void test_hwck_1x1x65x4() { test_stickify(1, 1, 65, 4, ZDNN_HWCK); }
+
+/**************************************************************
+ * NHWC 4DWEIGHT
+ **************************************************************/
+
+void test_stickify_4dweight(uint32_t dim4, uint32_t dim3, uint32_t dim2,
+                            uint32_t dim1) {
+
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_ztensor ztensor;
+  zdnn_status status;
+  int8_t *data;
+
+  zdnn_init_pre_transformed_desc(ZDNN_NHWC, INT8, &pre_tfrmd_desc, dim4, dim3,
+                                 dim2, dim1);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &pre_tfrmd_desc, QUANTIZED_WEIGHTS_INT8, &tfrmd_desc);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_generate_quantized_transformed_desc() failed (status = %08x)",
+      status);
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc,
+                                                   0, 0, &ztensor);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_init_quantized_ztensor_with_malloc() failed (status = %08x)",
+      status);
+
+  data = create_and_fill_random_int8_data(&ztensor);
+
+  status =
+      zdnn_transform_quantized_ztensor(&ztensor, false, 0, 0, (void *)data);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_transform_quantized_ztensor() failed, status = %08x "
+      "(%s)",
+      status, zdnn_get_status_message(status));
+
+  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
+  size_t *offsets = alloc_offsets(&ztensor);
+
+  for (uint64_t i = 0; i < num_elements; i++) {
+
+    // value in stick area, int8
+    int8_t output_value = *(int8_t *)((uintptr_t)ztensor.buffer + offsets[i]);
+
+    TEST_ASSERT_MESSAGE_FORMATTED(output_value == data[i],
+                                  "Incorrect value at element %" PRIu64
+                                  " offset %" PRIu64 ": Stickified: "
+                                  "%d, Expected: %d",
+                                  i, offsets[i], output_value, data[i]);
   }
 
-HWCK_TEST_WITH_FILE(1, 4, 4, 1)
-HWCK_TEST_WITH_FILE(1, 2, 3, 4)
-HWCK_TEST_WITH_FILE(2, 3, 33, 129)
-HWCK_TEST_WITH_FILE(1, 32, 32, 3)
-HWCK_TEST_WITH_FILE(1, 1, 32, 63)
-HWCK_TEST_WITH_FILE(1, 1, 31, 64)
-HWCK_TEST_WITH_FILE(1, 1, 32, 64)
-HWCK_TEST_WITH_FILE(1, 1, 33, 64)
-HWCK_TEST_WITH_FILE(1, 1, 32, 65)
-HWCK_TEST_WITH_FILE(1, 1, 4, 127)
-HWCK_TEST_WITH_FILE(1, 1, 4, 128)
-HWCK_TEST_WITH_FILE(1, 1, 4, 129)
-HWCK_TEST_WITH_FILE(1, 1, 63, 4)
-HWCK_TEST_WITH_FILE(1, 1, 64, 4)
-HWCK_TEST_WITH_FILE(1, 1, 65, 4)
+  // Free allocated storage
+  free(offsets);
+  free(data);
+  zdnn_free_ztensor_buffer(&ztensor);
+}
+
+/**************************************************************
+ * NHWC INT8
+ **************************************************************/
+
+void test_stickify_int8(uint32_t dim4, uint32_t dim3, uint32_t dim2,
+                        uint32_t dim1) {
+
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_ztensor ztensor;
+  zdnn_status status;
+  int8_t *data;
+
+  zdnn_init_pre_transformed_desc(ZDNN_NHWC, INT8, &pre_tfrmd_desc, dim4, dim3,
+                                 dim2, dim1);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &pre_tfrmd_desc, QUANTIZED_INT8, &tfrmd_desc);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_generate_quantized_transformed_desc() failed (status = %08x)",
+      status);
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc,
+                                                   0, 0, &ztensor);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_init_quantized_ztensor_with_malloc() failed (status = %08x)",
+      status);
+
+  data = create_and_fill_random_int8_data(&ztensor);
+
+  status =
+      zdnn_transform_quantized_ztensor(&ztensor, false, 0, 0, (void *)data);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_transform_quantized_ztensor() failed, status = %08x "
+      "(%s)",
+      status, zdnn_get_status_message(status));
+
+  uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_PRE);
+  size_t *offsets = alloc_offsets(&ztensor);
+
+  for (uint64_t i = 0; i < num_elements; i++) {
+
+    // value in stick area, int8
+    int8_t output_value = *(int8_t *)((uintptr_t)ztensor.buffer + offsets[i]);
+
+    TEST_ASSERT_MESSAGE_FORMATTED(output_value == data[i],
+                                  "Incorrect value at element %" PRIu64
+                                  " offset %" PRIu64 ": Stickified: "
+                                  "%d, Expected: %d",
+                                  i, offsets[i], output_value, data[i]);
+  }
+
+  // Free allocated storage
+  free(offsets);
+  free(data);
+  zdnn_free_ztensor_buffer(&ztensor);
+}
+
+void test_4dweight_1x4x4x1() { test_stickify_4dweight(1, 4, 4, 1); }
+void test_4dweight_1x2x3x4() { test_stickify_4dweight(1, 2, 3, 4); }
+void test_4dweight_1x1x1x63() { test_stickify_4dweight(1, 1, 1, 63); }
+void test_4dweight_1x1x1x64() { test_stickify_4dweight(1, 1, 1, 64); }
+void test_4dweight_1x1x1x65() { test_stickify_4dweight(1, 1, 1, 65); }
+void test_4dweight_2x2x3x4() { test_stickify_4dweight(2, 2, 3, 4); }
+void test_4dweight_2x2x4x4() { test_stickify_4dweight(2, 2, 3, 4); }
+void test_4dweight_2x2x4x63() { test_stickify_4dweight(2, 2, 4, 63); }
+void test_4dweight_2x2x4x64() { test_stickify_4dweight(2, 2, 4, 64); }
+void test_4dweight_2x2x4x65() { test_stickify_4dweight(2, 2, 4, 65); }
+void test_4dweight_2x2x31x4() { test_stickify_4dweight(2, 2, 31, 4); }
+void test_4dweight_2x2x32x4() { test_stickify_4dweight(2, 2, 32, 4); }
+void test_4dweight_2x2x33x4() { test_stickify_4dweight(2, 2, 33, 4); }
+void test_4dweight_3x3x4x127() { test_stickify_4dweight(3, 3, 4, 127); }
+void test_4dweight_3x3x4x128() { test_stickify_4dweight(3, 3, 4, 128); }
+void test_4dweight_3x3x4x129() { test_stickify_4dweight(3, 3, 4, 129); }
+void test_4dweight_4x3x63x10() { test_stickify_4dweight(4, 3, 63, 10); }
+void test_4dweight_4x3x64x10() { test_stickify_4dweight(4, 3, 64, 10); }
+void test_4dweight_4x3x65x10() { test_stickify_4dweight(4, 3, 65, 10); }
+void test_4dweight_2x3x33x129() { test_stickify_4dweight(2, 3, 33, 129); }
+
+void test_int8_1x4x4x1() { test_stickify_int8(1, 4, 4, 1); }
+void test_int8_1x2x3x4() { test_stickify_int8(1, 2, 3, 4); }
+void test_int8_1x1x1x63() { test_stickify_int8(1, 1, 1, 63); }
+void test_int8_1x1x1x64() { test_stickify_int8(1, 1, 1, 64); }
+void test_int8_1x1x1x65() { test_stickify_int8(1, 1, 1, 65); }
+void test_int8_2x2x3x4() { test_stickify_int8(2, 2, 3, 4); }
+void test_int8_2x2x4x4() { test_stickify_int8(2, 2, 3, 4); }
+void test_int8_2x2x4x63() { test_stickify_int8(2, 2, 4, 63); }
+void test_int8_2x2x4x64() { test_stickify_int8(2, 2, 4, 64); }
+void test_int8_2x2x4x65() { test_stickify_int8(2, 2, 4, 65); }
+void test_int8_2x2x31x4() { test_stickify_int8(2, 2, 31, 4); }
+void test_int8_2x2x32x4() { test_stickify_int8(2, 2, 32, 4); }
+void test_int8_2x2x33x4() { test_stickify_int8(2, 2, 33, 4); }
+void test_int8_3x3x4x127() { test_stickify_int8(3, 3, 4, 127); }
+void test_int8_3x3x4x128() { test_stickify_int8(3, 3, 4, 128); }
+void test_int8_3x3x4x129() { test_stickify_int8(3, 3, 4, 129); }
+void test_int8_4x3x63x10() { test_stickify_int8(4, 3, 63, 10); }
+void test_int8_4x3x64x10() { test_stickify_int8(4, 3, 64, 10); }
+void test_int8_4x3x65x10() { test_stickify_int8(4, 3, 65, 10); }
+void test_int8_2x3x33x129() { test_stickify_int8(2, 3, 33, 129); }
 
 int main(void) {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x4x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x32x32x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x32x32x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x32x32x3);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x7);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x7);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x7);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x5);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x8);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x9);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x63);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x64);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x65);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x127);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x9);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x63);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x127);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x128);
 
-  // NHWC tests that use offset_files
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x2x3x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x31x64);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x32x64);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x33x64);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x32x63);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x32x65);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x127);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x128);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x129);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x63x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x64x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x65x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x33x129);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x2x3x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x31x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x32x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x33x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x32x63);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x32x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x127);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x129);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x63x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x64x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x65x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x33x129);
 
-  RUN_TEST_ALL_DATATYPES(test_3ds_4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_3ds_32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3ds_4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3ds_32x32x3);
 
-  RUN_TEST_ALL_DATATYPES(test_2ds_4x2);
-  RUN_TEST_ALL_DATATYPES(test_2ds_2x2049);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2ds_4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2ds_2x2049);
 
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_1x4);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x4);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x65);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x2049);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_2x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_2x2049);
 
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_1x3x4);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_2x3x4);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_2x33x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_1x3x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_2x3x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_2x33x65);
 
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x6x4);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x6x4);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x66x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x6x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x6x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x66x65);
 
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_1x4);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x4);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x65);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x2049);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_2x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_2x2049);
 
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_1x3x4);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_2x3x4);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_2x33x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_1x3x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_2x3x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_2x33x65);
 
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x6x4);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x6x4);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x66x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x6x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x6x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x66x65);
 
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_odd_dim2_pass);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_odd_dim2_fail);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_odd_dim2_pass);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_odd_dim2_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_lstm_no_vconcat_weights_odd_dim2_pass);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_lstm_prev_bidir_weights_odd_dim2_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_gru_no_vconcat_weights_odd_dim2_pass);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_gru_prev_bidir_weights_odd_dim2_fail);
 
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x1x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x2x3);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x3x32x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_2x129x3x33);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x63x1x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x64x1x31);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x64x1x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x64x1x33);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x65x1x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x127x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x128x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x129x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x63);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x64);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x1x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x2x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x3x32x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_2x129x3x33);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x63x1x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x64x1x31);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x64x1x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x64x1x33);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x65x1x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x127x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x128x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x129x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x1x63);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x1x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x1x65);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_nchw_comp_1x4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_nchw_comp_1x32x32x3);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_nchw_comp_2x3x33x129);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_nchw_comp_1x4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_nchw_comp_1x32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_nchw_comp_2x3x33x129);
 
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x2x3x4);
-  RUN_TEST_ALL_DATATYPES(test_hwck_2x3x33x129);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x32x32x3);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x32x63);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x31x64);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x32x64);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x33x64);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x32x65);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x4x127);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x4x128);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x4x129);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x63x4);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x64x4);
-  RUN_TEST_ALL_DATATYPES(test_hwck_1x1x65x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x2x3x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_2x3x33x129);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x32x63);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x31x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x32x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x33x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x32x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x4x127);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x4x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x4x129);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x63x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x64x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_hwck_1x1x65x4);
 
-  RUN_TEST_ALL_DATATYPES(test_ztensor_reuse_with_reset);
-  RUN_TEST_ALL_DATATYPES(test_ztensor_reuse_without_reset);
-  RUN_TEST_ALL_DATATYPES(test_format_after_stickify_4dfeature_success);
-  RUN_TEST_ALL_DATATYPES(test_format_after_stickify_4dfeature_fail);
-  RUN_TEST_ALL_DATATYPES(test_ztensor_null_buffer);
-  RUN_TEST_ALL_DATATYPES(test_ztensor_not_enough_buffersize);
+  RUN_TEST(test_4dweight_1x4x4x1);
+  RUN_TEST(test_4dweight_1x2x3x4);
+  RUN_TEST(test_4dweight_1x1x1x63);
+  RUN_TEST(test_4dweight_1x1x1x64);
+  RUN_TEST(test_4dweight_1x1x1x65);
+  RUN_TEST(test_4dweight_2x2x3x4);
+  RUN_TEST(test_4dweight_2x2x4x4);
+  RUN_TEST(test_4dweight_2x2x4x63);
+  RUN_TEST(test_4dweight_2x2x4x64);
+  RUN_TEST(test_4dweight_2x2x4x65);
+  RUN_TEST(test_4dweight_2x2x31x4);
+  RUN_TEST(test_4dweight_2x2x32x4);
+  RUN_TEST(test_4dweight_2x2x33x4);
+  RUN_TEST(test_4dweight_3x3x4x127);
+  RUN_TEST(test_4dweight_3x3x4x128);
+  RUN_TEST(test_4dweight_3x3x4x129);
+  RUN_TEST(test_4dweight_4x3x63x10);
+  RUN_TEST(test_4dweight_4x3x64x10);
+  RUN_TEST(test_4dweight_4x3x65x10);
+  RUN_TEST(test_4dweight_2x3x33x129);
 
-  RUN_TEST_ALL_DATATYPES(test_ztensor_fp16_bad_values);
-  RUN_TEST_ALL_DATATYPES(test_ztensor_fp32_bad_values);
+  RUN_TEST(test_int8_1x4x4x1);
+  RUN_TEST(test_int8_1x2x3x4);
+  RUN_TEST(test_int8_1x1x1x63);
+  RUN_TEST(test_int8_1x1x1x64);
+  RUN_TEST(test_int8_1x1x1x65);
+  RUN_TEST(test_int8_2x2x3x4);
+  RUN_TEST(test_int8_2x2x4x4);
+  RUN_TEST(test_int8_2x2x4x63);
+  RUN_TEST(test_int8_2x2x4x64);
+  RUN_TEST(test_int8_2x2x4x65);
+  RUN_TEST(test_int8_2x2x31x4);
+  RUN_TEST(test_int8_2x2x32x4);
+  RUN_TEST(test_int8_2x2x33x4);
+  RUN_TEST(test_int8_3x3x4x127);
+  RUN_TEST(test_int8_3x3x4x128);
+  RUN_TEST(test_int8_3x3x4x129);
+  RUN_TEST(test_int8_4x3x63x10);
+  RUN_TEST(test_int8_4x3x64x10);
+  RUN_TEST(test_int8_4x3x65x10);
+  RUN_TEST(test_int8_2x3x33x129);
+
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_ztensor_reuse_with_reset);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_ztensor_reuse_without_reset);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_format_after_stickify_4dfeature_success);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_format_after_stickify_4dfeature_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_ztensor_null_buffer);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_ztensor_not_enough_buffersize);
+
+  RUN_TEST(test_ztensor_fp16_bad_values);
+  RUN_TEST(test_ztensor_fp32_bad_values);
 
   return UNITY_END();
 }

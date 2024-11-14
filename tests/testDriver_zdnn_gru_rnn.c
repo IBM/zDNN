@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -477,12 +477,9 @@ float default_bidir_exp_hn_out_final_ts_values[] = {
 /******************************************************************************
                           Unity Methods
 ******************************************************************************/
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 /******************************************************************************
                               Tests
@@ -754,20 +751,19 @@ void gru_basic_bidir_hn_final() {
 int main() {
   UNITY_BEGIN();
 
-// GRU tests with good input requires AIU to get results and
-// validate values.
-#ifdef TEST_AIU
+  // GRU tests with good input requires zAIU to get results and
+  // validate values.
   // FWD direction tests
-  RUN_TEST_ALL_DATATYPES(gru_basic_fwd_hn_all);
-  RUN_TEST_ALL_DATATYPES(gru_basic_fwd_hn_final);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(gru_basic_fwd_hn_all);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(gru_basic_fwd_hn_final);
 
   // BWD direction tests
-  RUN_TEST_ALL_DATATYPES(gru_basic_bwd_hn_all);
-  RUN_TEST_ALL_DATATYPES(gru_basic_bwd_hn_final);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(gru_basic_bwd_hn_all);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(gru_basic_bwd_hn_final);
 
   // BIDIR direction tests
-  RUN_TEST_ALL_DATATYPES(gru_basic_bidir_hn_all);
-  RUN_TEST_ALL_DATATYPES(gru_basic_bidir_hn_final);
-#endif
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(gru_basic_bidir_hn_all);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(gru_basic_bidir_hn_final);
+
   return UNITY_END();
 }

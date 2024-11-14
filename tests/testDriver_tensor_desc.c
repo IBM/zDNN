@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,28 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
-
-// convenience routine for init and verify (pre-transformed)
-void set_and_verify_pre_transformed_descriptor(uint32_t dims[],
-                                               zdnn_data_layouts layout,
-                                               zdnn_data_types type,
-                                               zdnn_status exp_status,
-                                               char *error_msg) {
-  zdnn_status status;
-  zdnn_tensor_desc pre_tfrmd_desc;
-
-  zdnn_init_pre_transformed_desc(layout, type, &pre_tfrmd_desc, dims[0],
-                                 dims[1], dims[2], dims[3]);
-  status = verify_pre_transformed_descriptor(&pre_tfrmd_desc);
-
-  TEST_ASSERT_MESSAGE_FORMATTED(status == exp_status, "%s (%08x)", error_msg,
-                                status);
-}
 
 // convenience routine for init and verify (transformed)
 void set_and_verify_transformed_descriptor(
@@ -62,12 +43,10 @@ void set_and_verify_transformed_descriptor(
 
 void verify_dims() {
 
-  uint32_t max_dim_size = zdnn_get_nnpa_max_dim_idx_size();
-
   uint32_t zero_dim[ZDNN_MAX_DIMS] = {0, 1, 1, 1};
-  uint32_t limit_minus1[ZDNN_MAX_DIMS] = {1, max_dim_size - 1, 1, 1};
-  uint32_t at_limit[ZDNN_MAX_DIMS] = {1, 1, max_dim_size, 1};
-  uint32_t limit_plus1[ZDNN_MAX_DIMS] = {1, 1, max_dim_size + 1, 1};
+  uint32_t limit_minus1[ZDNN_MAX_DIMS] = {1, zdnn_get_max_for_dim(3) - 1, 1, 1};
+  uint32_t at_limit[ZDNN_MAX_DIMS] = {1, 1, zdnn_get_max_for_dim(2), 1};
+  uint32_t limit_plus1[ZDNN_MAX_DIMS] = {1, 1, zdnn_get_max_for_dim(2) + 1, 1};
 
   set_and_verify_transformed_descriptor(
       zero_dim, ZDNN_NHWC, test_datatype, ZDNN_FORMAT_4DFEATURE,
@@ -82,15 +61,6 @@ void verify_dims() {
       limit_plus1, ZDNN_NHWC, test_datatype, ZDNN_FORMAT_4DFEATURE,
       ZDNN_INVALID_SHAPE,
       "Not returning ZDNN_INVALID_SHAPE for above dims limit tensor");
-}
-
-void verify_layout() {
-  uint32_t dims[ZDNN_MAX_DIMS] = {1, 1, 1, 1};
-
-  // only pre-transformed descriptor cares about layout
-  set_and_verify_pre_transformed_descriptor(
-      dims, ZDNN_NHWC, test_datatype, ZDNN_OK,
-      "Not returning ZDNN_OK for pre-transformed with ZDNN_NHWC");
 }
 
 void verify_max_tensor_size() {
@@ -121,20 +91,12 @@ void verify_max_tensor_size() {
       "Not returning ZDNN_INVALID_SHAPE for above tensor size limit tensor");
 }
 
-void verify_datatype_pre_tranformed() {
+void verify_datatype_tranformed() {
   uint32_t dims[ZDNN_MAX_DIMS] = {1, 1, 1, 1};
 
   set_and_verify_transformed_descriptor(
       dims, ZDNN_NHWC, test_datatype, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_TYPE,
       "Not returning ZDNN_INVALID_TYPE with ZDNN_NHWC");
-}
-
-void verify_datatype_tranformed() {
-  uint32_t dims[ZDNN_MAX_DIMS] = {1, 1, 1, 1};
-
-  set_and_verify_pre_transformed_descriptor(
-      dims, ZDNN_4D, test_datatype, ZDNN_INVALID_TYPE,
-      "Not returning ZDNN_INVALID_TYPE with ZDNN_4D");
 }
 
 void verify_generated_format() {
@@ -444,27 +406,96 @@ void verify_2ds_transformed_layout_normal() {
                             ZDNN_OK);
 }
 
+void verify_2ds_transformed_layout_normal_fail() {
+  verify_transformed_layout(ZDNN_2DS, false, 9999, 9999, 1, 1, ZDNN_NHWC,
+                            ZDNN_INVALID_TYPE);
+}
+
 void verify_2ds_transformed_layout_concat() {
   verify_transformed_layout(ZDNN_2DS, true, 9999, 9999, 1, 1, ZDNN_FICO,
                             ZDNN_OK);
+}
+void verify_2ds_transformed_layout_concat_fail() {
+  verify_transformed_layout(ZDNN_2DS, true, 9999, 9999, 1, 1, ZDNN_FICO,
+                            ZDNN_INVALID_TYPE);
 }
 
 void verify_3ds_transformed_layout_normal() {
   verify_transformed_layout(ZDNN_3DS, false, 9999, 1, 1, 1, ZDNN_NHWC, ZDNN_OK);
 }
 
+void verify_3ds_transformed_layout_normal_fail() {
+  verify_transformed_layout(ZDNN_3DS, false, 9999, 1, 1, 1, ZDNN_NHWC,
+                            ZDNN_INVALID_TYPE);
+}
+
 void verify_3ds_transformed_layout_concat() {
   verify_transformed_layout(ZDNN_3DS, true, 9999, 1, 1, 1, ZDNN_FICO, ZDNN_OK);
+}
+
+void verify_3ds_transformed_layout_concat_fail() {
+  verify_transformed_layout(ZDNN_3DS, true, 9999, 1, 1, 1, ZDNN_FICO,
+                            ZDNN_INVALID_TYPE);
 }
 
 void verify_4ds_transformed_layout_normal() {
   verify_transformed_layout(ZDNN_4DS, false, 1, 1, 1, 1, ZDNN_NHWC, ZDNN_OK);
 }
 
+void verify_4ds_transformed_layout_normal_fail() {
+  verify_transformed_layout(ZDNN_4DS, false, 1, 1, 1, 1, ZDNN_NHWC,
+                            ZDNN_INVALID_TYPE);
+}
+
 void verify_4ds_transformed_layout_concat_fail() {
   // exp_to_layout does not matter, supposed to error out
   verify_transformed_layout(ZDNN_4DS, true, 1, 1, 1, 1, ZDNN_NHWC,
-                            ZDNN_INVALID_LAYOUT);
+                            ZDNN_INVALID_TYPE);
+}
+
+void verify_descriptors_transform_valid_format_4dfeature() {
+  zdnn_ztensor ztensor;
+  zdnn_tensor_desc ptd_desc, td_desc;
+  zdnn_status status;
+
+  zdnn_init_pre_transformed_desc(ZDNN_NHWC, FP32, &ptd_desc, 1, 1, 1, 1);
+  zdnn_generate_transformed_desc(&ptd_desc, &td_desc);
+
+  zdnn_init_ztensor(&ptd_desc, &td_desc, &ztensor);
+  ztensor.transformed_desc->format = ZDNN_FORMAT_4DFEATURE;
+  zdnn_data_layouts acceptable_tfd_layouts[] = {
+      ZDNN_NHWC, ZDNN_FICO, ZDNN_ZRH, ZDNN_BIDIR_FICO, ZDNN_BIDIR_ZRH};
+  for (int i = 0;
+       i < (sizeof(acceptable_tfd_layouts) / sizeof(acceptable_tfd_layouts[0]));
+       i++) {
+    ztensor.transformed_desc->layout = acceptable_tfd_layouts[i];
+    ztensor.transformed_desc->type = ZDNN_DLFLOAT16;
+    zdnn_data_formats acceptable_ptfd_layouts[] = {
+        ZDNN_1D, ZDNN_2D,  ZDNN_2DS,  ZDNN_3D,  ZDNN_3DS,
+        ZDNN_4D, ZDNN_4DS, ZDNN_NHWC, ZDNN_NCHW};
+    for (int j = 0; j < (sizeof(acceptable_ptfd_layouts) /
+                         sizeof(acceptable_ptfd_layouts[0]));
+         j++) {
+      ztensor.pre_transformed_desc->layout = acceptable_ptfd_layouts[j];
+      zdnn_data_types acceptable_ptfd_types[] = {BFLOAT, FP16, FP32};
+      for (int k = 0; k < (sizeof(acceptable_ptfd_types) /
+                           sizeof(acceptable_ptfd_types[0]));
+           k++) {
+        ztensor.pre_transformed_desc->type = acceptable_ptfd_types[k];
+        status = verify_descriptors_transform_ztensor(&ztensor);
+        TEST_ASSERT_MESSAGE_FORMATTED(
+            status == ZDNN_OK,
+            "verify_descriptors_transform_ztensor returned "
+            "status %08x \"%s\" but expected %08x \"%s\" when running with "
+            "tfd_layout %s, ptfd_layout %s, ptf_type %s",
+            status, zdnn_get_status_message(status), ZDNN_OK,
+            zdnn_get_status_message(ZDNN_OK),
+            get_data_layout_str(acceptable_tfd_layouts[i]),
+            get_data_layout_str(acceptable_ptfd_layouts[j]),
+            get_data_type_str(acceptable_ptfd_types[k]));
+      }
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -472,35 +503,58 @@ void verify_4ds_transformed_layout_concat_fail() {
 int main(void) {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_dims);
-  RUN_TEST_ALL_DATATYPES(verify_layout);
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_max_tensor_size);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(verify_dims);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(verify_max_tensor_size);
 
   // test all data-types possible
-  RUN_TEST_ALL_DATATYPES(verify_datatype_pre_tranformed);
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_datatype_tranformed);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(verify_datatype_tranformed);
 
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_generated_format);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(verify_generated_format);
 
-  RUN_TEST_ALL_TFRMD_DATATYPES(format_undefined_fail);
-  RUN_TEST_ALL_TFRMD_DATATYPES(format_feature_layout_notagree_fail);
-  RUN_TEST_ALL_TFRMD_DATATYPES(format_kernel_layout_notagree_fail);
-  RUN_TEST_ALL_TFRMD_DATATYPES(format_feature_layout_undefined_fail);
-  RUN_TEST_ALL_TFRMD_DATATYPES(format_kernel_layout_undefined_fail);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(format_undefined_fail);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(format_feature_layout_notagree_fail);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(format_kernel_layout_notagree_fail);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(format_feature_layout_undefined_fail);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(format_kernel_layout_undefined_fail);
 
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_2ds_transformed_layout_normal);
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_2ds_transformed_layout_concat);
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_3ds_transformed_layout_normal);
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_3ds_transformed_layout_concat);
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_4ds_transformed_layout_normal);
-  RUN_TEST_ALL_TFRMD_DATATYPES(verify_4ds_transformed_layout_concat_fail);
+  // TODO write tests that drive now failing paths.
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(verify_2ds_transformed_layout_normal);
+  RUN_TEST_ALL_INDEX_PRE_DATATYPES(verify_2ds_transformed_layout_normal);
+  RUN_TEST_ALL_QUANTIZED_PRE_DATATYPES(
+      verify_2ds_transformed_layout_normal_fail);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_2ds_transformed_layout_normal_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(verify_2ds_transformed_layout_concat);
+  RUN_TEST_ALL_QUANTIZED_PRE_DATATYPES(
+      verify_2ds_transformed_layout_concat_fail);
+  RUN_TEST_ALL_INDEX_PRE_DATATYPES(verify_2ds_transformed_layout_concat_fail);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_2ds_transformed_layout_concat_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(verify_3ds_transformed_layout_normal);
+  RUN_TEST_ALL_INDEX_PRE_DATATYPES(verify_3ds_transformed_layout_normal);
+  RUN_TEST_ALL_QUANTIZED_PRE_DATATYPES(
+      verify_3ds_transformed_layout_normal_fail);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_3ds_transformed_layout_normal_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(verify_3ds_transformed_layout_concat);
+  RUN_TEST_ALL_QUANTIZED_PRE_DATATYPES(
+      verify_3ds_transformed_layout_concat_fail);
+  RUN_TEST_ALL_INDEX_PRE_DATATYPES(verify_3ds_transformed_layout_concat_fail);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_3ds_transformed_layout_concat_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(verify_4ds_transformed_layout_normal);
+  RUN_TEST_ALL_INDEX_PRE_DATATYPES(verify_4ds_transformed_layout_normal);
+  RUN_TEST_ALL_QUANTIZED_PRE_DATATYPES(
+      verify_4ds_transformed_layout_normal_fail);
+  RUN_TEST_ALL_TFRMD_DATATYPES(verify_4ds_transformed_layout_normal_fail);
+  RUN_TEST_ALL_DLFLOAT16_TFRMD_DATATYPES(
+      verify_4ds_transformed_layout_concat_fail);
 
-  RUN_TEST_ALL_DATATYPES(test_slicing_specified_buffer);
-  RUN_TEST_ALL_DATATYPES(test_slicing_fail_input_has_only_one_dim4);
-  RUN_TEST_ALL_DATATYPES(test_slicing_fail_too_many_slices);
-  RUN_TEST_ALL_DATATYPES(test_slicing_1D_fail);
-  RUN_TEST_ALL_DATATYPES(test_slicing_2DS_5x2049);
-  RUN_TEST_ALL_DATATYPES(test_slicing_3DS_5x33x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_slicing_specified_buffer);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_slicing_fail_input_has_only_one_dim4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_slicing_fail_too_many_slices);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_slicing_1D_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_slicing_2DS_5x2049);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_slicing_3DS_5x33x65);
+
+  RUN_TEST(verify_descriptors_transform_valid_format_4dfeature);
 
   return UNITY_END();
 }

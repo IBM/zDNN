@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "common_rnn.h"
 #include "testsupport.h"
 
 #include <stddef.h>
@@ -22,9 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 
@@ -201,10 +200,6 @@ void verify_format(uint8_t function_code, lstm_gru_direction direction,
          0, true, format, exp_status, description);
 }
 
-// this macro assume values of NNPA_LSTMACT and NNPA_GRUACT are next to each
-// other
-#define LOOP_LSTM_AND_GRU(lg)                                                  \
-  for (int lg = NNPA_LSTMACT; lg < NNPA_GRUACT; lg++)
 // this macro assume lstm_gru_direction is an 0, 1, 2... enum
 #define LOOP_ALL_LSTM_GRU_DIRECTIONS(lgd) for (int lgd = 0; lgd < 3; lgd++)
 // this macro assumes false = 0, true = 1
@@ -220,7 +215,7 @@ void verify_pass() {
     LOOP_ALL_LSTM_GRU_DIRECTIONS(direction) {
       LOOP_TRUE_AND_FALSE(all_timesteps_out) {
         snprintf(msg, MAX_DESC_LEN, "%s %s %s all_timesteps_out: %s", __func__,
-                 act == NNPA_LSTMACT ? "LSTM" : "GRU",
+                 get_function_code_str(act),
 
                  get_rnn_direction_str(direction),
                  all_timesteps_out ? "true" : "false");
@@ -240,8 +235,7 @@ void verify_timestep_zero_fail() {
     LOOP_ALL_LSTM_GRU_DIRECTIONS(direction) {
       LOOP_TRUE_AND_FALSE(all_timesteps_out) {
         snprintf(msg, MAX_DESC_LEN, "%s %s %s all_timesteps_out: %s", __func__,
-                 act == NNPA_LSTMACT ? "LSTM" : "GRU",
-                 get_rnn_direction_str(direction),
+                 get_function_code_str(act), get_rnn_direction_str(direction),
                  all_timesteps_out ? "true" : "false");
 
         verify_shape(act, direction, all_timesteps_out, INPUT, 3, 0,
@@ -259,8 +253,7 @@ void verify_timestep_mismatch_fail() {
     LOOP_ALL_LSTM_GRU_DIRECTIONS(direction) {
       LOOP_TRUE_AND_FALSE(all_timesteps_out) {
         snprintf(msg, MAX_DESC_LEN, "%s %s %s all_timesteps_out: %s", __func__,
-                 act == NNPA_LSTMACT ? "LSTM" : "GRU",
-                 get_rnn_direction_str(direction),
+                 get_function_code_str(act), get_rnn_direction_str(direction),
                  all_timesteps_out ? "true" : "false");
 
         verify_shape(act, direction, all_timesteps_out, H0, 3,
@@ -281,7 +274,7 @@ void verify_batches_mismatch_fail() {
         // input, h0, c0 and all outputs require the same dim2 (num_batches)
 #define TEST(tensor_idx)                                                       \
   snprintf(msg, MAX_DESC_LEN, "%s %s %s %s all_timesteps_out: %s", __func__,   \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx,                  \
+           get_function_code_str(act), #tensor_idx,                            \
            get_rnn_direction_str(direction),                                   \
            all_timesteps_out ? "true" : "false");                              \
   verify_shape(act, direction, all_timesteps_out, tensor_idx, 2,               \
@@ -289,9 +282,13 @@ void verify_batches_mismatch_fail() {
 
         TEST(INPUT);
         TEST(H0);
-        TEST(C0);
+        if (act == NNPA_LSTMACT) {
+          TEST(C0);
+        }
         TEST(HN_OUTPUT);
-        TEST(CF_OUTPUT);
+        if (act == NNPA_LSTMACT) {
+          TEST(CF_OUTPUT);
+        }
 #undef TEST
       }
     }
@@ -306,8 +303,7 @@ void verify_features_mismatch_fail() {
     LOOP_ALL_LSTM_GRU_DIRECTIONS(direction) {
       LOOP_TRUE_AND_FALSE(all_timesteps_out) {
         snprintf(msg, MAX_DESC_LEN, "%s %s %s all_timesteps_out: %s", __func__,
-                 act == NNPA_LSTMACT ? "LSTM" : "GRU",
-                 get_rnn_direction_str(direction),
+                 get_function_code_str(act), get_rnn_direction_str(direction),
                  all_timesteps_out ? "true" : "false");
 
         verify_shape(act, direction, all_timesteps_out, WEIGHTS, 2,
@@ -328,22 +324,26 @@ void verify_hidden_mismatch_fail() {
         // h0, c0 and all outputs require the same dim1 (num_hidden)
 #define TEST(tensor_idx)                                                       \
   snprintf(msg, MAX_DESC_LEN, "%s %s%s %s all_timesteps_out: %s", __func__,    \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx,                  \
+           get_function_code_str(act), #tensor_idx,                            \
            get_rnn_direction_str(direction),                                   \
            all_timesteps_out ? "true" : "false");                              \
   verify_shape(act, direction, all_timesteps_out, tensor_idx, 1,               \
                num_hidden + 1, ZDNN_INVALID_SHAPE, msg);
 
         TEST(H0);
-        TEST(C0);
+        if (act == NNPA_LSTMACT) {
+          TEST(C0);
+        }
         TEST(HN_OUTPUT);
-        TEST(CF_OUTPUT);
+        if (act == NNPA_LSTMACT) {
+          TEST(CF_OUTPUT);
+        }
 #undef TEST
 
         // hidden_weights dim2 is num_hidden
         snprintf(msg, MAX_DESC_LEN, "%s %s %s %s all_timesteps_out: %s",
-                 __func__, act == NNPA_LSTMACT ? "LSTM" : "GRU",
-                 "HIDDEN_WEIGHTS", get_rnn_direction_str(direction),
+                 __func__, get_function_code_str(act), "HIDDEN_WEIGHTS",
+                 get_rnn_direction_str(direction),
                  all_timesteps_out ? "true" : "false");
         verify_shape(act, direction, all_timesteps_out, HIDDEN_WEIGHTS, 2,
                      num_hidden + 1, ZDNN_INVALID_SHAPE, msg);
@@ -352,7 +352,7 @@ void verify_hidden_mismatch_fail() {
         uint32_t in_pad = NUM_GATES(act) * PADDED(num_hidden);
 #define TEST(tensor_idx)                                                       \
   snprintf(msg, MAX_DESC_LEN, "%s %s %s %s all_timesteps_out: %s", __func__,   \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx,                  \
+           get_function_code_str(act), #tensor_idx,                            \
            get_rnn_direction_str(direction),                                   \
            all_timesteps_out ? "true" : "false");                              \
   verify_shape(act, direction, all_timesteps_out, tensor_idx, 1, in_pad + 1,   \
@@ -375,7 +375,9 @@ void verify_hidden_mismatch_fail() {
                ZDNN_INVALID_SHAPE, msg);
 
         TEST(HN_OUTPUT);
-        TEST(CF_OUTPUT);
+        if (act == NNPA_LSTMACT) {
+          TEST(CF_OUTPUT);
+        }
 #undef TEST
       }
     }
@@ -393,14 +395,16 @@ void verify_dirs_mismatch_fail() {
         // h0, c0 and all outputs require the same dim4 (num_dirs)
 #define TEST(tensor_idx)                                                       \
   snprintf(msg, MAX_DESC_LEN, "%s %s %s %s all_timesteps_out: %s", __func__,   \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx,                  \
+           get_function_code_str(act), #tensor_idx,                            \
            get_rnn_direction_str(direction),                                   \
            all_timesteps_out ? "true" : "false");                              \
   verify_shape(act, direction, all_timesteps_out, tensor_idx, 4,               \
                ((direction != BIDIR) ? 1 : 2) + 1, ZDNN_INVALID_SHAPE, msg);
 
         TEST(H0);
-        TEST(C0);
+        if (act == NNPA_LSTMACT) {
+          TEST(C0);
+        }
         TEST(WEIGHTS);
         TEST(BIASES);
         TEST(HIDDEN_WEIGHTS);
@@ -422,7 +426,7 @@ void verify_other_dims_fail() {
         // dim3 of all tensors should be 1
 #define TEST(tensor_idx)                                                       \
   snprintf(msg, MAX_DESC_LEN, "%s %s %s %s all_timesteps_out: %s", __func__,   \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx,                  \
+           get_function_code_str(act), #tensor_idx,                            \
            get_rnn_direction_str(direction),                                   \
            all_timesteps_out ? "true" : "false");                              \
   verify_shape(act, direction, all_timesteps_out, tensor_idx, 3, 2,            \
@@ -430,19 +434,23 @@ void verify_other_dims_fail() {
 
         TEST(INPUT);
         TEST(H0);
-        TEST(C0);
+        if (act == NNPA_LSTMACT) {
+          TEST(C0);
+        }
         TEST(WEIGHTS);
         TEST(BIASES);
         TEST(HIDDEN_WEIGHTS);
         TEST(HIDDEN_BIASES);
         TEST(HN_OUTPUT);
-        TEST(CF_OUTPUT);
+        if (act == NNPA_LSTMACT) {
+          TEST(CF_OUTPUT);
+        }
 #undef TEST
 
         // dim2 of (hidden_)biases should be 1
 #define TEST(tensor_idx)                                                       \
   snprintf(msg, MAX_DESC_LEN, "%s %s %s %s all_timesteps_out: %s", __func__,   \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx,                  \
+           get_function_code_str(act), #tensor_idx,                            \
            get_rnn_direction_str(direction),                                   \
            all_timesteps_out ? "true" : "false");                              \
   verify_shape(act, direction, all_timesteps_out, tensor_idx, 2, 2,            \
@@ -464,8 +472,7 @@ void verify_fail_format() {
     LOOP_ALL_LSTM_GRU_DIRECTIONS(direction) {
       LOOP_TRUE_AND_FALSE(all_timesteps_out) {
         snprintf(msg, MAX_DESC_LEN, "%s %s %s all_timesteps_out: %s", __func__,
-                 act == NNPA_LSTMACT ? "LSTM" : "GRU",
-                 get_rnn_direction_str(direction),
+                 get_function_code_str(act), get_rnn_direction_str(direction),
                  all_timesteps_out ? "true" : "false");
 
         verify_format(act, direction, all_timesteps_out, HN_OUTPUT, BAD_FORMAT,
@@ -483,8 +490,7 @@ void verify_fail_type() {
     LOOP_ALL_LSTM_GRU_DIRECTIONS(direction) {
       LOOP_TRUE_AND_FALSE(all_timesteps_out) {
         snprintf(msg, MAX_DESC_LEN, "%s %s %s all_timesteps_out: %s", __func__,
-                 act == NNPA_LSTMACT ? "LSTM" : "GRU",
-                 get_rnn_direction_str(direction),
+                 get_function_code_str(act), get_rnn_direction_str(direction),
                  all_timesteps_out ? "true" : "false");
 
         verify_type(act, direction, all_timesteps_out, HN_OUTPUT, BAD_TYPE,

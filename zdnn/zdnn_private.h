@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,13 +33,94 @@
 #include "../config.h"
 
 #define AIU_BYTES_PER_STICK 128
+#define AIU_1BYTE_CELLS_PER_STICK 128
 #define AIU_2BYTE_CELLS_PER_STICK 64
+#define AIU_4BYTE_CELLS_PER_STICK 32
 
 #define AIU_2BYTE_CELL_SIZE 2
 #define AIU_STICKS_PER_PAGE 32
 #define AIU_PAGESIZE_IN_BYTES 4096
 
-#define ZDNN_MAX_DIMS 4 // number of dims in AIU's Tensor Descriptor
+#define ZDNN_MAX_DIMS 4 // number of dims in zAIU's Tensor Descriptor
+
+/*
+ * The following values are ranges for transformed data types
+ *
+ * - DLFLOAT Range
+ *        |------------- 0 ------------|
+ *  -8573157376.0f                8573157376.0f
+ *
+ * - INT8 Range
+ *        |------------- 0 ------------|
+ *      -128                          127
+ *
+ * - INT32 Range
+ *        |------------- 0 ------------|
+ *  -2147483647                   2147483647
+ *
+ */
+#define DLFLOAT16_MAX 8573157376.0f
+#define DLFLOAT16_MIN -8573157376.0f
+#ifndef INT8_MAX
+#define INT8_MAX 127
+#endif
+#ifndef INT8_MIN
+#define INT8_MIN -128
+#endif
+#ifndef INT32_MAX
+#define INT32_MAX 2147483647
+#endif
+#ifndef INT32_MIN
+#define INT32_MIN -2147483648
+#endif
+
+/*
+ *
+ * The following values are hardcoded limits for pre-transformed data types to
+ * transformed data types.
+ *
+ * Note: Hex values are treated as uint16_t in C. Therefore it should only be
+ * used for data types represented as uint16_t, otherwise unintended conversions
+ * may occur.
+ *
+ * - FP16
+ *   - Represented in zDNN as uint16_t
+ *   - Can be converted to:
+ *     - DLFLOAT16
+ *       - Contains a smaller range than DLFLOAT16.
+ *     - INT8
+ *       - Contains a larger range than INT8
+ *
+ * - BFLOAT
+ *   - Represented in zDNN as uint16_t
+ *   - Can be converted to:
+ *     - DLFLOAT16
+ *       - Contains a larger range than DLFLOAT16.
+ *     - INT8
+ *       - Contains a larger range than INT8
+ *
+ * - FP32
+ *   - Represented in zDNN as float
+ *     - DLFLOAT16
+ *       - Contains a larger range than DLFLOAT16.
+ *     - INT8
+ *       - Contains a larger range than INT8
+ *
+ */
+#define FP16_MAX 0x7BFF         // 65504.0f
+#define FP16_MIN 0xFBFF         // -65504.0f
+#define INT8_MAX_AS_FP16 0x57F0 // 127.0f
+#define INT8_MIN_AS_FP16 0xD800 // -128.0f
+
+#define DLF16_MAX_AS_BFLOAT 0x4FFF // 8573157376.0f
+#define DLF16_MIN_AS_BFLOAT 0xCFFF // -8573157376.0f
+#define INT8_MAX_AS_BFLOAT 0x42FE  // 127.0f
+#define INT8_MIN_AS_BFLOAT 0xC300  // -128.0f
+
+#define DLF16_MAX_AS_FP32 8573157376.0f  // 0x4FFF80000 represented as float
+#define DLF16_MIN_AS_FP32 -8573157376.0f // 0xCFFF80000 represented as float
+#define INT8_MAX_AS_FP32 127.0f          // 0x42FE0000 represented as float
+#define INT8_MIN_AS_FP32 -128.0f         // 0xC3000000 represented as float
 
 typedef enum log_levels {
   LOGLEVEL_OFF,
@@ -183,26 +264,68 @@ typedef
 #ifdef __MVS__
     _Packed
 #endif
-    struct nnpa_parameter_block {
-  uint16_t parm_block_version_number; // first 9 bits must be 0
-  uint8_t model_version_number;       // Only set by hardware for continuation.
-  uint8_t reserved_for_ibm[3];
-  uint16_t reserved1; // 1 bit Continuation Flag at end
-  uint8_t reserved2[48];
-  uint64_t function_specific_save_area_address;
-  nnpa_tensor_descriptor output_tensor1;
-  nnpa_tensor_descriptor output_tensor2;
-  uint8_t reserved3[64];
-  nnpa_tensor_descriptor input_tensor1;
-  nnpa_tensor_descriptor input_tensor2;
-  nnpa_tensor_descriptor input_tensor3;
-  uint8_t reserved4[96];
+    struct function_specific_parameters {
   uint32_t function_specific_parm1;
   uint32_t function_specific_parm2;
   uint32_t function_specific_parm3;
   uint32_t function_specific_parm4;
   uint32_t function_specific_parm5;
-  uint8_t reserved5[108];
+  uint32_t function_specific_parm6;
+  uint32_t function_specific_parm7;
+  uint32_t function_specific_parm8;
+  uint32_t function_specific_parm9;
+  uint32_t function_specific_parm10;
+  uint32_t function_specific_parm11;
+  uint32_t function_specific_parm12;
+  uint32_t function_specific_parm13;
+  uint32_t function_specific_parm14;
+  uint32_t function_specific_parm15;
+  uint32_t function_specific_parm16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+function_specific_parameters;
+
+// Macro for checking C-struct size
+#define CASSERT(test) CASSERT_impl(test, __LINE__)
+#define CASSERT_NAME(line) cassert_line_##line
+#define CASSERT_impl(test, line)                                               \
+  typedef char CASSERT_NAME(line)[2 * (!!(test)) - 1]
+
+// Standard Parm Block sizes
+#define NNPA_PARMBLOCK_SIZE 4096
+#define QAF_PARMBLOCK_SIZE 256
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct nnpa_parameter_block {
+  uint16_t parm_block_version_number; // first 9 bits must be 0
+  uint8_t model_version_number;       // Only set by hardware for continuation.
+  uint8_t reserved_for_ibm1;
+  uint32_t reserved_for_ibm2 : 16;
+  uint32_t reserved1 : 14;
+  uint32_t lf : 1; // prioritized-latency flag
+  uint32_t cf : 1; // continuation flag
+  uint32_t reserved2;
+  uint32_t reserved_for_ibm3;
+  uint32_t reserved3;
+  uint32_t reserved_for_ibm4;
+  uint32_t reserved4;
+  uint32_t reserved_for_ibm5;
+  uint8_t reserved5[24];
+  uint64_t function_specific_save_area_address;
+  nnpa_tensor_descriptor output_tensor1;
+  nnpa_tensor_descriptor output_tensor2;
+  uint8_t reserved6[64];
+  nnpa_tensor_descriptor input_tensor1;
+  nnpa_tensor_descriptor input_tensor2;
+  nnpa_tensor_descriptor input_tensor3;
+  uint8_t reserved7[96];
+  function_specific_parameters function_specific_parms;
+  uint8_t reserved8[64];
   uint8_t continuation_state_buffer[3584];
 }
 #ifndef __MVS__
@@ -232,7 +355,12 @@ typedef
                                 // stick-area size
   uint16_t installed_dt1_conversions_vector; // bit set of installed Data-Type-1
                                              // conversions
-  uint8_t reserved3[182];
+  uint8_t reserved3[14];
+  uint32_t max_dim4_index_size; // maximum dimensions-4 index size
+  uint32_t max_dim3_index_size; // maximum dimensions-3 index size
+  uint32_t max_dim2_index_size; // maximum dimensions-2 index size
+  uint32_t max_dim1_index_size; // maximum dimensions-1 index size
+  uint8_t reserved4[152];
 }
 #ifndef __MVS__
 __attribute__((packed, aligned(8)))
@@ -242,6 +370,10 @@ nnpa_qaf_parameter_block
     __attribute__((__aligned__(8)))
 #endif
     ;
+
+// compile-time size check of QAF and NNPA parameter block
+CASSERT(sizeof(nnpa_parameter_block) == NNPA_PARMBLOCK_SIZE);
+CASSERT(sizeof(nnpa_qaf_parameter_block) == QAF_PARMBLOCK_SIZE);
 
 extern nnpa_qaf_parameter_block nnpa_query_result;
 
@@ -256,9 +388,14 @@ void refresh_aiu_lib_vernum();
 // Floating Point Format Conversion Functions
 // -----------------------------------------------------------------------------
 
+typedef vector unsigned int vec_float32;
+
 uint32_t convert_data_format(void *input_data, zdnn_data_types in_data_fmt,
                              void *output_data, zdnn_data_types out_data_fmt,
-                             uint32_t num_fields);
+                             uint32_t num_fields,
+                             void (*skip_func)(const vec_float32 *,
+                                               const vec_float32 *,
+                                               vec_float32 *, vec_float32 *));
 
 uint32_t
 convert_data_format_in_stride(void *input_data, zdnn_data_types in_data_fmt,
@@ -282,24 +419,14 @@ zdnn_status ztensor_slice_dim4(const zdnn_ztensor *input_ztensor,
 // -----------------------------------------------------------------------------
 // NNPA Parm Block Functions
 // -----------------------------------------------------------------------------
-
-// Define NNPA_PARM_BLOCK_VERSION
-// Notes:
-//   - The PBVN is not used on a Query NNPA
-//   - The PBVN is architected to be 9-15 of the first word of the
-//     NNPA parm block
-//   - Actual supported values are returned on the aforementioned
-//     Query NNPA in field IPBF
-#define NNPA_PARM_BLOCK_VERSION 0
-
 void populate_descriptor(nnpa_tensor_descriptor *descriptor,
                          const zdnn_ztensor *ztensor);
 void populate_nnpa_parm_block(
-    nnpa_parameter_block *parm_block, const zdnn_ztensor *input_ztensor1,
-    const zdnn_ztensor *input_ztensor2, const zdnn_ztensor *input_ztensor3,
-    zdnn_ztensor *output_ztensor1, zdnn_ztensor *output_ztensor2,
-    void *func_sp_savearea_addr, uint32_t func_sp_parm1, uint32_t func_sp_parm2,
-    uint32_t func_sp_parm3, uint32_t func_sp_parm4, uint32_t func_sp_parm5);
+    nnpa_parameter_block *parm_block, uint16_t parm_block_version,
+    const zdnn_ztensor *input_ztensor1, const zdnn_ztensor *input_ztensor2,
+    const zdnn_ztensor *input_ztensor3, zdnn_ztensor *output_ztensor1,
+    zdnn_ztensor *output_ztensor2, void *func_sp_savearea_addr,
+    const function_specific_parameters *fsp);
 
 // -----------------------------------------------------------------------------
 // Malloc 4k
@@ -317,30 +444,42 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
 zdnn_status invoke_nnpa_query(nnpa_qaf_parameter_block *qpb);
 
 // -----------------------------------------------------------------------------
-// Internal Function for AIU Operations
+// Internal Function for zAIU Operations
 // -----------------------------------------------------------------------------
 
-zdnn_status aiu_ops(uint8_t function_code, const zdnn_ztensor *input1,
-                    const zdnn_ztensor *input2, const zdnn_ztensor *input3,
-                    zdnn_ztensor *output1, zdnn_ztensor *output2);
+zdnn_status aiu_ops(uint16_t op_parm_block_version, uint8_t function_code,
+                    const zdnn_ztensor *input1, const zdnn_ztensor *input2,
+                    const zdnn_ztensor *input3, zdnn_ztensor *output1,
+                    zdnn_ztensor *output2);
 
 zdnn_status
-aiu_ops_func_specific(uint8_t function_code, const zdnn_ztensor *input1,
-                      const zdnn_ztensor *input2, const zdnn_ztensor *input3,
-                      zdnn_ztensor *output1, zdnn_ztensor *output2,
-                      uint64_t func_sp_savearea_addr, uint32_t func_sp_parm1,
-                      uint32_t func_sp_parm2, uint32_t func_sp_parm3,
-                      uint32_t func_sp_parm4, uint32_t func_sp_parm5);
+aiu_ops_func_specific(uint16_t op_parm_block_version, uint8_t function_code,
+                      const zdnn_ztensor *input1, const zdnn_ztensor *input2,
+                      const zdnn_ztensor *input3, zdnn_ztensor *output1,
+                      zdnn_ztensor *output2, uint64_t func_sp_savearea_addr,
+                      function_specific_parameters *fsp);
 
-zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
-                         const zdnn_ztensor *h0, const zdnn_ztensor *c0,
-                         const zdnn_ztensor *weights,
+zdnn_status aiu_lstm_gru(uint16_t op_parm_block_version, uint8_t function_code,
+                         const zdnn_ztensor *input, const zdnn_ztensor *h0,
+                         const zdnn_ztensor *c0, const zdnn_ztensor *weights,
                          const zdnn_ztensor *biases,
                          const zdnn_ztensor *hidden_weights,
                          const zdnn_ztensor *hidden_biases,
                          lstm_gru_direction direction, void *work_area,
                          zdnn_ztensor *hn_output, zdnn_ztensor *cf_output);
 
+zdnn_status
+aiu_quantized_matmul(uint16_t op_parm_block_version,
+                     const uint8_t function_code, const zdnn_ztensor *input_a,
+                     const zdnn_ztensor *input_b, const zdnn_ztensor *input_c,
+                     zdnn_matmul_ops op_type, const int8_t clip_min,
+                     const int8_t clip_max, void *work_area,
+                     zdnn_ztensor *output, const bool dequantize,
+                     const bool disable_clipping, const bool pre_computed);
+
+bool is_query_parmblock_installed(uint8_t parmblock_version);
+bool is_nnpa_fc_and_parmblock_installed(uint8_t function_code,
+                                        uint8_t parmblock_version);
 // -----------------------------------------------------------------------------
 // Internal Tensor Compatibility Verification
 // -----------------------------------------------------------------------------
@@ -361,38 +500,67 @@ zdnn_status verify_lstm_or_gru_act_tensors(uint8_t function_code,
                                            const zdnn_ztensor *prev_state,
                                            const zdnn_ztensor *h_output,
                                            const zdnn_ztensor *c_output);
-zdnn_status verify_matmul_op_tensors(const zdnn_ztensor *input_a,
-                                     const zdnn_ztensor *input_b,
-                                     const zdnn_ztensor *input_c,
-                                     const zdnn_ztensor *output);
-zdnn_status verify_matmul_bcast_op_tensors(const zdnn_ztensor *input_a,
-                                           const zdnn_ztensor *input_b,
-                                           const zdnn_ztensor *input_c,
-                                           const zdnn_ztensor *output);
+zdnn_status verify_matmul_op_common(
+    uint8_t function_code, const zdnn_ztensor *input_a,
+    const zdnn_ztensor *input_b, const zdnn_ztensor *input_c,
+    const void *transpose_control, const void *a_scale, const void *a_offset,
+    const void *clip_min, const void *clip_max, const zdnn_ztensor *output);
 zdnn_status verify_batchnorm_tensors(const zdnn_ztensor *input_a,
                                      const zdnn_ztensor *input_b,
                                      const zdnn_ztensor *input_c,
                                      const zdnn_ztensor *output);
-zdnn_status verify_pool_avg_max_tensors(
-    const zdnn_ztensor *input, zdnn_pool_padding padding_type,
-    uint32_t kernel_height, uint32_t kernel_width, uint32_t stride_height,
-    uint32_t stride_width, const zdnn_ztensor *output);
-
-zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
-                                  const zdnn_ztensor *kernel,
-                                  const zdnn_ztensor *bias, uint32_t pad_n_act,
-                                  uint32_t stride_height, uint32_t stride_width,
-                                  uint32_t reserved_n_clipping,
-                                  const zdnn_ztensor *output);
-
-zdnn_status verify_relu_tensors(const zdnn_ztensor *input,
-                                uint32_t reserved_n_clipping,
+zdnn_status verify_norm_tensors(const zdnn_ztensor *input_a,
+                                const zdnn_ztensor *input_b,
                                 const zdnn_ztensor *output);
+zdnn_status
+verify_pool_avg_max_tensors(const zdnn_ztensor *input, const void *padding_type,
+                            const void *stride_width, const void *stride_height,
+                            const void *kernel_width, const void *kernel_height,
+                            const zdnn_ztensor *output);
 
 zdnn_status
-verify_pre_transformed_descriptor(const zdnn_tensor_desc *pre_tfrmd_desc);
+verify_conv2d_tensors(const zdnn_ztensor *input, const zdnn_ztensor *kernel,
+                      const zdnn_ztensor *bias, const void *pad_n_act,
+                      const void *stride_width, const void *stride_height,
+                      const void *reserved_n_clipping,
+                      const zdnn_ztensor *output);
+
+zdnn_status verify_moments_tensors(const zdnn_ztensor *input_a,
+                                   const void *bessel_correction_type,
+                                   zdnn_ztensor *output_a,
+                                   zdnn_ztensor *output_b);
+
+zdnn_status verify_layernorm_tensors(const zdnn_ztensor *input_a,
+                                     const zdnn_ztensor *input_b,
+                                     const zdnn_ztensor *input_c,
+                                     const void *beta, const void *gamma,
+                                     const void *epsilon,
+                                     const zdnn_ztensor *output);
+
+zdnn_status verify_relu_tensors(const zdnn_ztensor *input,
+                                const void *reserved_n_clipping,
+                                const void *reserved_n_adjustment,
+                                const zdnn_ztensor *output);
+
+zdnn_status verify_invsqrt_tensors(const zdnn_ztensor *input,
+                                   const void *reserved_n_epsilon,
+                                   const zdnn_ztensor *output);
+
+zdnn_status verify_transform_tensors(const zdnn_ztensor *input,
+                                     const zdnn_ztensor *output,
+                                     const void *toc, const void *min_clipping,
+                                     const void *max_clipping);
+
+zdnn_status verify_reduce_tensors(const zdnn_ztensor *input,
+                                  const zdnn_ztensor *output);
+
+zdnn_status verify_descriptors_transform_ztensor(const zdnn_ztensor *input);
+
+zdnn_status verify_descriptors_transform_origtensor(const zdnn_ztensor *input);
 
 zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc);
+
+zdnn_status verify_transformed_dimensions(const zdnn_tensor_desc *tfrmd_desc);
 
 // -----------------------------------------------------------------------------
 // Stickify Related Functions
@@ -400,9 +568,7 @@ zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc);
 
 size_t get_stick_offset(uint32_t e4x, uint32_t e3x, uint32_t e2x, uint32_t e1x,
                         const zdnn_tensor_desc *pre_tfrmd_desc);
-void setbit_128(bit128_t *field, uint8_t bit_pos);
 bool is_bitset_128(bit128_t field, uint8_t bit_pos);
-void setbit_256(bit256_t *field, uint16_t bit_pos);
 bool is_bitset_256(bit256_t field, uint16_t bit_pos);
 
 zdnn_status transform_fico_ztensor(zdnn_ztensor *fico_ztensor, void *fx_data,
@@ -424,122 +590,312 @@ vec_int16 aiu_vec_convert_from_fp16(vec_int16 a);
 vec_int16 aiu_vec_convert_to_fp16(vec_int16 a);
 
 // -----------------------------------------------------------------------------
-// NNPA-MATMUL-OP function-specific-parameter-1 bitfields
+// NNPA-MATMUL-OP function-specific-parameters and their bitfields
 // -----------------------------------------------------------------------------
-
-//  bits 0-23: reserved
-//  bits 24-31: operation
 typedef
 #ifdef __MVS__
     _Packed
 #endif
-    struct bitfield_func_sp_parm1_matmul_op {
+    //  bits 0-23: reserved
+    //  bits 24-31: operation
+    struct func_sp_parm1_matmul {
   uint32_t reserved1 : 24;
   uint32_t operation : 8;
 }
 #ifndef __MVS__
 __attribute__((packed))
 #endif
-bitfield_func_sp_parm1_matmul_op;
+func_sp_parm1_matmul;
 
-typedef union func_sp_parm1_matmul_op {
-  // for get/setting bitfield individually
-  bitfield_func_sp_parm1_matmul_op bits;
-  // for as a whole.  you must clear this before setting bits individual
-  uint32_t val;
-} func_sp_parm1_matmul_op;
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-29: reserved
+    //  bit 30: transpose_b
+    //  bit 31: transpose_a
+    struct func_sp_parm2_matmul {
+  uint32_t reserved1 : 30;
+  bool transpose_b : 1;
+  bool transpose_a : 1;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm2_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bit 16-31: rec_scale
+    struct func_sp_parm3_matmul {
+  uint32_t reserved1 : 16;
+  uint32_t rec_scale : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm3_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bit 16-31: a_offset
+    struct func_sp_parm4_matmul {
+  uint32_t reserved1 : 16;
+  uint32_t offset : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm4_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bit 16-31: rec_scale
+    struct func_sp_parm5_matmul {
+  uint32_t reserved1 : 16;
+  uint32_t rec_scale : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm5_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-31: reserved
+    struct func_sp_parm6_matmul {
+  uint32_t reserved1;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm6_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bit 16-31: rec_scale
+    struct func_sp_parm7_matmul {
+  uint32_t reserved1 : 16;
+  uint32_t rec_scale : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm7_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-31: reserved
+    struct func_sp_parm8_matmul {
+  uint32_t reserved1;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm8_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-23: reserved
+    //  bit 24-31: clip_min
+    struct func_sp_parm9_matmul {
+  uint32_t reserved1 : 24;
+  uint32_t clip_min : 8;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm9_matmul;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-23: reserved
+    //  bit 24-31: clip_max
+    struct func_sp_parm10_matmul {
+  uint32_t reserved1 : 24;
+  uint32_t clip_max : 8;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm10_matmul;
 
 // -----------------------------------------------------------------------------
 // NNPA-MATMUL-OP-BCAST23 function-specific-parameter-1 bitfields
 // -----------------------------------------------------------------------------
-
-//  bits 0-23: reserved
-//  bits 24-31: operation
 typedef
 #ifdef __MVS__
     _Packed
 #endif
-    struct bitfield_func_sp_parm1_matmul_bcast_op {
+    //  bits 0-23: reserved
+    //  bits 24-31: operation
+    struct func_sp_parm1_matmul_bcast {
   uint32_t reserved1 : 24;
   uint32_t operation : 8;
 }
 #ifndef __MVS__
 __attribute__((packed))
 #endif
-bitfield_func_sp_parm1_matmul_bcast_op;
+func_sp_parm1_matmul_bcast;
 
-typedef union func_sp_parm1_matmul_bcast_op {
-  // for get/setting bitfield individually
-  bitfield_func_sp_parm1_matmul_bcast_op bits;
-  // for as a whole.  you must clear this before setting bits individual
-  uint32_t val;
-} func_sp_parm1_matmul_bcast_op;
-
-// -----------------------------------------------------------------------------
-// NNPA-SOFTMAX function-specific-parameter-1 bitfields
-// -----------------------------------------------------------------------------
-
-//  bits 0-28: reserved
-//  bits 28-31: activation func
 typedef
 #ifdef __MVS__
     _Packed
 #endif
-    struct bitfield_func_sp_parm1_softmax {
+    struct func_sp_parms_matmul_bcast {
+  func_sp_parm1_matmul_bcast parm1;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_matmul_bcast;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_matmul {
+  func_sp_parm1_matmul parm1;
+  func_sp_parm2_matmul parm2;
+  func_sp_parm3_matmul parm3;
+  func_sp_parm4_matmul parm4;
+  func_sp_parm5_matmul parm5;
+  func_sp_parm6_matmul parm6;
+  func_sp_parm7_matmul parm7;
+  func_sp_parm8_matmul parm8;
+  func_sp_parm9_matmul parm9;
+  func_sp_parm10_matmul parm10;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_matmul;
+
+// -----------------------------------------------------------------------------
+// NNPA-SOFTMAX function-specific-parameters and their bitfields
+// -----------------------------------------------------------------------------
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-28: reserved
+    //  bits 28-31: activation func
+    struct func_sp_parm1_softmax {
   uint32_t reserved1 : 28;
   uint32_t act : 4;
 }
 #ifndef __MVS__
 __attribute__((packed))
 #endif
-bitfield_func_sp_parm1_softmax;
+func_sp_parm1_softmax;
 
-typedef union func_sp_parm1_softmax {
-  // for get/setting bitfield individually
-  bitfield_func_sp_parm1_softmax bits;
-  // for as a whole.  you must clear this before setting bits individual
-  uint32_t val;
-} func_sp_parm1_softmax;
-
-// -----------------------------------------------------------------------------
-// NNPA-RELU function-specific-parameter-1 bitfields
-// -----------------------------------------------------------------------------
-
-//  bits 0-15: reserved
-//  bits 16-31: clipping value
 typedef
 #ifdef __MVS__
     _Packed
 #endif
-    struct bitfield_func_sp_parm1_relu {
+    //  bits 0-31: mask
+    struct func_sp_parm2_softmax {
+  uint32_t mask;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm2_softmax;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_softmax {
+  func_sp_parm1_softmax parm1;
+  func_sp_parm2_softmax parm2;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_softmax;
+
+// -----------------------------------------------------------------------------
+// NNPA-RELU function-specific-parameters and their bitfields
+// -----------------------------------------------------------------------------
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bits 16-31: clipping value
+    struct func_sp_parm1_relu {
   uint32_t reserved1 : 16;
   uint32_t clipping_value : 16;
 }
 #ifndef __MVS__
 __attribute__((packed))
 #endif
-bitfield_func_sp_parm1_relu;
+func_sp_parm1_relu;
 
-typedef union func_sp_parm1_relu {
-  // for get/setting bitfield individually
-  bitfield_func_sp_parm1_relu bits;
-  // for as a whole.  you must clear this before setting bits individual
-  uint32_t val;
-} func_sp_parm1_relu;
-
-// -----------------------------------------------------------------------------
-// NNPA-CONVOLUTION function-specific-parameter-1 bitfields
-// -----------------------------------------------------------------------------
-
-//  bits 0-23: reserved
-//  bits 24-27: activation func
-//  bits 28: reserved
-//  bits 29-31: padding type
 typedef
 #ifdef __MVS__
     _Packed
 #endif
-    struct bitfield_func_sp_parm1_conv2d {
+    //  bits 0-15: reserved
+    //  bits 16-31: adjustment factor
+    struct func_sp_parm2_relu {
+  uint32_t reserved1 : 16;
+  uint32_t adjustment_factor : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm2_relu;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_relu {
+  func_sp_parm1_relu parm1;
+  func_sp_parm2_relu parm2;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_relu;
+
+// -----------------------------------------------------------------------------
+// NNPA-CONVOLUTION function-specific-parameters and their bitfields
+// -----------------------------------------------------------------------------
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-23: reserved
+    //  bits 24-27: activation func
+    //  bits 28: reserved
+    //  bits 29-31: padding type
+    struct func_sp_parm1_conv2d {
   uint32_t reserved1 : 24;
   uint32_t act : 4;
   uint32_t reserved2 : 1;
@@ -548,40 +904,414 @@ typedef
 #ifndef __MVS__
 __attribute__((packed))
 #endif
-bitfield_func_sp_parm1_conv2d;
+func_sp_parm1_conv2d;
 
-typedef union func_sp_parm1_conv2d {
-  // for get/setting bitfield individually
-  bitfield_func_sp_parm1_conv2d bits;
-  // for as a whole.  you must clear this before setting bits individual
-  uint32_t val;
-} func_sp_parm1_conv2d;
-
-// -----------------------------------------------------------------------------
-// NNPA-CONVOLUTION function-specific-parameter-4 bitfields
-// -----------------------------------------------------------------------------
-
-//  bits 0-15: reserved
-//  bits 16-31: clipping value
 typedef
 #ifdef __MVS__
     _Packed
 #endif
-    struct bitfield_func_sp_parm4_conv2d {
+    //  bits 0-31: stride_width
+    struct func_sp_parm2_conv2d {
+  uint32_t stride_width;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm2_conv2d;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-31: stride_height
+    struct func_sp_parm3_conv2d {
+  uint32_t stride_height;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm3_conv2d;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bits 16-31: clipping value
+    struct func_sp_parm4_conv2d {
   uint32_t reserved1 : 16;
   uint32_t clipping_value : 16;
 }
 #ifndef __MVS__
 __attribute__((packed))
 #endif
-bitfield_func_sp_parm4_conv2d;
+func_sp_parm4_conv2d;
 
-typedef union func_sp_parm4_conv2d {
-  // for get/setting bitfield individually
-  bitfield_func_sp_parm4_conv2d bits;
-  // for as a whole.  you must clear this before setting bits individual
-  uint32_t val;
-} func_sp_parm4_conv2d;
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_conv2d {
+  func_sp_parm1_conv2d parm1;
+  func_sp_parm2_conv2d parm2;
+  func_sp_parm3_conv2d parm3;
+  func_sp_parm4_conv2d parm4;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_conv2d;
+
+// -----------------------------------------------------------------------------
+// NNPA-TRANSFORM function-specific-parameters and their bitfields
+// -----------------------------------------------------------------------------
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0: saturation control
+    //  bits 1-23: reserved
+    //  bits 24-31: transformation-operation code (TOC)
+    struct func_sp_parm1_transform {
+  uint32_t sc : 1;
+  uint32_t reserved1 : 23;
+  uint32_t toc : 8;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm1_transform;
+
+typedef enum nnpa_transform_operation_code {
+  NNPA_TOC_STICK_DLFLOAT = 2,
+  NNPA_TOC_STICK_INT8 = 6,
+  NNPA_TOC_UNSTICK_DLFLOAT = 129
+} nnpa_transform_operation_code;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bits 16-31: rec_scale
+    struct func_sp_parm2_transform {
+  uint32_t reserved1 : 16;
+  uint32_t rec_scale : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm2_transform;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-15: reserved
+    //  bits 16-31: offset
+    struct func_sp_parm3_transform {
+  uint32_t reserved1 : 16;
+  uint32_t offset : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm3_transform;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-23: reserved
+    //  bits 24-31: clip_min
+    struct func_sp_parm4_transform {
+  uint32_t reserved1 : 24;
+  uint32_t clip_min : 8;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm4_transform;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-23: reserved
+    //  bits 24-31: clip_max
+    struct func_sp_parm5_transform {
+  uint32_t reserved1 : 24;
+  uint32_t clip_max : 8;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm5_transform;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_transform {
+  func_sp_parm1_transform parm1;
+  func_sp_parm2_transform parm2;
+  func_sp_parm3_transform parm3;
+  func_sp_parm4_transform parm4;
+  func_sp_parm5_transform parm5;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_transform;
+
+// -----------------------------------------------------------------------------
+// NNPA-INVSQRT function-specific-parameter and bitfields
+// -----------------------------------------------------------------------------
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parm1_invsqrt {
+  //  bits 0-15: reserved
+  //  bits 16-31: epsilon
+  uint32_t reserved1 : 16;
+  uint32_t epsilon : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm1_invsqrt;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_invsqrt {
+  func_sp_parm1_invsqrt parm1;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_invsqrt;
+
+// -----------------------------------------------------------------------------
+// NNPA-MOMENTS function-specific-parameter and bitfields
+// -----------------------------------------------------------------------------
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parm1_moments {
+  uint32_t bessel_correction;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm1_moments;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_moments {
+  func_sp_parm1_moments parm1;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_moments;
+
+// -----------------------------------------------------------------------------
+// NNPA-LAYERNORM function-specific-parameter-1 bitfields
+// -----------------------------------------------------------------------------
+
+//  bits 0-15: reserved
+//  bits 16-31: beta
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parm1_layernorm {
+  uint32_t reserved1 : 16;
+  uint32_t beta : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm1_layernorm;
+
+// -----------------------------------------------------------------------------
+// NNPA-LAYERNORM function-specific-parameter-2 bitfields
+// -----------------------------------------------------------------------------
+
+//  bits 0-15: reserved
+//  bits 16-31: gamma
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parm2_layernorm {
+  uint32_t reserved1 : 16;
+  uint32_t gamma : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm2_layernorm;
+
+// -----------------------------------------------------------------------------
+// NNPA-LAYERNORM function-specific-parameter-3 bitfields
+// -----------------------------------------------------------------------------
+
+//  bits 0-15: reserved
+//  bits 16-31: epsilon value
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parm3_layernorm {
+  uint32_t reserved1 : 16;
+  uint32_t epsilon : 16;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm3_layernorm;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_layernorm {
+  func_sp_parm1_layernorm parm1;
+  func_sp_parm2_layernorm parm2;
+  func_sp_parm3_layernorm parm3;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_layernorm;
+
+// -----------------------------------------------------------------------------
+// NNPA-REDUCE-OP function-specific-parameter-1 bitfields
+// -----------------------------------------------------------------------------
+
+//  bits 0-23: reserved
+//  bits 24-31: operation
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parm1_reduce {
+  uint32_t reserved1 : 24;
+  uint32_t operation : 8;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm1_reduce;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_reduce {
+  func_sp_parm1_reduce parm1;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_reduce;
+
+// -----------------------------------------------------------------------------
+// NNPA-AVGPOOL2D and NNPA-MAXPOOL2D function-specific-parameters and their
+// bitfields
+// -----------------------------------------------------------------------------
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-28: reserved
+    //  bits 29-31: padding type
+    struct func_sp_parm1_pool2d {
+  uint32_t reserved1 : 29;
+  uint32_t pad : 3;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm1_pool2d;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-31: stride_width aka dim2_stride
+    struct func_sp_parm2_pool2d {
+  uint32_t stride_width;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm2_pool2d;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-31: stride_height aka dim3_stride
+    struct func_sp_parm3_pool2d {
+  uint32_t stride_height;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm3_pool2d;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-31: kernel_width aka dim2_window
+    struct func_sp_parm4_pool2d {
+  uint32_t kernel_width;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm4_pool2d;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    //  bits 0-31: kernel_height aka dim3_window
+    struct func_sp_parm5_pool2d {
+  uint32_t kernel_height;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parm5_pool2d;
+
+typedef
+#ifdef __MVS__
+    _Packed
+#endif
+    struct func_sp_parms_pool2d {
+  func_sp_parm1_pool2d parm1;
+  func_sp_parm2_pool2d parm2;
+  func_sp_parm3_pool2d parm3;
+  func_sp_parm4_pool2d parm4;
+  func_sp_parm5_pool2d parm5;
+}
+#ifndef __MVS__
+__attribute__((packed))
+#endif
+func_sp_parms_pool2d;
 
 // -----------------------------------------------------------------------------
 // zDNN Logger Functions
@@ -690,6 +1420,8 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
 #define ZDNN_STATUS_OK ZDNN_STATUS_NO_MSG(ZDNN_OK)
 #endif
 
+#define WARNING_STATUS_BITMASK 0xFFFF0000
+
 // -----------------------------------------------------------------------------
 // Misc get_*() Functions
 // -----------------------------------------------------------------------------
@@ -697,20 +1429,66 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
 short get_func_code_num_gates(nnpa_function_code func_code);
 short get_data_layout_num_gates(zdnn_data_layouts layout);
 short get_data_layout_dims(zdnn_data_layouts layout);
+nnpa_function_code get_matmul_function(uint32_t input_a_dim4,
+                                       uint32_t input_b_dim4);
 const char *get_data_layout_str(zdnn_data_layouts layout);
 const char *get_data_format_str(zdnn_data_formats format);
 short get_data_type_size(zdnn_data_types type);
 const char *get_data_type_str(zdnn_data_types type);
 const char *get_rnn_direction_str(lstm_gru_direction dir);
+const char *get_function_code_str(nnpa_function_code func);
 const char *get_softmax_act_str(zdnn_softmax_act func);
 const char *get_matmul_op_str(zdnn_matmul_ops op);
 const char *get_matmul_bcast_op_str(zdnn_matmul_bcast_ops op);
 const char *get_pool_padding_str(zdnn_pool_padding pad);
 const char *get_conv2d_act_str(zdnn_conv2d_act func);
+const char *get_reduce_op_str(zdnn_reduce_ops op);
+const char *get_bessel_correction_str(zdnn_moments_bessel correction);
 uint64_t get_num_elements(const zdnn_ztensor *ztensor, elements_mode mode);
 
 uint32_t get_rnn_concatenated_dim1(uint32_t val, zdnn_concat_info info);
 uint32_t get_rnn_concatenated_dim2(uint32_t val, zdnn_concat_info info);
+
+typedef enum zdnn_operation_apis {
+  ZDNN_ADD,
+  ZDNN_SUB,
+  ZDNN_MUL,
+  ZDNN_DIV,
+  ZDNN_MIN,
+  ZDNN_MAX,
+  ZDNN_LOG,
+  ZDNN_EXP,
+  ZDNN_SQRT,
+  ZDNN_INVSQRT,
+  ZDNN_RELU,
+  ZDNN_LEAKY_RELU,
+  ZDNN_TANH,
+  ZDNN_SIGMOID,
+  ZDNN_SOFTMAX,
+  ZDNN_SOFTMAX_MASK,
+  ZDNN_GELU,
+  ZDNN_LSTM,
+  ZDNN_GRU,
+  ZDNN_MATMUL_OP,
+  ZDNN_BATCHNORM,
+  ZDNN_NORM,
+  ZDNN_MEANREDUCE2D,
+  ZDNN_MOMENTS,
+  ZDNN_LAYERNORM,
+  ZDNN_REDUCE,
+  ZDNN_AVGPOOL2D,
+  ZDNN_MAXPOOL2D,
+  ZDNN_CONV2D,
+  ZDNN_TRANSFORM_ZTENSOR,
+  ZDNN_TRANSFORM_ZTENSOR_WITH_SATURATION,
+  ZDNN_TRANSFORM_QUANTIZED_ZTENSOR,
+  ZDNN_TRANSFORM_ORIGTENSOR,
+  ZDNN_RESHAPE_ZTENSOR
+} zdnn_operation_apis;
+
+// any zdnn op that invokes nnpa
+bool query_nnpa_op(zdnn_operation_apis api);
+bool is_operation_available(zdnn_operation_apis api);
 
 // -----------------------------------------------------------------------------
 // Print Utilities

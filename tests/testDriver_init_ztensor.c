@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,10 +24,7 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 
@@ -35,7 +32,7 @@ void tearDown(void) {}
 // Concatenated ztensors introduce padding that must be determined to test this.
 // See zdnn_generate_transformed_desc_concatenated() to see padding equation.
 uint32_t max_concat_dim1(uint32_t num_concats) {
-  uint32_t temp = zdnn_get_nnpa_max_dim_idx_size() / num_concats;
+  uint32_t temp = zdnn_get_max_for_dim(1) / num_concats;
   uint32_t max_concat_dim1 = temp - (temp % AIU_2BYTE_CELLS_PER_STICK);
   LOG_TRACE("returning %d\n", max_concat_dim1);
   return max_concat_dim1;
@@ -84,6 +81,61 @@ void test_normal(zdnn_tensor_desc *pre_tfrmd_desc, uint64_t exp_size) {
       zdnn_get_status_message(ZDNN_OK));
 
   test_main(pre_tfrmd_desc, &tfrmd_desc, NO_CONCAT, exp_size, ZDNN_OK);
+}
+
+// test if we can zdnn_init_quantized_ztensor_with_malloc() correctly with the
+// supplied pre-transformed and quantized transformed descriptors
+void test_quantized_main(zdnn_tensor_desc *pre_tfrmd_desc,
+                         zdnn_tensor_desc *tfrmd_desc, float scale,
+                         float offset, uint64_t exp_size,
+                         zdnn_status exp_status_allochelper) {
+  zdnn_ztensor ztensor;
+  zdnn_status status;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(pre_tfrmd_desc, tfrmd_desc,
+                                                   scale, offset, &ztensor);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == exp_status_allochelper,
+      "zdnn_init_quantized_ztensor_with_malloc() status is %08x (%s) "
+      "but expects %08x (%s)",
+      status, zdnn_get_status_message(status), exp_status_allochelper,
+      zdnn_get_status_message(exp_status_allochelper));
+
+  // check and free buffer but only if expected
+  // zdnn_init_ztensor_with_malloc() to work
+  if (exp_status_allochelper == ZDNN_OK) {
+    TEST_ASSERT_MESSAGE_FORMATTED(ztensor.buffer_size == exp_size,
+                                  "zdnn_init_quantized_ztensor_with_malloc() "
+                                  "returns incorrect size: %" PRIu64
+                                  " (expects %" PRIu64 ")",
+                                  ztensor.buffer_size, exp_size);
+
+    zdnn_free_ztensor_buffer(&ztensor);
+  }
+}
+
+void test_quantized(zdnn_quantized_transform_types type, unsigned int n,
+                    unsigned int h, unsigned int w, unsigned int c, float scale,
+                    float offset, uint64_t exp_size) {
+
+  zdnn_tensor_desc pre_tfrmd_desc;
+  zdnn_init_pre_transformed_desc(ZDNN_NHWC, test_datatype, &pre_tfrmd_desc, n,
+                                 h, w, c);
+
+  zdnn_tensor_desc tfrmd_desc;
+  zdnn_status status;
+
+  status = zdnn_generate_quantized_transformed_desc(&pre_tfrmd_desc, type,
+                                                    &tfrmd_desc);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK,
+      "zdnn_generate_transformed_desc() status is %08x (%s) "
+      "but expects %08x (%s))",
+      status, zdnn_get_status_message(status), ZDNN_OK,
+      zdnn_get_status_message(ZDNN_OK));
+
+  test_quantized_main(&pre_tfrmd_desc, &tfrmd_desc, scale, offset, exp_size,
+                      ZDNN_OK);
 }
 
 /// Drive the creation of a FICO/ZRH ztensor with the provided pre-transformed
@@ -225,6 +277,50 @@ void test_NHWC_1x64x64x64() { test_NHWC(1, 64, 64, 64, 524288); }
 void test_NHWC_1x8x8x1() { test_NHWC(1, 8, 8, 1, 32768); }
 void test_NHWC_1x256x256x1() { test_NHWC(1, 256, 256, 1, 8388608); }
 void test_NHWC_1x1x256x1() { test_NHWC(1, 1, 256, 1, 32768); }
+
+// Different quantized types have different cells per stick. Focus on innermost
+// dimension limits.
+void test_quantized_DLFLOAT_1x3x3x5() {
+  test_quantized(QUANTIZED_DLFLOAT16, 1, 3, 3, 5, 5, 6, 12288);
+}
+void test_quantized_DLFLOAT_1x3x3x64() {
+  test_quantized(QUANTIZED_DLFLOAT16, 1, 3, 3, 64, 7, 8, 12288);
+}
+void test_quantized_DLFLOAT_1x3x3x65() {
+  test_quantized(QUANTIZED_DLFLOAT16, 1, 3, 3, 65, 9, 10, 24576);
+}
+void test_quantized_INT8_1x3x3x5() {
+  test_quantized(QUANTIZED_INT8, 1, 3, 3, 5, 5, 6, 12288);
+}
+void test_quantized_INT8_1x3x3x128() {
+  test_quantized(QUANTIZED_INT8, 1, 3, 3, 128, 7, 8, 12288);
+}
+void test_quantized_INT8_1x3x3x129() {
+  test_quantized(QUANTIZED_INT8, 1, 3, 3, 129, 9, 10, 24576);
+}
+void test_quantized_WEIGHTS_INT8_1x3x3x5() {
+  test_quantized(QUANTIZED_WEIGHTS_INT8, 1, 3, 3, 5, 5, 6, 12288);
+}
+void test_quantized_WEIGHTS_INT8_1x3x3x64() {
+  test_quantized(QUANTIZED_WEIGHTS_INT8, 1, 3, 3, 64, 7, 8, 12288);
+}
+void test_quantized_WEIGHTS_INT8_1x3x3x65() {
+  test_quantized(QUANTIZED_WEIGHTS_INT8, 1, 3, 3, 65, 9, 10, 24576);
+}
+void test_quantized_WEIGHTS_INT8_1x3x32x64() {
+  test_quantized(QUANTIZED_WEIGHTS_INT8, 1, 3, 32, 64, 9, 10, 12288);
+}
+void test_quantized_WEIGHTS_INT8_1x3x33x64() {
+  test_quantized(QUANTIZED_WEIGHTS_INT8, 1, 3, 33, 64, 9, 10, 12288);
+}
+void test_quantized_WEIGHTS_INT8_1x3x64x64() {
+  test_quantized(QUANTIZED_WEIGHTS_INT8, 1, 3, 64, 64, 9, 10, 12288);
+}
+void test_quantized_WEIGHTS_INT8_1x3x65x64() {
+  test_quantized(QUANTIZED_WEIGHTS_INT8, 1, 3, 65, 64, 9, 10, 24576);
+}
+
+// TODO, will need to drive INT32 scenarios
 
 void test_2D_8x8() { test_2D(8, 8, 4096); }
 
@@ -461,8 +557,12 @@ void test_CONCAT_LSTM_max_dim1() {
   // Confirm we pass when at the maximum number of dim1 elements
   // LSTM concatenates 4 gates.
   uint32_t max_dim1 = max_concat_dim1(4);
-  test_concat(ZDNN_2DS, RNN_TYPE_LSTM | PREV_LAYER_UNI | USAGE_BIASES, 2097152,
-              ZDNN_OK, ZDNN_OK, 1, max_dim1);
+  // If MDnIS exists, use larger number; otherwise keep Telum I value.
+  uint64_t expected_size =
+      nnpa_query_result.max_dim1_index_size ? 134217728 : 2097152;
+
+  test_concat(ZDNN_2DS, USAGE_BIASES | RNN_TYPE_LSTM | PREV_LAYER_UNI,
+              expected_size, ZDNN_OK, ZDNN_OK, 1, max_dim1);
 }
 
 void test_CONCAT_LSTM_fail_dim1_too_big() {
@@ -470,22 +570,8 @@ void test_CONCAT_LSTM_fail_dim1_too_big() {
   // zdnn_allochelper() yields ZDNN_DATA_ERROR during it's checks.
   // LSTM concatenates 4 gates.
   uint32_t max_dim1 = max_concat_dim1(4);
-  test_concat(ZDNN_2DS, RNN_TYPE_LSTM | PREV_LAYER_UNI | USAGE_BIASES, 0,
+  test_concat(ZDNN_2DS, USAGE_BIASES | RNN_TYPE_LSTM | PREV_LAYER_UNI, 0,
               ZDNN_OK, ZDNN_INVALID_SHAPE, 1, max_dim1 + 1);
-}
-
-void test_CONCAT_LSTM_max_dim1_API_doc() {
-  // This value is hardcoded in our API documentation. If the hardware makes
-  // a change that alters the max value, this UT will fail.
-  uint64_t max_dim1 = max_concat_dim1(4);
-  uint64_t doc_max_dim1 = 8192;
-
-  TEST_ASSERT_MESSAGE_FORMATTED(
-      max_dim1 == doc_max_dim1,
-      "hardware returned a maximum dim1 of %" PRIu64
-      " but our LSTM API documents the hidden_stat_size limit %" PRIu64
-      ". Update documentation and this test to match new value.",
-      max_dim1, doc_max_dim1);
 }
 
 //------------------------------------------------------------
@@ -703,8 +789,11 @@ void test_CONCAT_GRU_max_dim1() {
   // Confirm we pass when at the maximum number of dim1 elements
   // GRU concatenates 3 gates.
   uint64_t max_dim1 = max_concat_dim1(3);
-  test_concat(ZDNN_2DS, RNN_TYPE_GRU | PREV_LAYER_UNI | USAGE_BIASES, 2088960,
-              ZDNN_OK, ZDNN_OK, 1, max_dim1);
+  // If MDnIS exists, use larger number; otherwise keep Telum I value.
+  uint64_t expected_size =
+      nnpa_query_result.max_dim1_index_size ? 134209536 : 2088960;
+  test_concat(ZDNN_2DS, RNN_TYPE_GRU | PREV_LAYER_UNI | USAGE_BIASES,
+              expected_size, ZDNN_OK, ZDNN_OK, 1, max_dim1);
 }
 
 void test_CONCAT_GRU_fail_dim1_too_big() {
@@ -714,20 +803,6 @@ void test_CONCAT_GRU_fail_dim1_too_big() {
   uint64_t max_dim1 = max_concat_dim1(3);
   test_concat(ZDNN_2DS, RNN_TYPE_GRU | PREV_LAYER_UNI | USAGE_BIASES, 0,
               ZDNN_OK, ZDNN_INVALID_SHAPE, 1, max_dim1 + 1);
-}
-
-void test_CONCAT_GRU_max_dim1_API_doc() {
-  // This value is hardcoded in our API documentation. If the hardware makes
-  // a change that alters this, this UT will fail.
-  uint64_t max_dim1 = max_concat_dim1(3);
-  uint64_t doc_max_dim1 = 10880;
-
-  TEST_ASSERT_MESSAGE_FORMATTED(
-      max_dim1 == doc_max_dim1,
-      "hardware returned a maximum dim1 of %" PRIu64
-      " but our GRU API documents the hidden_stat_size limit %" PRIu64
-      ". Update documentation and this test to match new value.",
-      max_dim1, doc_max_dim1);
 }
 
 //------------------------------------------------------------
@@ -784,7 +859,10 @@ void test_bidir_output_max_dim1() {
       status, zdnn_get_status_message(status), ZDNN_OK,
       zdnn_get_status_message(ZDNN_OK));
 
-  test_main(&pre_tfrmd_desc, &tfrmd_desc, NO_CONCAT, 2097152, ZDNN_OK);
+  // If MDnIS exists, use larger number; otherwise keep Telum I value.
+  uint64_t expected_size =
+      nnpa_query_result.max_dim1_index_size ? 134217728 : 2097152;
+  test_main(&pre_tfrmd_desc, &tfrmd_desc, NO_CONCAT, expected_size, ZDNN_OK);
 }
 
 void test_bidir_output_fail_dim1_too_big() {
@@ -835,6 +913,14 @@ void test_zdnn_init_ztensor_function() {
       memcmp(expected_reserved, ztensor.reserved, sizeof(expected_reserved)) ==
           0,
       "Expected ztensor reserved area not initialized to zeroes.");
+
+  // We expect reserved2 area to be all zeros, create variable for memcmp
+  char expected_reserved2[sizeof(ztensor.reserved2)] = {0};
+
+  TEST_ASSERT_MESSAGE(
+      memcmp(expected_reserved2, ztensor.reserved2,
+             sizeof(expected_reserved2)) == 0,
+      "Expected ztensor reserved2 area not initialized to zeroes.");
 }
 
 void test_zdnn_init_ztensor_via_malloc_function() {
@@ -868,127 +954,177 @@ void test_zdnn_init_ztensor_via_malloc_function() {
           0,
       "Expected ztensor reserved area not initialized to zeroes.");
 
+  // We expect reserved2 area to be all zeros, create variable for memcmp
+  char expected_reserved2[sizeof(ztensor.reserved2)] = {0};
+
+  TEST_ASSERT_MESSAGE(
+      memcmp(expected_reserved2, ztensor.reserved2,
+             sizeof(expected_reserved2)) == 0,
+      "Expected ztensor reserved2 area not initialized to zeroes.");
+
   zdnn_free_ztensor_buffer(&ztensor);
+}
+
+void test_zdnn_is_quantized_ztensor_scale() {
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_ztensor ztensor;
+
+  zdnn_init_pre_transformed_desc(ZDNN_NHWC, FP32, &pre_tfrmd_desc, 1, 1, 1, 1);
+  zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
+  zdnn_init_ztensor(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
+  ztensor.rec_scale = 0.2;
+
+  TEST_ASSERT_MESSAGE(zdnn_is_quantized_ztensor(&ztensor) == true,
+                      "Expected ztensor not indicated as a quantized ztensor.");
+}
+
+void test_zdnn_is_quantized_ztensor_false() {
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_ztensor ztensor;
+
+  zdnn_init_pre_transformed_desc(ZDNN_NHWC, FP32, &pre_tfrmd_desc, 1, 1, 1, 1);
+  zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
+  zdnn_init_ztensor(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
+  ztensor.rec_scale = 0;
+
+  TEST_ASSERT_MESSAGE(zdnn_is_quantized_ztensor(&ztensor) == false,
+                      "Expected ztensor indicated as a quantized ztensor.");
 }
 
 int main(void) {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(test_NHWC_1x3x3x5);
-  RUN_TEST_ALL_DATATYPES(test_NHWC_5x32x32x3);
-  RUN_TEST_ALL_DATATYPES(test_NHWC_1x64x64x64);
-  RUN_TEST_ALL_DATATYPES(test_NHWC_1x8x8x1);
-  RUN_TEST_ALL_DATATYPES(test_NHWC_1x256x256x1);
-  RUN_TEST_ALL_DATATYPES(test_NHWC_1x1x256x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_NHWC_1x3x3x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_NHWC_5x32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_NHWC_1x64x64x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_NHWC_1x8x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_NHWC_1x256x256x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_NHWC_1x1x256x1);
 
-  RUN_TEST_ALL_DATATYPES(test_2D_8x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_quantized_DLFLOAT_1x3x3x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_quantized_DLFLOAT_1x3x3x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_quantized_DLFLOAT_1x3x3x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_quantized_INT8_1x3x3x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_quantized_INT8_1x3x3x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_quantized_INT8_1x3x3x129);
+  RUN_TEST(test_quantized_WEIGHTS_INT8_1x3x3x5);
+  RUN_TEST(test_quantized_WEIGHTS_INT8_1x3x3x64);
+  RUN_TEST(test_quantized_WEIGHTS_INT8_1x3x3x65);
+  RUN_TEST(test_quantized_WEIGHTS_INT8_1x3x32x64);
+  RUN_TEST(test_quantized_WEIGHTS_INT8_1x3x33x64);
+  RUN_TEST(test_quantized_WEIGHTS_INT8_1x3x64x64);
+  RUN_TEST(test_quantized_WEIGHTS_INT8_1x3x65x64);
 
-  RUN_TEST_ALL_DATATYPES(test_2DS_1x8);
-  RUN_TEST_ALL_DATATYPES(test_2DS_8x1);
-  RUN_TEST_ALL_DATATYPES(test_2DS_8x8);
-  RUN_TEST_ALL_DATATYPES(test_2DS_32x8);
-  RUN_TEST_ALL_DATATYPES(test_2DS_64x8);
-  RUN_TEST_ALL_DATATYPES(test_2DS_256x32);
-  RUN_TEST_ALL_DATATYPES(test_2DS_64x64);
-  RUN_TEST_ALL_DATATYPES(test_2DS_256x256);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2D_8x8);
 
-  RUN_TEST_ALL_DATATYPES(test_3DS_1x8x1);
-  RUN_TEST_ALL_DATATYPES(test_3DS_8x8x1);
-  RUN_TEST_ALL_DATATYPES(test_3DS_8x8x8);
-  RUN_TEST_ALL_DATATYPES(test_3DS_16x32x8);
-  RUN_TEST_ALL_DATATYPES(test_3DS_16x64x8);
-  RUN_TEST_ALL_DATATYPES(test_3DS_16x256x32);
-  RUN_TEST_ALL_DATATYPES(test_3DS_16x64x64);
-  RUN_TEST_ALL_DATATYPES(test_3DS_16x256x256);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_1x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_8x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_32x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_64x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_256x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_64x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2DS_256x256);
 
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_1x8);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x32);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_1x64);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x70);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_1x128);
-  RUN_TEST_ALL_DATATYPES(test_lstm_biases_2x150);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_1x2x8);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_2x5x32);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x2x8);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x2x8);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x34x8);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x34x8);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x64x10);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x64x10);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x70x20);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x70x20);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x10x32);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x10x32);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_1x3x64);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_2x10x70);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_1x34x128);
-  RUN_TEST_ALL_DATATYPES(test_lstm_no_vconcat_weights_2x50x150);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x6x64);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x6x64);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x10x70);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x10x70);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x34x128);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x34x128);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_1x50x150);
-  RUN_TEST_ALL_DATATYPES(test_lstm_prev_bidir_weights_2x50x150);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_LSTM_max_dim1);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_LSTM_fail_unsupported_layout);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_LSTM_fail_dim1_too_big);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_LSTM_max_dim1_API_doc);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_1x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_8x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_8x8x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_16x32x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_16x64x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_16x256x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_16x64x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3DS_16x256x256);
 
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_1x8);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x32);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_1x64);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x70);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_1x128);
-  RUN_TEST_ALL_DATATYPES(test_gru_biases_2x150);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_1x2x8);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_2x5x32);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x2x8);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x2x8);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x34x8);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x34x8);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x64x10);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x64x10);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x70x20);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x70x20);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x10x32);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x10x32);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_1x3x64);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_2x10x70);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_1x34x128);
-  RUN_TEST_ALL_DATATYPES(test_gru_no_vconcat_weights_2x50x150);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x6x64);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x6x64);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x10x70);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x10x70);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x34x128);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x34x128);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_1x50x150);
-  RUN_TEST_ALL_DATATYPES(test_gru_prev_bidir_weights_2x50x150);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_GRU_max_dim1);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_GRU_fail_unsupported_layout);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_GRU_fail_dim1_too_big);
-  RUN_TEST_ALL_DATATYPES(test_CONCAT_GRU_max_dim1_API_doc);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_1x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_2x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_1x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_2x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_1x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_biases_2x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_1x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_2x5x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x34x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x34x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x64x10);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x64x10);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x70x20);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x70x20);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x10x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x10x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_1x3x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_2x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_1x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_no_vconcat_weights_2x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x6x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x6x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_1x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_lstm_prev_bidir_weights_2x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_CONCAT_LSTM_max_dim1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_CONCAT_LSTM_fail_unsupported_layout);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_CONCAT_LSTM_fail_dim1_too_big);
 
-  RUN_TEST_ALL_DATATYPES(test_uni_output_1x1x2x8);
-  RUN_TEST_ALL_DATATYPES(test_uni_output_2x1x5x32);
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_1x2x2x8);
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_2x2x5x32);
-  RUN_TEST_ALL_DATATYPES(test_uni_output_1x1x3x64);
-  RUN_TEST_ALL_DATATYPES(test_uni_output_2x1x10x70);
-  RUN_TEST_ALL_DATATYPES(test_uni_output_1x1x34x128);
-  RUN_TEST_ALL_DATATYPES(test_uni_output_2x1x50x150);
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_1x2x3x64);
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_2x2x10x70);
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_1x2x34x128);
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_2x2x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_1x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_2x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_1x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_2x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_1x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_biases_2x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_1x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_2x5x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x34x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x34x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x64x10);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x64x10);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x70x20);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x70x20);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x10x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x10x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_1x3x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_2x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_1x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_no_vconcat_weights_2x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x6x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x6x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_1x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_gru_prev_bidir_weights_2x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_CONCAT_GRU_max_dim1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_CONCAT_GRU_fail_unsupported_layout);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_CONCAT_GRU_fail_dim1_too_big);
 
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_max_dim1);
-  RUN_TEST_ALL_DATATYPES(test_bidir_output_fail_dim1_too_big);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_uni_output_1x1x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_uni_output_2x1x5x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_1x2x2x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_2x2x5x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_uni_output_1x1x3x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_uni_output_2x1x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_uni_output_1x1x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_uni_output_2x1x50x150);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_1x2x3x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_2x2x10x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_1x2x34x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_2x2x50x150);
+
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_max_dim1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_bidir_output_fail_dim1_too_big);
 
   RUN_TEST(test_zdnn_init_ztensor_function);
   RUN_TEST(test_zdnn_init_ztensor_via_malloc_function);
+
+  RUN_TEST(test_zdnn_is_quantized_ztensor_scale);
+  RUN_TEST(test_zdnn_is_quantized_ztensor_false);
 
   return UNITY_END();
 }

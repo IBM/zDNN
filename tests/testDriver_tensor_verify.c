@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void setUp(void) { /* This is run before EACH TEST */
-}
+void setUp(void) {}
 
 void tearDown(void) {}
 
@@ -464,7 +463,7 @@ void test_matmul(
     uint32_t input_shape_lst[MATMUL_NUM_INPUTS][ZDNN_MAX_DIMS],
     int32_t input_shape_displace_lst[MATMUL_NUM_INPUTS][ZDNN_MAX_DIMS],
     zdnn_data_formats *input_format_lst, zdnn_data_types *input_type_lst,
-    uint32_t *output_shape, int32_t *output_shape_displace,
+    const uint32_t *output_shape, const int32_t *output_shape_displace,
     zdnn_data_formats output_format, zdnn_data_types output_type,
     zdnn_status exp_status) {
 
@@ -530,15 +529,30 @@ void test_matmul(
       output_shape[2] + output_shape_displace[2],
       output_shape[3] + output_shape_displace[3]);
 
-  if (function_code == NNPA_MATMUL_OP)
-    status = verify_matmul_op_tensors(&input_ztensor[0], &input_ztensor[1],
-                                      &input_ztensor[2], &output_ztensor);
-  else if (function_code == NNPA_MATMUL_OP_BCAST23) {
-    status =
-        verify_matmul_bcast_op_tensors(&input_ztensor[0], &input_ztensor[1],
-                                       &input_ztensor[2], &output_ztensor);
-  } else {
+  func_sp_parm2_matmul matmul_parm2;
+  memset(&matmul_parm2, 0, sizeof(func_sp_parm2_matmul));
+  func_sp_parm3_matmul matmul_parm3;
+  memset(&matmul_parm3, 0, sizeof(func_sp_parm3_matmul));
+  matmul_parm3.rec_scale = 1;
+  func_sp_parm4_matmul matmul_parm4;
+  memset(&matmul_parm4, 0, sizeof(func_sp_parm4_matmul));
+  func_sp_parm9_matmul matmul_parm9;
+  memset(&matmul_parm9, 0, sizeof(func_sp_parm9_matmul));
+  func_sp_parm10_matmul matmul_parm10;
+  memset(&matmul_parm10, 0, sizeof(func_sp_parm10_matmul));
+
+  switch (function_code) {
+  case NNPA_MATMUL_OP:
+  case NNPA_MATMUL_OP_BCAST23:
+  case NNPA_MATMUL_OP_BCAST1:
+    status = verify_matmul_op_common(
+        function_code, &input_ztensor[0], &input_ztensor[1], &input_ztensor[2],
+        &matmul_parm2, &matmul_parm3, &matmul_parm4, &matmul_parm9,
+        &matmul_parm10, &output_ztensor);
+    break;
+  default:
     TEST_FAIL_MESSAGE("unknown mode");
+    break;
   }
 
   TEST_ASSERT_MESSAGE_FORMATTED(exp_status == status,
@@ -581,7 +595,7 @@ void test_matmul_third(
 void test_matmul_bcast_op(
     int32_t input_shape_displace_lst[MATMUL_NUM_INPUTS][ZDNN_MAX_DIMS],
     zdnn_data_formats *input_format_lst, zdnn_data_types *input_type_lst,
-    int32_t *output_shape_displace, zdnn_data_formats output_format,
+    const int32_t *output_shape_displace, zdnn_data_formats output_format,
     zdnn_data_types output_type, zdnn_status exp_status) {
 
   uint32_t feature = 32, batch = 4, spad_x4 = 256, timestep = 4;
@@ -1070,12 +1084,14 @@ void test_relu(uint32_t input_shape[], zdnn_data_formats input_format,
                         input_shape[2], input_shape[3]);
 
   uint32_t clipping_value = 0;
+  uint32_t adjustment_factor = 0;
 
   init_transformed_desc(ZDNN_NHWC, output_type, output_format,
                         output.transformed_desc, output_shape[0],
                         output_shape[1], output_shape[2], output_shape[3]);
 
-  status = verify_relu_tensors(&input, clipping_value, &output);
+  status =
+      verify_relu_tensors(&input, &clipping_value, &adjustment_factor, &output);
 
   TEST_ASSERT_MESSAGE_FORMATTED(
       exp_status == status, "%s  Expected status = %08x, actual status = %08x",
@@ -1112,6 +1128,977 @@ void relu_verify_fail_dtype() {
   test_relu(input_shape, ZDNN_FORMAT_4DFEATURE, FP32, output_shape,
             ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_INVALID_TYPE,
             "Failed to fail on different types.");
+}
+
+/// Common test routine for norm tensors
+///
+/// \param[in] input_a_shape  input a tensor shape
+/// \param[in] input_b_shape  input b tensor shape
+/// \param[in] output_shape   output tensor shape
+/// \param[in] exp_status     Expected status
+///
+void test_norm(uint32_t input_a_shape[], uint32_t input_b_shape[],
+               uint32_t output_shape[], zdnn_status exp_status,
+               int ztensor_to_error) {
+  zdnn_tensor_desc tfrmd_desc[3];
+
+  zdnn_ztensor input_a, input_b, output;
+
+  input_a.transformed_desc = &tfrmd_desc[0];
+  input_b.transformed_desc = &tfrmd_desc[1];
+  output.transformed_desc = &tfrmd_desc[2];
+
+  init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                        &tfrmd_desc[0], input_a_shape[0], input_a_shape[1],
+                        input_a_shape[2], input_a_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                        &tfrmd_desc[1], input_b_shape[0], input_b_shape[1],
+                        input_b_shape[2], input_b_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                        &tfrmd_desc[2], output_shape[0], output_shape[1],
+                        output_shape[2], output_shape[3]);
+
+  if (exp_status == ZDNN_INVALID_TYPE) {
+    // cppcheck-suppress unreadVariable
+    tfrmd_desc[ztensor_to_error].type = FP32;
+  }
+  if (exp_status == ZDNN_INVALID_FORMAT) {
+    // cppcheck-suppress unreadVariable
+    tfrmd_desc[ztensor_to_error].format = ZDNN_FORMAT_4DKERNEL;
+  }
+
+  zdnn_status status = verify_norm_tensors(&input_a, &input_b, &output);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(exp_status == status,
+                                "Expected status = %08x, actual status = %08x",
+                                exp_status, status);
+}
+
+void norm_verify_pass() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_i[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+
+  test_norm(shape_i, shape_i, shape_o, ZDNN_OK, 0);
+}
+
+//  Check for dim-4 index size of all specified tensors are the same.
+void norm_verify_input_bad_dim4_fail() {
+  // Fail since input and output dim4 are not equal.
+  uint32_t shape_i[] = {10, 1, 1, 10};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_SHAPE, 0);
+}
+
+// Check for dim-3 index size of all specified tensors is 1.
+void norm_verify_input_bad_dim3_fail() {
+  // Fail since input and output dim3 are not 1
+  uint32_t shape_i[] = {1, 1, 5, 18};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_SHAPE, 0);
+}
+
+// Check for dim-2 index size of all specified tensors are the same.
+void norm_verify_input_bad_dim2_fail() {
+  // Fail since input and output dim2 are not equal.
+  uint32_t shape_i[] = {1, 2, 2, 10};
+  uint32_t shape_o[] = {1, 4, 2, 1};
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_SHAPE, 0);
+}
+
+// Check for dim-1 index size of all specified input tensors are
+// the same.
+void norm_verify_input_bad_dim1_fail() {
+  // Fail since dim4 of a & b are not equal.
+  uint32_t shape_i_a[] = {1, 2, 70, 180};
+  uint32_t shape_i_b[] = {1, 2, 70, 200};
+  uint32_t shape_o[] = {1, 2, 70, 1};
+  test_norm(shape_i_a, shape_i_b, shape_o, ZDNN_INVALID_SHAPE, 0);
+}
+
+// Check for dim-1 index size of output tensor is 1.
+void norm_verify_output_bad_dim1_fail() {
+  uint32_t shape_i[] = {1, 2, 70, 180};
+  // Fail since output dim4=180, not 1
+  uint32_t shape_o[] = {1, 2, 70, 180};
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_SHAPE, 0);
+}
+
+void norm_verify_bad_inputa_type_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_i[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_TYPE, 0);
+}
+
+void norm_verify_bad_inputb_type_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_i[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_TYPE, 1);
+}
+
+void norm_verify_bad_output_type_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_i[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_TYPE, 2);
+}
+
+void norm_verify_bad_inputa_format_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_i[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_FORMAT, 0);
+}
+
+void norm_verify_bad_inputb_format_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_i[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_FORMAT, 1);
+}
+
+void norm_verify_bad_output_format_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_i[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+
+  test_norm(shape_i, shape_i, shape_o, ZDNN_INVALID_FORMAT, 2);
+}
+
+/// Common test routine for moments tensors
+///
+/// \param[in] input_a_shape  input a tensor shape
+/// \param[in] bessel_correction bessel correction type
+/// \param[in] output_a_shape  output a tensor shape
+/// \param[in] output_b_shape  output b tensor shape
+/// \param[in] exp_status     Expected status
+///
+void test_moments(uint32_t input_a_shape[], uint32_t bessel_correction,
+                  uint32_t output_a_shape[], uint32_t output_b_shape[],
+                  zdnn_data_types type_in, zdnn_data_formats format_in,
+                  zdnn_data_types type_out_a, zdnn_data_formats format_out_a,
+                  zdnn_data_types type_out_b, zdnn_data_formats format_out_b,
+                  zdnn_status exp_status) {
+
+  zdnn_tensor_desc tfrmd_desc_input_a, tfrmd_desc_output_a, tfrmd_desc_output_b;
+
+  zdnn_ztensor input_a, output_a, output_b;
+
+  input_a.transformed_desc = &tfrmd_desc_input_a;
+  output_a.transformed_desc = &tfrmd_desc_output_a;
+  output_b.transformed_desc = &tfrmd_desc_output_b;
+
+  func_sp_parm1_moments moments_parm1;
+  memset(&moments_parm1, 0, sizeof(func_sp_parm1_moments));
+  moments_parm1.bessel_correction = bessel_correction;
+
+  init_transformed_desc(ZDNN_NHWC, type_in, format_in, &tfrmd_desc_input_a,
+                        input_a_shape[0], input_a_shape[1], input_a_shape[2],
+                        input_a_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, type_out_a, format_out_a,
+                        &tfrmd_desc_output_a, output_a_shape[0],
+                        output_a_shape[1], output_a_shape[2],
+                        output_a_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, type_out_b, format_out_b,
+                        &tfrmd_desc_output_b, output_b_shape[0],
+                        output_b_shape[1], output_b_shape[2],
+                        output_b_shape[3]);
+
+  zdnn_status status =
+      verify_moments_tensors(&input_a, &moments_parm1, &output_a, &output_b);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(exp_status == status,
+                                "Expected status = %08x, actual status = %08x",
+                                exp_status, status);
+}
+
+void moments_verify_pass() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t input_a[] = {1, 2, 2, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_OK);
+}
+
+void moments_bad_bessel_correction() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 1;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_INVALID_BESSEL_CORRECTION);
+}
+
+void moments_bad_out_a_dim4_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {2, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_out_a_dim3_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 2, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_out_a_dim2_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 1, 2, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_out_a_dim1_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 1, 1, 2};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_out_b_dim4_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {2, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_out_b_dim3_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 2, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_out_b_dim2_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 2, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_out_b_dim1_fail() {
+  uint32_t input_a[] = {1, 1, 1, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 2};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_SHAPE);
+}
+
+void moments_bad_format_in_fail() {
+  uint32_t input_a[] = {1, 2, 2, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DKERNEL, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_FORMAT);
+}
+
+void moments_bad_format_out_a_fail() {
+  uint32_t input_a[] = {1, 2, 2, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DKERNEL,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_FORMAT);
+}
+
+void moments_bad_format_out_b_fail() {
+  uint32_t input_a[] = {1, 2, 2, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DKERNEL, ZDNN_INVALID_FORMAT);
+}
+
+void moments_bad_type_in_fail() {
+  uint32_t input_a[] = {1, 2, 2, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, FP32,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_TYPE);
+}
+
+void moments_bad_type_out_a_fail() {
+  uint32_t input_a[] = {1, 2, 2, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, FP32, ZDNN_FORMAT_4DFEATURE,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_TYPE);
+}
+
+void moments_bad_type_out_b_fail() {
+  uint32_t input_a[] = {1, 2, 2, 1};
+  uint32_t output_a[] = {1, 1, 1, 1};
+  uint32_t output_b[] = {1, 1, 1, 1};
+  uint32_t bessel_correction = 0;
+  test_moments(input_a, bessel_correction, output_a, output_b, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+               FP32, ZDNN_FORMAT_4DFEATURE, ZDNN_INVALID_TYPE);
+}
+
+/// Common test routine for layernorm tensors
+///
+/// \param[in] input_a_shape  input a tensor shape
+/// \param[in] input_b_shape  input b tensor shape
+/// \param[in] input_c_shape  input c tensor shape
+/// \param[in] beta           beta fsp
+/// \param[in] gamma          gamma fsp
+/// \param[in] epsilon        epsilon fsp
+/// \param[in] output_shape   output tensor shape
+/// \param[in] exp_status     Expected status
+///
+void test_layernorm(uint32_t input_a_shape[], uint32_t input_b_shape[],
+                    uint32_t input_c_shape[], uint32_t output_shape[],
+                    float beta_value, float gamma_value, float epsilon_value,
+                    zdnn_status exp_status, int ztensor_to_error) {
+
+  VERIFY_HW_ENV;
+  VERIFY_PARMBLKFORMAT_1;
+
+  zdnn_tensor_desc tfrmd_desc[4];
+
+  zdnn_ztensor input_a, input_b, input_c, output;
+
+  input_a.transformed_desc = &tfrmd_desc[0];
+  input_b.transformed_desc = &tfrmd_desc[1];
+  input_c.transformed_desc = &tfrmd_desc[2];
+  output.transformed_desc = &tfrmd_desc[3];
+
+  func_sp_parm1_layernorm layernorm_parm1;
+  memset(&layernorm_parm1, 0, sizeof(func_sp_parm1_layernorm));
+  if (beta_value != 0) {
+    layernorm_parm1.beta = cnvt_1_fp32_to_dlf16(beta_value);
+  }
+
+  func_sp_parm2_layernorm layernorm_parm2;
+  memset(&layernorm_parm2, 0, sizeof(func_sp_parm2_layernorm));
+  if (gamma_value != 0) {
+    layernorm_parm2.gamma = cnvt_1_fp32_to_dlf16(gamma_value);
+  }
+
+  func_sp_parm3_layernorm layernorm_parm3;
+  memset(&layernorm_parm3, 0, sizeof(func_sp_parm3_layernorm));
+  if (epsilon_value != 0) {
+    layernorm_parm3.epsilon = cnvt_1_fp32_to_dlf16(epsilon_value);
+  }
+
+  init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                        &tfrmd_desc[0], input_a_shape[0], input_a_shape[1],
+                        input_a_shape[2], input_a_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                        &tfrmd_desc[1], input_b_shape[0], input_b_shape[1],
+                        input_b_shape[2], input_b_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                        &tfrmd_desc[2], input_c_shape[0], input_c_shape[1],
+                        input_c_shape[2], input_c_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                        &tfrmd_desc[3], output_shape[0], output_shape[1],
+                        output_shape[2], output_shape[3]);
+
+  if (exp_status == ZDNN_INVALID_TYPE) {
+    // cppcheck-suppress unreadVariable
+    tfrmd_desc[ztensor_to_error].type = FP32;
+  }
+  if (exp_status == ZDNN_INVALID_FORMAT) {
+    // cppcheck-suppress unreadVariable
+    tfrmd_desc[ztensor_to_error].format = ZDNN_FORMAT_4DKERNEL;
+  }
+
+  zdnn_status status =
+      verify_layernorm_tensors(&input_a, &input_b, &input_c, &layernorm_parm1,
+                               &layernorm_parm2, &layernorm_parm3, &output);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(exp_status == status,
+                                "Expected status = %08x, actual status = %08x",
+                                exp_status, status);
+}
+
+void layernorm_verify_pass() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_OK, 0);
+}
+
+void layernorm_verify_bad_beta_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 22147483648;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_BETA, 0);
+}
+
+void layernorm_verify_bad_gamma_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 22147483648;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_GAMMA, 0);
+}
+
+void layernorm_verify_bad_epsilon_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 22147483648;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_EPSILON, 0);
+}
+
+//
+// Input A
+//
+
+void layernorm_verify_input_a_bad_dim1_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 10};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+void layernorm_verify_input_a_bad_dim2_fail() {
+  uint32_t shape_a[] = {1, 1, 40, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+void layernorm_verify_input_a_bad_dim3_fail() {
+  uint32_t shape_a[] = {1, 16, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+//
+// Input B
+//
+void layernorm_verify_input_b_bad_dim1_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_b[] = {1, 1, 1, 5};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+void layernorm_verify_input_b_bad_dim2_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 5, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+void layernorm_verify_input_b_bad_dim3_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 5, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+//
+// Input C
+//
+void layernorm_verify_input_c_bad_dim1_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 5};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+void layernorm_verify_input_c_bad_dim2_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 5, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+void layernorm_verify_input_c_bad_dim3_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 5, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+//
+// Output
+//
+void layernorm_verify_bad_dim4_fail() {
+  uint32_t shape_a[] = {19, 1, 1, 1};
+  uint32_t shape_b[] = {18, 1, 1, 1};
+  uint32_t shape_c[] = {17, 1, 1, 1};
+  uint32_t shape_o[] = {16, 1, 1, 1};
+
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_SHAPE, 0);
+}
+
+void layernorm_verify_bad_inputa_type_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_TYPE, 0);
+}
+
+void layernorm_verify_bad_inputb_type_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_TYPE, 1);
+}
+
+void layernorm_verify_bad_inputc_type_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_TYPE, 2);
+}
+
+void layernorm_verify_bad_output_type_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_TYPE, 3);
+}
+
+void layernorm_verify_bad_inputa_format_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_FORMAT, 0);
+}
+
+void layernorm_verify_bad_inputb_format_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_FORMAT, 1);
+}
+
+void layernorm_verify_bad_inputc_format_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_FORMAT, 2);
+}
+
+void layernorm_verify_bad_output_format_fail() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 6};
+  uint32_t shape_b[] = {1, 1, 1, 1};
+  uint32_t shape_c[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 6};
+  float beta = 0.02;
+  float gamma = 0.05;
+  float epsilon = 0.01;
+  test_layernorm(shape_a, shape_b, shape_c, shape_o, beta, gamma, epsilon,
+                 ZDNN_INVALID_FORMAT, 3);
+}
+
+/// Common test routine for reduce tensors
+///
+/// \param[in] input_shape    Pointer to input dim array
+/// \param[in] input_format   Input format
+/// \param[in] input_type     Input type
+/// \param[in] output_shape   Pointer to output dim array
+/// \param[in] output_format  Output format
+/// \param[in] output_type    Output type
+/// \param[in] exp_status     Expected status
+/// \param[in] error_msg      Error message to prepend to the standard error
+///                           message
+///
+void test_reduce(uint32_t input_shape[], zdnn_data_formats input_format,
+                 zdnn_data_types input_type, uint32_t output_shape[],
+                 zdnn_data_formats output_format, zdnn_data_types output_type,
+                 zdnn_status exp_status, char *error_msg) {
+  zdnn_status status = ZDNN_OK;
+
+  zdnn_ztensor input, output;
+
+  zdnn_tensor_desc tfrmd_desc_input, tfrmd_desc_output;
+
+  input.transformed_desc = &tfrmd_desc_input;
+  output.transformed_desc = &tfrmd_desc_output;
+
+  init_transformed_desc(ZDNN_NHWC, input_type, input_format,
+                        input.transformed_desc, input_shape[0], input_shape[1],
+                        input_shape[2], input_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, output_type, output_format,
+                        output.transformed_desc, output_shape[0],
+                        output_shape[1], output_shape[2], output_shape[3]);
+
+  status = verify_reduce_tensors(&input, &output);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      exp_status == status, "%s  Expected status = %08x, actual status = %08x",
+      error_msg, exp_status, status);
+}
+
+void reduce_verify_pass() {
+  uint32_t input_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 4};
+  uint32_t output_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 1};
+  test_reduce(input_shape, ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, output_shape,
+              ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_OK,
+              "The output and the input tensor is different.");
+}
+
+void reduce_verify_fail_shape() {
+  uint32_t input_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 3};
+  uint32_t output_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 4};
+  test_reduce(input_shape, ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, output_shape,
+              ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_INVALID_SHAPE,
+              "Failed to fail on different shapes.");
+}
+
+void reduce_verify_fail_format() {
+  uint32_t input_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 4};
+  uint32_t output_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 1};
+  test_reduce(input_shape, ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, output_shape,
+              ZDNN_FORMAT_4DKERNEL, ZDNN_DLFLOAT16, ZDNN_INVALID_FORMAT,
+              "Failed to fail on different formats.");
+}
+
+void reduce_verify_fail_dtype() {
+  uint32_t input_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 4};
+  uint32_t output_shape[ZDNN_MAX_DIMS] = {1, 1, 2, 1};
+  test_reduce(input_shape, ZDNN_FORMAT_4DFEATURE, FP32, output_shape,
+              ZDNN_FORMAT_4DFEATURE, ZDNN_DLFLOAT16, ZDNN_INVALID_TYPE,
+              "Failed to fail on different types.");
+}
+
+/// Common test routine for invsqrt tensors
+///
+/// \param[in] input_shape    Input a tensor shape
+/// \param[in] epsilon        Epsilon fsp
+/// \param[in] output_shape   Output tensor shape
+/// \param[in] exp_status     Expected status
+///
+void test_invsqrt(uint32_t input_shape[], zdnn_data_types input_type,
+                  zdnn_data_formats input_format, uint32_t output_shape[],
+                  zdnn_data_types output_type, zdnn_data_formats output_format,
+                  float epsilon, zdnn_status exp_status) {
+
+  VERIFY_HW_ENV;
+  VERIFY_PARMBLKFORMAT_1;
+
+  zdnn_tensor_desc tfrmd_desc_input, tfrmd_desc_output;
+
+  zdnn_ztensor input, output;
+
+  input.transformed_desc = &tfrmd_desc_input;
+  output.transformed_desc = &tfrmd_desc_output;
+
+  func_sp_parm1_invsqrt invsqrt_parm1;
+  memset(&invsqrt_parm1, 0, sizeof(func_sp_parm1_invsqrt));
+
+  if (epsilon != 0) {
+    invsqrt_parm1.epsilon = cnvt_1_fp32_to_dlf16(epsilon);
+  }
+
+  init_transformed_desc(ZDNN_NHWC, input_type, input_format, &tfrmd_desc_input,
+                        input_shape[0], input_shape[1], input_shape[2],
+                        input_shape[3]);
+
+  init_transformed_desc(ZDNN_NHWC, output_type, output_format,
+                        &tfrmd_desc_output, output_shape[0], output_shape[1],
+                        output_shape[2], output_shape[3]);
+
+  zdnn_status status = verify_invsqrt_tensors(&input, &invsqrt_parm1, &output);
+
+  TEST_ASSERT_MESSAGE_FORMATTED(exp_status == status,
+                                "Expected status = %08x, actual status = %08x",
+                                exp_status, status);
+}
+
+void invsqrt_verify_pass() {
+  // Trivial correct input and output shape test to pass.
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon, ZDNN_OK);
+}
+
+void invsqrt_verify_bad_epsilon_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 22147483648;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_EPSILON);
+}
+
+void invsqrt_verify_input_bad_dim1_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 2};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_input_bad_dim2_fail() {
+  uint32_t shape_a[] = {1, 1, 2, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_input_bad_dim3_fail() {
+  uint32_t shape_a[] = {1, 2, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_input_bad_dim4_fail() {
+  uint32_t shape_a[] = {2, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_output_bad_dim1_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 2};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_output_bad_dim2_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 2, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_output_bad_dim3_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 2, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_output_bad_dim4_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {2, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_SHAPE);
+}
+
+void invsqrt_verify_input_bad_layout_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, FP32, ZDNN_FORMAT_4DFEATURE, shape_o, ZDNN_DLFLOAT16,
+               ZDNN_FORMAT_4DFEATURE, epsilon, ZDNN_INVALID_TYPE);
+}
+
+void invsqrt_verify_input_bad_format_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DKERNEL, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, epsilon,
+               ZDNN_INVALID_FORMAT);
+}
+
+void invsqrt_verify_output_bad_layout_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o, FP32,
+               ZDNN_FORMAT_4DFEATURE, epsilon, ZDNN_INVALID_TYPE);
+}
+
+void invsqrt_verify_output_bad_format_fail() {
+  uint32_t shape_a[] = {1, 1, 1, 1};
+  uint32_t shape_o[] = {1, 1, 1, 1};
+  float epsilon = 0.01;
+  test_invsqrt(shape_a, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, shape_o,
+               ZDNN_DLFLOAT16, ZDNN_FORMAT_4DKERNEL, epsilon,
+               ZDNN_INVALID_FORMAT);
 }
 
 int main() {
@@ -1159,6 +2146,79 @@ int main() {
   RUN_TEST(relu_verify_fail_shape);
   RUN_TEST(relu_verify_fail_format);
   RUN_TEST(relu_verify_fail_dtype);
+
+  RUN_TEST(norm_verify_pass);
+  RUN_TEST(norm_verify_input_bad_dim4_fail);
+  RUN_TEST(norm_verify_input_bad_dim3_fail);
+  RUN_TEST(norm_verify_input_bad_dim2_fail);
+  RUN_TEST(norm_verify_input_bad_dim1_fail);
+  RUN_TEST(norm_verify_output_bad_dim1_fail);
+  RUN_TEST(norm_verify_bad_inputa_type_fail);
+  RUN_TEST(norm_verify_bad_inputb_type_fail);
+  RUN_TEST(norm_verify_bad_output_type_fail);
+  RUN_TEST(norm_verify_bad_inputa_format_fail);
+  RUN_TEST(norm_verify_bad_inputb_format_fail);
+  RUN_TEST(norm_verify_bad_output_format_fail);
+
+  RUN_TEST(moments_verify_pass);
+  RUN_TEST(moments_bad_bessel_correction);
+  RUN_TEST(moments_bad_out_a_dim4_fail);
+  RUN_TEST(moments_bad_out_a_dim3_fail);
+  RUN_TEST(moments_bad_out_a_dim2_fail);
+  RUN_TEST(moments_bad_out_a_dim1_fail);
+  RUN_TEST(moments_bad_out_b_dim4_fail);
+  RUN_TEST(moments_bad_out_b_dim3_fail);
+  RUN_TEST(moments_bad_out_b_dim2_fail);
+  RUN_TEST(moments_bad_out_b_dim1_fail);
+  RUN_TEST(moments_bad_format_in_fail);
+  RUN_TEST(moments_bad_format_out_a_fail);
+  RUN_TEST(moments_bad_format_out_b_fail);
+  RUN_TEST(moments_bad_type_in_fail);
+  RUN_TEST(moments_bad_type_out_a_fail);
+  RUN_TEST(moments_bad_type_out_b_fail);
+
+  RUN_TEST(layernorm_verify_pass);
+  RUN_TEST(layernorm_verify_bad_beta_fail);
+  RUN_TEST(layernorm_verify_bad_gamma_fail);
+  RUN_TEST(layernorm_verify_bad_epsilon_fail);
+  RUN_TEST(layernorm_verify_input_a_bad_dim1_fail);
+  RUN_TEST(layernorm_verify_input_a_bad_dim2_fail);
+  RUN_TEST(layernorm_verify_input_a_bad_dim3_fail);
+  RUN_TEST(layernorm_verify_input_b_bad_dim1_fail);
+  RUN_TEST(layernorm_verify_input_b_bad_dim2_fail);
+  RUN_TEST(layernorm_verify_input_b_bad_dim3_fail);
+  RUN_TEST(layernorm_verify_input_c_bad_dim1_fail);
+  RUN_TEST(layernorm_verify_input_c_bad_dim2_fail);
+  RUN_TEST(layernorm_verify_input_c_bad_dim3_fail);
+  RUN_TEST(layernorm_verify_bad_dim4_fail);
+  RUN_TEST(layernorm_verify_bad_inputa_type_fail);
+  RUN_TEST(layernorm_verify_bad_inputb_type_fail);
+  RUN_TEST(layernorm_verify_bad_inputc_type_fail);
+  RUN_TEST(layernorm_verify_bad_output_type_fail);
+  RUN_TEST(layernorm_verify_bad_inputa_format_fail);
+  RUN_TEST(layernorm_verify_bad_inputb_format_fail);
+  RUN_TEST(layernorm_verify_bad_inputc_format_fail);
+  RUN_TEST(layernorm_verify_bad_output_format_fail);
+
+  RUN_TEST(reduce_verify_pass);
+  RUN_TEST(reduce_verify_fail_shape);
+  RUN_TEST(reduce_verify_fail_format);
+  RUN_TEST(reduce_verify_fail_dtype);
+
+  RUN_TEST(invsqrt_verify_pass);
+  RUN_TEST(invsqrt_verify_bad_epsilon_fail);
+  RUN_TEST(invsqrt_verify_input_bad_dim1_fail);
+  RUN_TEST(invsqrt_verify_input_bad_dim2_fail);
+  RUN_TEST(invsqrt_verify_input_bad_dim3_fail);
+  RUN_TEST(invsqrt_verify_input_bad_dim4_fail);
+  RUN_TEST(invsqrt_verify_output_bad_dim1_fail);
+  RUN_TEST(invsqrt_verify_output_bad_dim2_fail);
+  RUN_TEST(invsqrt_verify_output_bad_dim3_fail);
+  RUN_TEST(invsqrt_verify_output_bad_dim4_fail);
+  RUN_TEST(invsqrt_verify_input_bad_layout_fail);
+  RUN_TEST(invsqrt_verify_input_bad_format_fail);
+  RUN_TEST(invsqrt_verify_output_bad_layout_fail);
+  RUN_TEST(invsqrt_verify_output_bad_format_fail);
 
   return UNITY_END();
 }

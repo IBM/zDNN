@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,7 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 
@@ -43,7 +41,7 @@ void tearDown(void) {}
   4a) If caller wants to use offsets, we'll "stickify" the
      input tensor data by putting things in ztensor.buffer directly:
      stick_area[offsets[n] = fp16_to_dlf16(input_data[n]).
-  4b) If NO_OFFSETS, we'll use the official stickify routine.
+  4b) If no_offsets, we'll use the official stickify routine.
   5) Send that zTensor to unstickify, result goes to "data_unstickified"
   6) compare the raw input tensor data against that "data_unstickified" array.
 
@@ -54,8 +52,7 @@ void tearDown(void) {}
 */
 
 void test_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
-                     zdnn_data_layouts layout, offset_mode offset_mode,
-                     const char *path) {
+                     zdnn_data_layouts layout, bool no_offsets) {
 
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
@@ -98,7 +95,7 @@ void test_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
   data_unstickified =
       malloc(num_elements * get_data_type_size(pre_tfrmd_desc.type));
 
-  if (offset_mode == NO_OFFSETS) {
+  if (no_offsets) {
     // Stickify tensor using the official API
     status = zdnn_transform_ztensor(&ztensor, data);
     TEST_ASSERT_MESSAGE_FORMATTED(
@@ -110,7 +107,7 @@ void test_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
     size_t *offsets;
 
     if (layout != ZDNN_4DS) {
-      offsets = alloc_offsets(&ztensor, offset_mode, path);
+      offsets = alloc_offsets(&ztensor);
     } else {
       offsets = alloc_rnn_output_offsets(&ztensor);
     }
@@ -220,107 +217,102 @@ void test_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2, uint32_t dim1,
  * NHWC
  **************************************************************/
 
-#define NHWC_TEST_BASIC(n, h, w, c)                                            \
-  void test_nhwc_##n##x##h##x##w##x##c() {                                     \
-    test_unstickify(n, h, w, c, ZDNN_NHWC, QUICK_OFFSETS, NULL);               \
-  }
-
 /*
  * Tensor with 16 entries, NHWC
  * 1,4,4,1 NHWC will use one cell per stick, 4 sticks per page and a total of
  * 4 pages.
  */
-NHWC_TEST_BASIC(1, 4, 4, 1);
+void test_nhwc_1x4x4x1() { test_unstickify(1, 4, 4, 1, ZDNN_NHWC, false); };
 
-NHWC_TEST_BASIC(1, 4, 4, 2);
+void test_nhwc_1x4x4x2() { test_unstickify(1, 4, 4, 2, ZDNN_NHWC, false); };
 
 /*
  * Tensor with 1024 entries, NHWC
  * 1,32,32,1 NHWC will use 1 cell per stick, all sticks in the page,
  * and 32 pages.
  */
-NHWC_TEST_BASIC(1, 32, 32, 1);
+void test_nhwc_1x32x32x1() { test_unstickify(1, 32, 32, 1, ZDNN_NHWC, false); };
 
-NHWC_TEST_BASIC(1, 32, 32, 2);
-NHWC_TEST_BASIC(1, 32, 32, 3);
+void test_nhwc_1x32x32x2() { test_unstickify(1, 32, 32, 2, ZDNN_NHWC, false); };
+void test_nhwc_1x32x32x3() { test_unstickify(1, 32, 32, 3, ZDNN_NHWC, false); };
 
-NHWC_TEST_BASIC(1, 1, 2, 1);
-NHWC_TEST_BASIC(1, 1, 2, 2);
-NHWC_TEST_BASIC(1, 1, 2, 4);
-NHWC_TEST_BASIC(1, 1, 2, 7);
-NHWC_TEST_BASIC(1, 1, 4, 1);
-NHWC_TEST_BASIC(1, 1, 4, 2);
-NHWC_TEST_BASIC(1, 1, 4, 4);
-NHWC_TEST_BASIC(1, 1, 4, 7);
-NHWC_TEST_BASIC(1, 1, 7, 1);
-NHWC_TEST_BASIC(1, 1, 7, 2);
-NHWC_TEST_BASIC(1, 1, 7, 4);
-NHWC_TEST_BASIC(1, 1, 7, 7);
-NHWC_TEST_BASIC(1, 1, 8, 1);
-NHWC_TEST_BASIC(1, 1, 8, 2);
-NHWC_TEST_BASIC(1, 1, 8, 4);
-NHWC_TEST_BASIC(1, 1, 8, 7);
-NHWC_TEST_BASIC(1, 1, 13, 1);
-NHWC_TEST_BASIC(1, 1, 13, 2);
-NHWC_TEST_BASIC(1, 1, 13, 4);
-NHWC_TEST_BASIC(1, 1, 13, 7);
-NHWC_TEST_BASIC(1, 1, 100, 1);
-NHWC_TEST_BASIC(1, 1, 100, 2);
-NHWC_TEST_BASIC(1, 1, 100, 4);
-NHWC_TEST_BASIC(1, 1, 100, 7);
+void test_nhwc_1x1x2x1() { test_unstickify(1, 1, 2, 1, ZDNN_NHWC, false); };
+void test_nhwc_1x1x2x2() { test_unstickify(1, 1, 2, 2, ZDNN_NHWC, false); };
+void test_nhwc_1x1x2x4() { test_unstickify(1, 1, 2, 4, ZDNN_NHWC, false); };
+void test_nhwc_1x1x2x7() { test_unstickify(1, 1, 2, 7, ZDNN_NHWC, false); };
+void test_nhwc_1x1x4x1() { test_unstickify(1, 1, 4, 1, ZDNN_NHWC, false); };
+void test_nhwc_1x1x4x2() { test_unstickify(1, 1, 4, 2, ZDNN_NHWC, false); };
+void test_nhwc_1x1x4x4() { test_unstickify(1, 1, 4, 4, ZDNN_NHWC, false); };
+void test_nhwc_1x1x4x7() { test_unstickify(1, 1, 4, 7, ZDNN_NHWC, false); };
+void test_nhwc_1x1x7x1() { test_unstickify(1, 1, 7, 1, ZDNN_NHWC, false); };
+void test_nhwc_1x1x7x2() { test_unstickify(1, 1, 7, 2, ZDNN_NHWC, false); };
+void test_nhwc_1x1x7x4() { test_unstickify(1, 1, 7, 4, ZDNN_NHWC, false); };
+void test_nhwc_1x1x7x7() { test_unstickify(1, 1, 7, 7, ZDNN_NHWC, false); };
+void test_nhwc_1x1x8x1() { test_unstickify(1, 1, 8, 1, ZDNN_NHWC, false); };
+void test_nhwc_1x1x8x2() { test_unstickify(1, 1, 8, 2, ZDNN_NHWC, false); };
+void test_nhwc_1x1x8x4() { test_unstickify(1, 1, 8, 4, ZDNN_NHWC, false); };
+void test_nhwc_1x1x8x7() { test_unstickify(1, 1, 8, 7, ZDNN_NHWC, false); };
+void test_nhwc_1x1x13x1() { test_unstickify(1, 1, 13, 1, ZDNN_NHWC, false); };
+void test_nhwc_1x1x13x2() { test_unstickify(1, 1, 13, 2, ZDNN_NHWC, false); };
+void test_nhwc_1x1x13x4() { test_unstickify(1, 1, 13, 4, ZDNN_NHWC, false); };
+void test_nhwc_1x1x13x7() { test_unstickify(1, 1, 13, 7, ZDNN_NHWC, false); };
+void test_nhwc_1x1x100x1() { test_unstickify(1, 1, 100, 1, ZDNN_NHWC, false); };
+void test_nhwc_1x1x100x2() { test_unstickify(1, 1, 100, 2, ZDNN_NHWC, false); };
+void test_nhwc_1x1x100x4() { test_unstickify(1, 1, 100, 4, ZDNN_NHWC, false); };
+void test_nhwc_1x1x100x7() { test_unstickify(1, 1, 100, 7, ZDNN_NHWC, false); };
 
-NHWC_TEST_BASIC(2, 3, 2, 1);
-NHWC_TEST_BASIC(2, 3, 2, 2);
-NHWC_TEST_BASIC(2, 3, 2, 4);
-NHWC_TEST_BASIC(2, 3, 2, 7);
-NHWC_TEST_BASIC(2, 3, 4, 1);
-NHWC_TEST_BASIC(2, 3, 4, 2);
-NHWC_TEST_BASIC(2, 3, 4, 4);
-NHWC_TEST_BASIC(2, 3, 4, 7);
-NHWC_TEST_BASIC(2, 3, 7, 1);
-NHWC_TEST_BASIC(2, 3, 7, 2);
-NHWC_TEST_BASIC(2, 3, 7, 4);
-NHWC_TEST_BASIC(2, 3, 7, 7);
-NHWC_TEST_BASIC(2, 3, 8, 1);
-NHWC_TEST_BASIC(2, 3, 8, 2);
-NHWC_TEST_BASIC(2, 3, 8, 4);
-NHWC_TEST_BASIC(2, 3, 8, 7);
-NHWC_TEST_BASIC(2, 3, 13, 1);
-NHWC_TEST_BASIC(2, 3, 13, 2);
-NHWC_TEST_BASIC(2, 3, 13, 4);
-NHWC_TEST_BASIC(2, 3, 13, 7);
-NHWC_TEST_BASIC(2, 3, 100, 1);
-NHWC_TEST_BASIC(2, 3, 100, 2);
-NHWC_TEST_BASIC(2, 3, 100, 4);
-NHWC_TEST_BASIC(2, 3, 100, 7);
+void test_nhwc_2x3x2x1() { test_unstickify(2, 3, 2, 1, ZDNN_NHWC, false); };
+void test_nhwc_2x3x2x2() { test_unstickify(2, 3, 2, 2, ZDNN_NHWC, false); };
+void test_nhwc_2x3x2x4() { test_unstickify(2, 3, 2, 4, ZDNN_NHWC, false); };
+void test_nhwc_2x3x2x7() { test_unstickify(2, 3, 2, 7, ZDNN_NHWC, false); };
+void test_nhwc_2x3x4x1() { test_unstickify(2, 3, 4, 1, ZDNN_NHWC, false); };
+void test_nhwc_2x3x4x2() { test_unstickify(2, 3, 4, 2, ZDNN_NHWC, false); };
+void test_nhwc_2x3x4x4() { test_unstickify(2, 3, 4, 4, ZDNN_NHWC, false); };
+void test_nhwc_2x3x4x7() { test_unstickify(2, 3, 4, 7, ZDNN_NHWC, false); };
+void test_nhwc_2x3x7x1() { test_unstickify(2, 3, 7, 1, ZDNN_NHWC, false); };
+void test_nhwc_2x3x7x2() { test_unstickify(2, 3, 7, 2, ZDNN_NHWC, false); };
+void test_nhwc_2x3x7x4() { test_unstickify(2, 3, 7, 4, ZDNN_NHWC, false); };
+void test_nhwc_2x3x7x7() { test_unstickify(2, 3, 7, 7, ZDNN_NHWC, false); };
+void test_nhwc_2x3x8x1() { test_unstickify(2, 3, 8, 1, ZDNN_NHWC, false); };
+void test_nhwc_2x3x8x2() { test_unstickify(2, 3, 8, 2, ZDNN_NHWC, false); };
+void test_nhwc_2x3x8x4() { test_unstickify(2, 3, 8, 4, ZDNN_NHWC, false); };
+void test_nhwc_2x3x8x7() { test_unstickify(2, 3, 8, 7, ZDNN_NHWC, false); };
+void test_nhwc_2x3x13x1() { test_unstickify(2, 3, 13, 1, ZDNN_NHWC, false); };
+void test_nhwc_2x3x13x2() { test_unstickify(2, 3, 13, 2, ZDNN_NHWC, false); };
+void test_nhwc_2x3x13x4() { test_unstickify(2, 3, 13, 4, ZDNN_NHWC, false); };
+void test_nhwc_2x3x13x7() { test_unstickify(2, 3, 13, 7, ZDNN_NHWC, false); };
+void test_nhwc_2x3x100x1() { test_unstickify(2, 3, 100, 1, ZDNN_NHWC, false); };
+void test_nhwc_2x3x100x2() { test_unstickify(2, 3, 100, 2, ZDNN_NHWC, false); };
+void test_nhwc_2x3x100x4() { test_unstickify(2, 3, 100, 4, ZDNN_NHWC, false); };
+void test_nhwc_2x3x100x7() { test_unstickify(2, 3, 100, 7, ZDNN_NHWC, false); };
 
-NHWC_TEST_BASIC(3, 2, 2, 1);
-NHWC_TEST_BASIC(3, 2, 2, 2);
-NHWC_TEST_BASIC(3, 2, 2, 4);
-NHWC_TEST_BASIC(3, 2, 2, 7);
-NHWC_TEST_BASIC(3, 2, 4, 1);
-NHWC_TEST_BASIC(3, 2, 4, 2);
-NHWC_TEST_BASIC(3, 2, 4, 4);
-NHWC_TEST_BASIC(3, 2, 4, 7);
-NHWC_TEST_BASIC(3, 2, 7, 1);
-NHWC_TEST_BASIC(3, 2, 7, 2);
-NHWC_TEST_BASIC(3, 2, 7, 4);
-NHWC_TEST_BASIC(3, 2, 7, 7);
-NHWC_TEST_BASIC(3, 2, 8, 1);
-NHWC_TEST_BASIC(3, 2, 8, 2);
-NHWC_TEST_BASIC(3, 2, 8, 4);
-NHWC_TEST_BASIC(3, 2, 8, 7);
-NHWC_TEST_BASIC(3, 2, 13, 1);
-NHWC_TEST_BASIC(3, 2, 13, 2);
-NHWC_TEST_BASIC(3, 2, 13, 4);
-NHWC_TEST_BASIC(3, 2, 13, 7);
-NHWC_TEST_BASIC(3, 2, 100, 1);
-NHWC_TEST_BASIC(3, 2, 100, 2);
-NHWC_TEST_BASIC(3, 2, 100, 4);
-NHWC_TEST_BASIC(3, 2, 100, 7);
+void test_nhwc_3x2x2x1() { test_unstickify(3, 2, 2, 1, ZDNN_NHWC, false); };
+void test_nhwc_3x2x2x2() { test_unstickify(3, 2, 2, 2, ZDNN_NHWC, false); };
+void test_nhwc_3x2x2x4() { test_unstickify(3, 2, 2, 4, ZDNN_NHWC, false); };
+void test_nhwc_3x2x2x7() { test_unstickify(3, 2, 2, 7, ZDNN_NHWC, false); };
+void test_nhwc_3x2x4x1() { test_unstickify(3, 2, 4, 1, ZDNN_NHWC, false); };
+void test_nhwc_3x2x4x2() { test_unstickify(3, 2, 4, 2, ZDNN_NHWC, false); };
+void test_nhwc_3x2x4x4() { test_unstickify(3, 2, 4, 4, ZDNN_NHWC, false); };
+void test_nhwc_3x2x4x7() { test_unstickify(3, 2, 4, 7, ZDNN_NHWC, false); };
+void test_nhwc_3x2x7x1() { test_unstickify(3, 2, 7, 1, ZDNN_NHWC, false); };
+void test_nhwc_3x2x7x2() { test_unstickify(3, 2, 7, 2, ZDNN_NHWC, false); };
+void test_nhwc_3x2x7x4() { test_unstickify(3, 2, 7, 4, ZDNN_NHWC, false); };
+void test_nhwc_3x2x7x7() { test_unstickify(3, 2, 7, 7, ZDNN_NHWC, false); };
+void test_nhwc_3x2x8x1() { test_unstickify(3, 2, 8, 1, ZDNN_NHWC, false); };
+void test_nhwc_3x2x8x2() { test_unstickify(3, 2, 8, 2, ZDNN_NHWC, false); };
+void test_nhwc_3x2x8x4() { test_unstickify(3, 2, 8, 4, ZDNN_NHWC, false); };
+void test_nhwc_3x2x8x7() { test_unstickify(3, 2, 8, 7, ZDNN_NHWC, false); };
+void test_nhwc_3x2x13x1() { test_unstickify(3, 2, 13, 1, ZDNN_NHWC, false); };
+void test_nhwc_3x2x13x2() { test_unstickify(3, 2, 13, 2, ZDNN_NHWC, false); };
+void test_nhwc_3x2x13x4() { test_unstickify(3, 2, 13, 4, ZDNN_NHWC, false); };
+void test_nhwc_3x2x13x7() { test_unstickify(3, 2, 13, 7, ZDNN_NHWC, false); };
+void test_nhwc_3x2x100x1() { test_unstickify(3, 2, 100, 1, ZDNN_NHWC, false); };
+void test_nhwc_3x2x100x2() { test_unstickify(3, 2, 100, 2, ZDNN_NHWC, false); };
+void test_nhwc_3x2x100x4() { test_unstickify(3, 2, 100, 4, ZDNN_NHWC, false); };
+void test_nhwc_3x2x100x7() { test_unstickify(3, 2, 100, 7, ZDNN_NHWC, false); };
 
 void test_nhwc_1x1x1xe1(int e1) {
-  test_unstickify(1, 1, 1, e1, ZDNN_NHWC, QUICK_OFFSETS, NULL);
+  test_unstickify(1, 1, 1, e1, ZDNN_NHWC, false);
 }
 
 void test_nhwc_1x1x1x4() { test_nhwc_1x1x1xe1(4); }
@@ -340,7 +332,7 @@ void test_nhwc_1x1x1x128() { test_nhwc_1x1x1xe1(128); }
  */
 void test_3ds_4x4x1() {
   // first entry doesn't matter
-  test_unstickify(9999, 4, 4, 1, ZDNN_3DS, QUICK_OFFSETS, NULL);
+  test_unstickify(9999, 4, 4, 1, ZDNN_3DS, false);
 }
 
 /*
@@ -350,7 +342,7 @@ void test_3ds_4x4x1() {
  */
 void test_3ds_32x32x3() {
   // first entry doesn't matter
-  test_unstickify(9999, 32, 32, 3, ZDNN_3DS, QUICK_OFFSETS, NULL);
+  test_unstickify(9999, 32, 32, 3, ZDNN_3DS, false);
 }
 
 /*
@@ -360,7 +352,7 @@ void test_3ds_32x32x3() {
  */
 void test_2ds_4x2() {
   // first two entries don't matter in 2DS
-  test_unstickify(9999, 9999, 4, 2, ZDNN_2DS, QUICK_OFFSETS, NULL);
+  test_unstickify(9999, 9999, 4, 2, ZDNN_2DS, false);
 }
 
 /*
@@ -372,64 +364,53 @@ void test_2ds_4x2() {
  */
 void test_2ds_2x2049() {
   // first two entries don't matter in 2DS
-  test_unstickify(9999, 9999, 2, 2049, ZDNN_2DS, QUICK_OFFSETS, NULL);
+  test_unstickify(9999, 9999, 2, 2049, ZDNN_2DS, false);
 }
 
 /**************************************************************
  * NCHW
  **************************************************************/
 
-#define NCHW_TEST_WITH_FILE(n, c, h, w)                                        \
-  void test_nchw_##n##x##c##x##h##x##w() {                                     \
-    test_unstickify(n, c, h, w, ZDNN_NCHW, FILE_OFFSETS,                       \
-                    OFFSET_FILE(nchw, n, c, h, w));                            \
-  }
-
-NCHW_TEST_WITH_FILE(1, 1, 4, 4)
-NCHW_TEST_WITH_FILE(1, 4, 2, 3)
-NCHW_TEST_WITH_FILE(1, 3, 32, 32)
-NCHW_TEST_WITH_FILE(2, 129, 3, 33)
-NCHW_TEST_WITH_FILE(1, 64, 1, 31)
-NCHW_TEST_WITH_FILE(1, 64, 1, 32)
-NCHW_TEST_WITH_FILE(1, 64, 1, 33)
-NCHW_TEST_WITH_FILE(1, 63, 1, 32)
-NCHW_TEST_WITH_FILE(1, 65, 1, 32)
-NCHW_TEST_WITH_FILE(1, 127, 1, 4)
-NCHW_TEST_WITH_FILE(1, 128, 1, 4)
-NCHW_TEST_WITH_FILE(1, 129, 1, 4)
-NCHW_TEST_WITH_FILE(1, 4, 1, 63)
-NCHW_TEST_WITH_FILE(1, 4, 1, 64)
-NCHW_TEST_WITH_FILE(1, 4, 1, 65)
+void test_nchw_1x1x4x4() { test_unstickify(1, 1, 4, 4, ZDNN_NCHW, 0); }
+void test_nchw_1x4x2x3() { test_unstickify(1, 4, 2, 3, ZDNN_NCHW, 0); }
+void test_nchw_1x3x32x32() { test_unstickify(1, 3, 32, 32, ZDNN_NCHW, 0); }
+void test_nchw_2x129x3x33() { test_unstickify(2, 129, 3, 33, ZDNN_NCHW, 0); }
+void test_nchw_1x64x1x31() { test_unstickify(1, 64, 1, 31, ZDNN_NCHW, 0); }
+void test_nchw_1x64x1x32() { test_unstickify(1, 64, 1, 32, ZDNN_NCHW, 0); }
+void test_nchw_1x64x1x33() { test_unstickify(1, 64, 1, 33, ZDNN_NCHW, 0); }
+void test_nchw_1x63x1x32() { test_unstickify(1, 63, 1, 32, ZDNN_NCHW, 0); }
+void test_nchw_1x65x1x32() { test_unstickify(1, 65, 1, 32, ZDNN_NCHW, 0); }
+void test_nchw_1x127x1x4() { test_unstickify(1, 127, 1, 4, ZDNN_NCHW, 0); }
+void test_nchw_1x128x1x4() { test_unstickify(1, 128, 1, 4, ZDNN_NCHW, 0); }
+void test_nchw_1x129x1x4() { test_unstickify(1, 129, 1, 4, ZDNN_NCHW, 0); }
+void test_nchw_1x4x1x63() { test_unstickify(1, 4, 1, 63, ZDNN_NCHW, 0); }
+void test_nchw_1x4x1x64() { test_unstickify(1, 4, 1, 64, ZDNN_NCHW, 0); }
+void test_nchw_1x4x1x65() { test_unstickify(1, 4, 1, 65, ZDNN_NCHW, 0); }
 
 /**************************************************************
  * RNN OUTPUT
  **************************************************************/
 
-#define RNN_OUT_TEST(d4, d3, d2, d1)                                           \
-  void test_rnn_output_##d4##x##d3##x##d2##x##d1() {                           \
-    test_unstickify(d4, d3, d2, d1, ZDNN_4DS, QUICK_OFFSETS, NULL);            \
-  }
-
-RNN_OUT_TEST(5, 1, 4, 3)
-RNN_OUT_TEST(1, 1, 4, 3)
-RNN_OUT_TEST(5, 1, 4, 64)
-RNN_OUT_TEST(1, 1, 4, 64)
-RNN_OUT_TEST(5, 1, 4, 65)
-RNN_OUT_TEST(1, 1, 4, 65)
-RNN_OUT_TEST(5, 1, 31, 5)
-RNN_OUT_TEST(1, 1, 31, 5)
-RNN_OUT_TEST(5, 1, 60, 5)
-RNN_OUT_TEST(1, 1, 60, 5)
-RNN_OUT_TEST(5, 2, 4, 3)
-RNN_OUT_TEST(1, 2, 4, 3)
-RNN_OUT_TEST(5, 2, 4, 64)
-RNN_OUT_TEST(1, 2, 4, 64)
-RNN_OUT_TEST(5, 2, 4, 65)
-RNN_OUT_TEST(1, 2, 4, 65)
-RNN_OUT_TEST(5, 2, 31, 5)
-RNN_OUT_TEST(1, 2, 31, 5)
-RNN_OUT_TEST(5, 2, 60, 5)
-RNN_OUT_TEST(1, 2, 60, 5)
+void test_rnn_output_5x1x4x3() { test_unstickify(5, 1, 4, 3, ZDNN_4DS, 0); }
+void test_rnn_output_1x1x4x3() { test_unstickify(1, 1, 4, 3, ZDNN_4DS, 0); }
+void test_rnn_output_5x1x4x64() { test_unstickify(5, 1, 4, 64, ZDNN_4DS, 0); }
+void test_rnn_output_1x1x4x64() { test_unstickify(1, 1, 4, 64, ZDNN_4DS, 0); }
+void test_rnn_output_5x1x4x65() { test_unstickify(5, 1, 4, 65, ZDNN_4DS, 0); }
+void test_rnn_output_1x1x4x65() { test_unstickify(1, 1, 4, 65, ZDNN_4DS, 0); }
+void test_rnn_output_5x1x31x5() { test_unstickify(5, 1, 31, 5, ZDNN_4DS, 0); }
+void test_rnn_output_1x1x31x5() { test_unstickify(1, 1, 31, 5, ZDNN_4DS, 0); }
+void test_rnn_output_5x1x60x5() { test_unstickify(5, 1, 60, 5, ZDNN_4DS, 0); }
+void test_rnn_output_1x1x60x5() { test_unstickify(1, 1, 60, 5, ZDNN_4DS, 0); }
+void test_rnn_output_5x2x4x3() { test_unstickify(5, 2, 4, 3, ZDNN_4DS, 0); }
+void test_rnn_output_1x2x4x3() { test_unstickify(1, 2, 4, 3, ZDNN_4DS, 0); }
+void test_rnn_output_5x2x4x64() { test_unstickify(5, 2, 4, 64, ZDNN_4DS, 0); }
+void test_rnn_output_1x2x4x64() { test_unstickify(1, 2, 4, 64, ZDNN_4DS, 0); }
+void test_rnn_output_5x2x4x65() { test_unstickify(5, 2, 4, 65, ZDNN_4DS, 0); }
+void test_rnn_output_1x2x4x65() { test_unstickify(1, 2, 4, 65, ZDNN_4DS, 0); }
+void test_rnn_output_5x2x31x5() { test_unstickify(5, 2, 31, 5, ZDNN_4DS, 0); }
+void test_rnn_output_1x2x31x5() { test_unstickify(1, 2, 31, 5, ZDNN_4DS, 0); }
+void test_rnn_output_5x2x60x5() { test_unstickify(5, 2, 60, 5, ZDNN_4DS, 0); }
+void test_rnn_output_1x2x60x5() { test_unstickify(1, 2, 60, 5, ZDNN_4DS, 0); }
 
 void test_unstickify_4dfeature_twice() {
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
@@ -474,7 +455,7 @@ void test_unstickify_4dfeature_twice() {
 
 void test_stickify_unstickify(uint32_t dim4, uint32_t dim3, uint32_t dim2,
                               uint32_t dim1, zdnn_data_layouts layout) {
-  test_unstickify(dim4, dim3, dim2, dim1, layout, NO_OFFSETS, NULL);
+  test_unstickify(dim4, dim3, dim2, dim1, layout, true);
 }
 
 /*
@@ -539,7 +520,8 @@ void test_ztensor_bad_value_FP16(uint16_t bad_value) {
 
 #define STICK_ENTRIES_FP16 7
 
-  uint32_t stick_entries_to_try[STICK_ENTRIES_FP16] = {0, 1, 7, 8, 9, 62, 63};
+  const uint32_t stick_entries_to_try[STICK_ENTRIES_FP16] = {0, 1,  7, 8,
+                                                             9, 62, 63};
 
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
@@ -590,10 +572,6 @@ void test_ztensor_bad_value_FP16(uint16_t bad_value) {
 // Test unstickify conversions DLFloat to FP16 (VCFN)
 void test_ztensor_fp16_bad_values() {
 
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE("needs NNPA to trigger overflow");
-#endif
-
   test_ztensor_bad_value_FP16(
       TOO_LARGE_DLF16_POS); // is not a number, will cause overflow
   test_ztensor_bad_value_FP16(
@@ -622,8 +600,8 @@ void test_ztensor_bad_value_FP32(uint16_t bad_value) {
 #define NAN_DL16_NEG 0xFFFF
 #define STICK_ENTRIES_FP32 9
 
-  uint32_t stick_entries_to_try[STICK_ENTRIES_FP32] = {0, 1, 3,  4, 7,
-                                                       8, 9, 15, 63};
+  const uint32_t stick_entries_to_try[STICK_ENTRIES_FP32] = {0, 1, 3,  4, 7,
+                                                             8, 9, 15, 63};
 
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
@@ -653,15 +631,24 @@ void test_ztensor_bad_value_FP32(uint16_t bad_value) {
   unstickified_data = malloc(num_elements * get_data_type_size(dtype));
   array = (uint16_t *)ztensor.buffer; /* use stickified_data as an array */
 
+  zdnn_status expected_status;
+
+  // Check if hardware will handle the transformation
+  if (zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM) == true) {
+    expected_status = ZDNN_ELEMENT_RANGE_VIOLATION;
+  } else {
+    expected_status = ZDNN_CONVERT_FAILURE;
+  }
+
   for (int i = 0; i < STICK_ENTRIES_FP32; i++) {
     array[stick_entries_to_try[i]] = bad_value;
 
     status = zdnn_transform_origtensor(&ztensor, unstickified_data);
     TEST_ASSERT_MESSAGE_FORMATTED(
-        status == ZDNN_CONVERT_FAILURE,
+        status == expected_status,
         "zdnn_transform_origtensor() succeeded (status = %08x, expects = "
         "%08x, i = %d, value = %04x)",
-        status, ZDNN_CONVERT_FAILURE, i, bad_value);
+        status, expected_status, i, bad_value);
 
     array[stick_entries_to_try[i]] = 0; // set entry to 0 for next iteration
   }
@@ -673,10 +660,6 @@ void test_ztensor_bad_value_FP32(uint16_t bad_value) {
 
 // Test unstickify conversions DLFloat to FP32 (VCLFNx
 void test_ztensor_fp32_bad_values() {
-
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE("needs NNPA to trigger overflow");
-#endif
 
   // too large or too small not possible,
 
@@ -727,154 +710,155 @@ void test_unstickify_transform_desc_invalid_type() {
 int main(void) {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x4x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x4x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x32x32x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x32x32x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x32x32x3);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x2x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x4x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x7x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x8x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x13x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x100x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x2x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x4x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x7x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x8x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x13x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x100x7);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x2x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x4x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x7x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x8x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x13x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_2x3x100x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x2x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x4x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x7x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x8x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x13x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_2x3x100x7);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x2x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x4x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x7x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x8x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x13x7);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x1);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x2);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_3x2x100x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x2x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x4x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x7x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x8x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x13x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_3x2x100x7);
 
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x5);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x8);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x9);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x63);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x64);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x65);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x127);
-  RUN_TEST_ALL_DATATYPES(test_nhwc_1x1x1x128);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x8);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x9);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x63);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x127);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nhwc_1x1x1x128);
 
-  RUN_TEST_ALL_DATATYPES(test_3ds_4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_3ds_32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3ds_4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_3ds_32x32x3);
 
-  RUN_TEST_ALL_DATATYPES(test_2ds_4x2);
-  RUN_TEST_ALL_DATATYPES(test_2ds_2x2049);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2ds_4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2ds_2x2049);
 
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x1x4x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x2x3);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x3x32x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_2x129x3x33);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x63x1x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x64x1x31);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x64x1x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x64x1x33);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x65x1x32);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x127x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x128x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x129x1x4);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x63);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x64);
-  RUN_TEST_ALL_DATATYPES(test_nchw_1x4x1x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x1x4x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x2x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x3x32x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_2x129x3x33);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x63x1x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x64x1x31);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x64x1x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x64x1x33);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x65x1x32);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x127x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x128x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x129x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x1x63);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x1x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_nchw_1x4x1x65);
 
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x4x3);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x4x3);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x4x64);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x4x64);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x4x65);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x4x65);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x31x5);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x31x5);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x1x60x5);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x1x60x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x1x4x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x1x4x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x1x4x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x1x4x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x1x4x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x1x4x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x1x31x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x1x31x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x1x60x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x1x60x5);
 
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x4x3);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x4x3);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x4x64);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x4x64);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x4x65);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x4x65);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x31x5);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x31x5);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_5x2x60x5);
-  RUN_TEST_ALL_DATATYPES(test_rnn_output_1x2x60x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x2x4x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x2x4x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x2x4x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x2x4x64);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x2x4x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x2x4x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x2x31x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x2x31x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_5x2x60x5);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_rnn_output_1x2x60x5);
 
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x4x4x2);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x1);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x2);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x3);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nhwc_1x2x33x65);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nchw_1x4x4x1);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nchw_1x32x32x3);
-  RUN_TEST_ALL_DATATYPES(test_stickify_unstickify_nchw_1x2x33x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nhwc_1x4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nhwc_1x4x4x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nhwc_1x32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nhwc_1x2x33x65);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nchw_1x4x4x1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nchw_1x32x32x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_stickify_unstickify_nchw_1x2x33x65);
 
-  RUN_TEST_ALL_DATATYPES(test_unstickify_4dfeature_twice);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_unstickify_4dfeature_twice);
 
-  RUN_TEST_ALL_DATATYPES(test_unstickify_transform_desc_invalid_type);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_unstickify_transform_desc_invalid_type);
 
   RUN_TEST(test_ztensor_fp16_bad_values);
   RUN_TEST(test_ztensor_fp32_bad_values);

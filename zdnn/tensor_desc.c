@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,66 +24,24 @@
 #ifdef __MVS__
 #pragma export(zdnn_init_pre_transformed_desc)
 #pragma export(zdnn_generate_transformed_desc)
+#pragma export(zdnn_generate_quantized_transformed_desc)
 #pragma export(zdnn_generate_transformed_desc_concatenated)
 #endif
 
-/// Verify if the input zdnn_tensor_desc contains valid pre-transformed type and
-/// layout.  dim variables are NOT checked.
+/// Verify if the input ztensor contains valid tensor descriptors for
+/// transformation to a ztensor.
 ///
-/// \param[in] input Pointer to the zdnn_tensor_desc being checked
-///
-/// \return ZDNN_INVALID_LAYOUT
-///         ZDNN_INVALID_TYPE
-///         ZDNN_OK
-///
-zdnn_status
-verify_pre_transformed_descriptor(const zdnn_tensor_desc *pre_tfrmd_desc) {
-
-  // is the layout valid as pre-transformed?
-  switch (pre_tfrmd_desc->layout) {
-  case ZDNN_1D:
-  case ZDNN_2D:
-  case ZDNN_2DS:
-  case ZDNN_3D:
-  case ZDNN_3DS:
-  case ZDNN_4D:
-  case ZDNN_4DS:
-  case ZDNN_NHWC:
-  case ZDNN_NCHW:
-  case ZDNN_HWCK:
-    // all of these are good cases
-    break;
-  default:
-    return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Invalid layout: %d (%s)",
-                       pre_tfrmd_desc->layout,
-                       get_data_layout_str(pre_tfrmd_desc->layout));
-  }
-
-  // is data type valid as pre-transformed?
-  switch (pre_tfrmd_desc->type) {
-  case BFLOAT:
-  case FP16:
-  case FP32:
-    // all of these are good cases
-    break;
-  default:
-    return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
-                       pre_tfrmd_desc->type,
-                       get_data_type_str(pre_tfrmd_desc->type));
-  }
-
-  return ZDNN_STATUS_OK;
-}
-
-/// Verify if the input zdnn_tensor_desc contains valid transformed information
-///
-/// \param[in] input Pointer to the zdnn_tensor_desc being checked
+/// \param[in] input Pointer to the ztensor being checked
 ///
 /// \return ZDNN_INVALID_FORMAT
 ///         ZDNN_INVALID_LAYOUT
 ///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_SHAPE
 ///
-zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc) {
+zdnn_status verify_descriptors_transform_ztensor(const zdnn_ztensor *input) {
+
+  zdnn_tensor_desc *pre_tfrmd_desc = input->pre_transformed_desc;
+  zdnn_tensor_desc *tfrmd_desc = input->transformed_desc;
 
   // First, format must be valid (defined in the enum)
   // Then if format doesn't agree with layout, we declare format is correct and
@@ -96,6 +54,210 @@ zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc) {
     case ZDNN_ZRH:
     case ZDNN_BIDIR_FICO:
     case ZDNN_BIDIR_ZRH:
+      switch (tfrmd_desc->type) {
+      case ZDNN_DLFLOAT16:
+        switch (pre_tfrmd_desc->layout) {
+        case ZDNN_1D:
+        case ZDNN_2D:
+        case ZDNN_2DS:
+        case ZDNN_3D:
+        case ZDNN_3DS:
+        case ZDNN_4D:
+        case ZDNN_4DS:
+        case ZDNN_NHWC:
+        case ZDNN_NCHW:
+          break;
+        default:
+          return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
+                             "Invalid pre-transformed layout: %d (%s)",
+                             pre_tfrmd_desc->layout,
+                             get_data_layout_str(pre_tfrmd_desc->layout));
+          break;
+        }
+        break;
+      default:
+        return ZDNN_STATUS(
+            ZDNN_INVALID_TYPE, "Invalid transformed type: %d (%s)",
+            tfrmd_desc->type, get_data_type_str(tfrmd_desc->type));
+      }
+      break;
+    default:
+      return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
+                         "Format is %s but transformed layout is %s",
+                         get_data_format_str(tfrmd_desc->format),
+                         get_data_layout_str(tfrmd_desc->layout));
+    }
+    break;
+  case ZDNN_FORMAT_4DKERNEL:
+    switch (tfrmd_desc->type) {
+    case ZDNN_DLFLOAT16:
+      break;
+    default:
+      return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid transformed type: %d (%s)",
+                         tfrmd_desc->type, get_data_type_str(tfrmd_desc->type));
+    }
+    if (tfrmd_desc->layout != ZDNN_HWCK) {
+      return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
+                         "Format is %s but transformed layout is %s",
+                         get_data_format_str(tfrmd_desc->format),
+                         get_data_layout_str(tfrmd_desc->layout));
+    }
+    if (pre_tfrmd_desc->layout != ZDNN_HWCK) {
+      return ZDNN_STATUS(
+          ZDNN_INVALID_LAYOUT, "Invalid pre-transformed layout: %d (%s)",
+          pre_tfrmd_desc->layout, get_data_layout_str(pre_tfrmd_desc->layout));
+    }
+    break;
+  default:
+    // unrecognized
+    return ZDNN_STATUS(
+        ZDNN_INVALID_FORMAT, "Invalid transformed format: %d (%s)",
+        tfrmd_desc->format, get_data_format_str(tfrmd_desc->format));
+  }
+
+  // No matter which format we are transforming to, pre-transformed
+  // descriptor must be of the same valid types.
+  switch (pre_tfrmd_desc->type) {
+  case BFLOAT:
+  case FP16:
+  case FP32:
+    break;
+  default:
+    return ZDNN_STATUS(
+        ZDNN_INVALID_TYPE, "Invalid pre-transformed type: %d (%s)",
+        pre_tfrmd_desc->type, get_data_type_str(pre_tfrmd_desc->type));
+  }
+
+  return verify_transformed_dimensions(tfrmd_desc);
+}
+
+/// Verify if the input ztensor contains valid tensor descriptors for
+/// transformation to a ztensor.
+///
+/// \param[in] input Pointer to the ztensor being checked
+///
+/// \return ZDNN_INVALID_FORMAT
+///         ZDNN_INVALID_LAYOUT
+///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_SHAPE
+///
+zdnn_status verify_descriptors_transform_origtensor(const zdnn_ztensor *input) {
+
+  zdnn_tensor_desc *pre_tfrmd_desc = input->pre_transformed_desc;
+  zdnn_tensor_desc *tfrmd_desc = input->transformed_desc;
+
+  // First, format must be 4DFEATURE.
+  // layout is wrong (in reality, either can be wrong, but we have to pick one)
+
+  if (tfrmd_desc->format != ZDNN_FORMAT_4DFEATURE) {
+    return ZDNN_STATUS(
+        ZDNN_INVALID_FORMAT, "Invalid transformed format: %d (%s)",
+        tfrmd_desc->format, get_data_format_str(tfrmd_desc->format));
+  }
+
+  switch (tfrmd_desc->type) {
+  case ZDNN_DLFLOAT16:
+    switch (tfrmd_desc->layout) {
+    case ZDNN_NHWC:
+    case ZDNN_BIDIR_FICO:
+    case ZDNN_BIDIR_ZRH:
+      switch (pre_tfrmd_desc->type) {
+      case BFLOAT:
+      case FP16:
+      case FP32:
+        break;
+      default:
+        return ZDNN_STATUS(
+            ZDNN_INVALID_TYPE,
+            "Invalid pre-transformed type: %d (%s) for %s conversion.",
+            pre_tfrmd_desc->type, get_data_type_str(pre_tfrmd_desc->type),
+            get_data_type_str(tfrmd_desc->type));
+      }
+      break;
+    default:
+      return ZDNN_STATUS(
+          ZDNN_INVALID_LAYOUT,
+          "Format is %s, Type is %s but transformed layout is %s",
+          get_data_format_str(tfrmd_desc->format),
+          get_data_type_str(tfrmd_desc->type),
+          get_data_layout_str(tfrmd_desc->layout));
+    }
+    break;
+  case ZDNN_BINARY_INT32:
+    if (tfrmd_desc->layout != ZDNN_NHWC) {
+      return ZDNN_STATUS(
+          ZDNN_INVALID_LAYOUT,
+          "Format is %s, Type is %s but transformed layout is %s",
+          get_data_format_str(tfrmd_desc->format),
+          get_data_type_str(tfrmd_desc->type),
+          get_data_layout_str(tfrmd_desc->layout));
+    }
+    if (pre_tfrmd_desc->type != INT32) {
+      return ZDNN_STATUS(
+          ZDNN_INVALID_TYPE,
+          "Invalid pre-transformed type: %d (%s) for %s conversion.",
+          pre_tfrmd_desc->type, get_data_type_str(pre_tfrmd_desc->type),
+          get_data_type_str(tfrmd_desc->type));
+    }
+    break;
+  default:
+    return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid transformed type: %d (%s)",
+                       tfrmd_desc->type, get_data_type_str(tfrmd_desc->type));
+  }
+
+  switch (pre_tfrmd_desc->layout) {
+  case ZDNN_1D:
+  case ZDNN_2D:
+  case ZDNN_2DS:
+  case ZDNN_3D:
+  case ZDNN_3DS:
+  case ZDNN_4D:
+  case ZDNN_4DS:
+  case ZDNN_NHWC:
+  case ZDNN_NCHW:
+    break;
+  default:
+    return ZDNN_STATUS(
+        ZDNN_INVALID_LAYOUT, "Invalid pre-transformed layout: %d (%s)",
+        pre_tfrmd_desc->layout, get_data_layout_str(pre_tfrmd_desc->layout));
+  }
+
+  return verify_transformed_dimensions(tfrmd_desc);
+}
+
+/// Verify if the input zdnn_tensor_desc contains valid transformed
+/// information
+///
+/// \param[in] input Pointer to the zdnn_tensor_desc being checked
+///
+/// \return ZDNN_INVALID_FORMAT
+///         ZDNN_INVALID_LAYOUT
+///         ZDNN_INVALID_TYPE
+///
+zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc) {
+
+  // First, format must be valid (defined in the enum)
+  // Then if format doesn't agree with layout, we declare format is correct
+  // and layout is wrong (in reality, either can be wrong, but we have to pick
+  // one)
+  switch (tfrmd_desc->format) {
+  case ZDNN_FORMAT_4DFEATURE:
+    switch (tfrmd_desc->layout) {
+    case ZDNN_NHWC:
+    case ZDNN_FICO:
+    case ZDNN_ZRH:
+    case ZDNN_BIDIR_FICO:
+    case ZDNN_BIDIR_ZRH:
+      switch (tfrmd_desc->type) {
+      case ZDNN_DLFLOAT16:
+      case ZDNN_BINARY_INT8:
+      case ZDNN_BINARY_INT32:
+        break;
+      default:
+        return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
+                           tfrmd_desc->type,
+                           get_data_type_str(tfrmd_desc->type));
+      }
       break;
     default:
       return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Format is %s but layout is %s",
@@ -104,7 +266,28 @@ zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc) {
     }
     break;
   case ZDNN_FORMAT_4DKERNEL:
+    switch (tfrmd_desc->type) {
+    case ZDNN_DLFLOAT16:
+      break;
+    default:
+      return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
+                         tfrmd_desc->type, get_data_type_str(tfrmd_desc->type));
+    }
     if (tfrmd_desc->layout != ZDNN_HWCK) {
+      return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Format is %s but layout is %s",
+                         get_data_format_str(tfrmd_desc->format),
+                         get_data_layout_str(tfrmd_desc->layout));
+    }
+    break;
+  case ZDNN_FORMAT_4DWEIGHTS:
+    switch (tfrmd_desc->type) {
+    case ZDNN_BINARY_INT8:
+      break;
+    default:
+      return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
+                         tfrmd_desc->type, get_data_type_str(tfrmd_desc->type));
+    }
+    if (tfrmd_desc->layout != ZDNN_NHWC) {
       return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Format is %s but layout is %s",
                          get_data_format_str(tfrmd_desc->format),
                          get_data_layout_str(tfrmd_desc->layout));
@@ -117,11 +300,10 @@ zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc) {
                        get_data_format_str(tfrmd_desc->format));
   }
 
-  // for right now only ZDNN_DLFLOAT16 is valid
-  if (tfrmd_desc->type != ZDNN_DLFLOAT16) {
-    return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
-                       tfrmd_desc->type, get_data_type_str(tfrmd_desc->type));
-  }
+  return verify_transformed_dimensions(tfrmd_desc);
+}
+
+zdnn_status verify_transformed_dimensions(const zdnn_tensor_desc *tfrmd_desc) {
 
   const uint32_t *dims_ptr = &(tfrmd_desc->dim4);
 
@@ -129,10 +311,26 @@ zdnn_status verify_transformed_descriptor(const zdnn_tensor_desc *tfrmd_desc) {
   // transformed layout uses all dim* entries, so we'll check them all
   for (int i = 0; i < ZDNN_MAX_DIMS; i++) {
     LOG_DEBUG("dim%d: %d", ZDNN_MAX_DIMS - i, dims_ptr[i]);
-    if (!dims_ptr[i] || dims_ptr[i] > zdnn_get_nnpa_max_dim_idx_size()) {
+    if (!dims_ptr[i]) {
       return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
-                         "Invalid shape: %d (reason: exceeds %d or is 0)",
-                         dims_ptr[i], zdnn_get_nnpa_max_dim_idx_size());
+                         "Invalid shape for dim%d. (reason: dimension is 0)",
+                         ZDNN_MAX_DIMS - i);
+    }
+
+    if (dims_ptr[i] > zdnn_get_max_for_dim(ZDNN_MAX_DIMS - i)) {
+
+      if (!zdnn_get_max_for_dim(ZDNN_MAX_DIMS - i)) {
+        return ZDNN_STATUS(ZDNN_UNSUPPORTED_AIU_EXCEPTION,
+                           "Unable to verify shape. (reason: HW environment "
+                           "may not be setup properly)",
+                           NO_ARG);
+      } else {
+        return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
+                           "Invalid shape for dim%d. (reason: dimension "
+                           "value %d exceeds %d)",
+                           ZDNN_MAX_DIMS - i, dims_ptr[i],
+                           zdnn_get_max_for_dim(ZDNN_MAX_DIMS - i));
+      }
     }
   }
 
@@ -209,21 +407,24 @@ void init_transformed_desc(zdnn_data_layouts layout, zdnn_data_types type,
 }
 
 /// Convenience function for slicing a ztensor along dim4. The contents of the
-/// input ztensor and its descriptors are copied into the output pointers. Then
-/// the output's structs are updated to reflect values for a single slice. The
-/// input buffer values are not copied. Instead the output's buffer pointer is
-/// adjusted so it points the the correct address of the existing data.
+/// input ztensor and its descriptors are copied into the output pointers.
+/// Then the output's structs are updated to reflect values for a single
+/// slice. The input buffer values are not copied. Instead the output's buffer
+/// pointer is adjusted so it points the the correct address of the existing
+/// data.
 ///
 /// \param[in] input_ztensor pointer to original unsliced ztensor
 /// \param[in] slice_idx dim4 index to use as output slice
 /// \param[in] slice_buffer_size size of a sliced buffer. If 0, method will
-///                          calculate based on number of elements and data type
+///                          calculate based on number of elements and data
+///                          type
 /// \param[out] output_pre_tfrmd_desc pointer to pre_tfrmd_desc to edit for
 ///                                   output (skipped if NULL)
 /// \param[out] output_tfrmd_desc pointer to tfrmd_desc to edit for output.
 /// \param[out] output_ztensor pointer ztensor to edit for output slice.
 ///
-/// \return ZDNN_INVALID_LAYOUT (where applicable when output_pre_tfrmd_desc is
+/// \return ZDNN_INVALID_LAYOUT (where applicable when output_pre_tfrmd_desc
+/// is
 ///                              not NULL)
 ///         ZDNN_STATUS_OK
 ///
@@ -233,7 +434,8 @@ zdnn_status ztensor_slice_dim4(const zdnn_ztensor *input_ztensor,
                                zdnn_tensor_desc *output_tfrmd_desc,
                                zdnn_ztensor *output_ztensor) {
 
-  // Copy the input ztensor info into output and set output descriptor pointers
+  // Copy the input ztensor info into output and set output descriptor
+  // pointers
   memcpy(output_ztensor, input_ztensor, sizeof(zdnn_ztensor));
   output_ztensor->pre_transformed_desc = output_pre_tfrmd_desc;
   output_ztensor->transformed_desc = output_tfrmd_desc;
@@ -316,14 +518,13 @@ zdnn_status ztensor_slice_dim4(const zdnn_ztensor *input_ztensor,
 ///                 information will be stored
 ///
 /// \return ZDNN_OK
+///         ZDNN_INVALID_TYPE
 ///         ZDNN_INVALID_LAYOUT
 ///
 ///
 zdnn_status
 zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
                                zdnn_tensor_desc *tfrmd_desc) {
-
-  zdnn_status status;
 
   // modify tfrmd_desc only if layout is supported, else leave it untouched
 
@@ -336,7 +537,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case (ZDNN_2D):
     // shape (a, b) -> dims4-1 (1, 1, a, b)
@@ -346,7 +546,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case (ZDNN_2DS):
     // shape (a, b) -> dims4-1 (a, 1, 1, b)
@@ -356,7 +555,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case (ZDNN_3D):
     // shape (a, b, c) -> dims4-1 (1, a, b, c)
@@ -366,7 +564,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case (ZDNN_3DS):
     // shape (a, b, c) -> dims4-1 (a, 1, b, c)
@@ -376,7 +573,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case (ZDNN_4D):
   case (ZDNN_NHWC):
@@ -388,7 +584,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case (ZDNN_4DS):
     // ZDNN_4DS is used exclusively as RNN output
@@ -407,7 +602,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     }
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case (ZDNN_NCHW):
     // shape (n, c, h, w) -> dims4-1 (n, h, w, c)
@@ -417,7 +611,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim3;
     tfrmd_desc->layout = ZDNN_NHWC;
     tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
-    status = ZDNN_OK;
     break;
   case ZDNN_HWCK:
     tfrmd_desc->dim4 = pre_tfrmd_desc->dim4;
@@ -426,7 +619,6 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
     tfrmd_desc->layout = ZDNN_HWCK;
     tfrmd_desc->format = ZDNN_FORMAT_4DKERNEL;
-    status = ZDNN_OK;
     break;
   default:
     return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Invalid layout: %d (%s)",
@@ -435,11 +627,132 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
     break;
   }
 
-  if (status == ZDNN_OK) {
+  switch (pre_tfrmd_desc->type) {
+  case FP32:
+  case FP16:
+  case BFLOAT:
     tfrmd_desc->type = ZDNN_DLFLOAT16;
+    break;
+  case INT32:
+    tfrmd_desc->type = ZDNN_BINARY_INT32;
+    break;
+  default:
+    return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
+                       pre_tfrmd_desc->type,
+                       get_data_type_str(pre_tfrmd_desc->type));
+    break;
   }
 
-  return status;
+  return ZDNN_STATUS_OK;
+}
+
+/// Generate quantized transformed tensor descriptor based on supplied
+/// pre-transformed tensor descriptor
+///
+/// \param[in] pre_tfrmd_desc Pointer to zdnn_tensor_desc struct with
+///                           pre-transformed information
+/// \param[in] transform_type type of quantized transformation
+/// \param[out] tfrmd_desc
+///                 Pointer to zdnn_tensor_desc struct where quantized
+///                 transformed information will be stored
+///
+/// \return ZDNN_OK
+///         ZDNN_INVALID_LAYOUT
+///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_TRANSFORM_TYPE
+///
+///
+zdnn_status zdnn_generate_quantized_transformed_desc(
+    const zdnn_tensor_desc *pre_tfrmd_desc,
+    zdnn_quantized_transform_types transform_type,
+    zdnn_tensor_desc *tfrmd_desc) {
+
+  switch (pre_tfrmd_desc->layout) {
+  case (ZDNN_1D):
+    // shape (a) -> dims4-1 (1, 1, 1, a)
+    tfrmd_desc->dim4 = 1;
+    tfrmd_desc->dim3 = 1;
+    tfrmd_desc->dim2 = 1;
+    tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
+    break;
+  case (ZDNN_2D):
+    // shape (a, b) -> dims4-1 (1, 1, a, b)
+    tfrmd_desc->dim4 = 1;
+    tfrmd_desc->dim3 = 1;
+    tfrmd_desc->dim2 = pre_tfrmd_desc->dim2;
+    tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
+    break;
+  case (ZDNN_2DS):
+    // shape (a, b) -> dims4-1 (a, 1, 1, b)
+    tfrmd_desc->dim4 = pre_tfrmd_desc->dim2;
+    tfrmd_desc->dim3 = 1;
+    tfrmd_desc->dim2 = 1;
+    tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
+    break;
+  case (ZDNN_3D):
+    // shape (a, b, c) -> dims4-1 (1, a, b, c)
+    tfrmd_desc->dim4 = 1;
+    tfrmd_desc->dim3 = pre_tfrmd_desc->dim3;
+    tfrmd_desc->dim2 = pre_tfrmd_desc->dim2;
+    tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
+    break;
+  case (ZDNN_3DS):
+    // shape (a, b, c) -> dims4-1 (a, 1, b, c)
+    tfrmd_desc->dim4 = pre_tfrmd_desc->dim3;
+    tfrmd_desc->dim3 = 1;
+    tfrmd_desc->dim2 = pre_tfrmd_desc->dim2;
+    tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
+    break;
+  case (ZDNN_4D):
+  case (ZDNN_NHWC):
+    // shape (a, b, c, d) -> dims4-1 (a, b, c, d)
+    // shape (n, h, w, c) -> dims4-1 (n, h, w, c)
+    tfrmd_desc->dim4 = pre_tfrmd_desc->dim4;
+    tfrmd_desc->dim3 = pre_tfrmd_desc->dim3;
+    tfrmd_desc->dim2 = pre_tfrmd_desc->dim2;
+    tfrmd_desc->dim1 = pre_tfrmd_desc->dim1;
+    break;
+  default:
+    return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Invalid layout: %d (%s)",
+                       pre_tfrmd_desc->layout,
+                       get_data_layout_str(pre_tfrmd_desc->layout));
+    break;
+  }
+
+  switch (pre_tfrmd_desc->type) {
+  case FP32:
+  case FP16:
+  case BFLOAT:
+  case INT8:
+    break;
+  default:
+    return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
+                       pre_tfrmd_desc->type,
+                       get_data_type_str(pre_tfrmd_desc->type));
+    break;
+  }
+
+  tfrmd_desc->layout = ZDNN_NHWC;
+
+  switch (transform_type) {
+  case QUANTIZED_DLFLOAT16:
+    tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
+    tfrmd_desc->type = ZDNN_DLFLOAT16;
+    break;
+  case QUANTIZED_INT8:
+    tfrmd_desc->format = ZDNN_FORMAT_4DFEATURE;
+    tfrmd_desc->type = ZDNN_BINARY_INT8;
+    break;
+  case QUANTIZED_WEIGHTS_INT8:
+    tfrmd_desc->format = ZDNN_FORMAT_4DWEIGHTS;
+    tfrmd_desc->type = ZDNN_BINARY_INT8;
+    break;
+  default:
+    return ZDNN_STATUS(ZDNN_INVALID_TRANSFORM_TYPE,
+                       "Invalid transform type: %d", transform_type);
+  }
+
+  return ZDNN_STATUS_OK;
 }
 
 /// Generate concatenated transformed tensor descriptor based on supplied
@@ -455,6 +768,7 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
 ///                  information will be stored
 ///
 /// \return ZDNN_OK
+///          ZDNN_INVALID_TYPE
 ///          ZDNN_INVALID_LAYOUT
 ///          ZDNN_INVALID_CONCAT_INFO
 ///          ZDNN_INVALID_SHAPE
@@ -462,6 +776,18 @@ zdnn_generate_transformed_desc(const zdnn_tensor_desc *pre_tfrmd_desc,
 zdnn_status zdnn_generate_transformed_desc_concatenated(
     const zdnn_tensor_desc *pre_tfrmd_desc, zdnn_concat_info info,
     zdnn_tensor_desc *tfrmd_desc) {
+
+  switch (pre_tfrmd_desc->type) {
+  case FP32:
+  case FP16:
+  case BFLOAT:
+    break;
+  default:
+    return ZDNN_STATUS(ZDNN_INVALID_TYPE, "Invalid type: %d (%s)",
+                       pre_tfrmd_desc->type,
+                       get_data_type_str(pre_tfrmd_desc->type));
+    break;
+  }
 
   if ((CONCAT_USAGE(info) == USAGE_WEIGHTS) &&
       (CONCAT_PREV_LAYER(info) == PREV_LAYER_BIDIR)) {

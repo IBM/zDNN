@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,8 +62,7 @@ void reset_qaf_result() {
   memcpy(QAF_BLK3_PTR, &aiu_hwinfo_baseline.blk3, HWINFO_BLK3_LEN);
 }
 
-void setUp(void) { /* This is run before EACH TEST */
-}
+void setUp(void) {}
 
 void tearDown(void) {}
 
@@ -74,8 +73,15 @@ void tearDown(void) {}
 void test_lib_vernum_nnpa() {
   VERIFY_HW_ENV; // verify required HW env is available.
   refresh_aiu_lib_vernum();
-  TEST_ASSERT_MESSAGE(aiu_lib_vernum == 0x00010000, //
-                      "aiu_lib_vernum is not detected as 0x00010000 (nnpa)");
+  uint32_t expected_lib_vernum;
+  if (zdnn_is_nnpa_parmblk_fmt_installed(1, NNPA_PARMBLKFORMAT_1) == true) {
+    expected_lib_vernum = 0x00010100;
+  } else {
+    expected_lib_vernum = 0x00010000;
+  }
+  TEST_ASSERT_MESSAGE_FORMATTED(aiu_lib_vernum == expected_lib_vernum,
+                                "aiu_lib_vernum is not detected as %08" PRIx32,
+                                expected_lib_vernum);
 }
 
 // **************************************************

@@ -1,0 +1,9 @@
+* zos-working-tree-encoding=iso8859-1
+*.groovy zos-working-tree-encoding=utf-8
+# Autodetect text files
+* text=auto
+
+# Definitively text files
+*.c text
+*.h text
+*.cpp text

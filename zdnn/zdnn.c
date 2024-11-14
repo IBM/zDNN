@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,17 +66,17 @@ void populate_descriptor(nnpa_tensor_descriptor *descriptor,
 /// \return None
 ///
 void populate_nnpa_parm_block(
-    nnpa_parameter_block *parm_block, const zdnn_ztensor *input_ztensor1,
-    const zdnn_ztensor *input_ztensor2, const zdnn_ztensor *input_ztensor3,
-    zdnn_ztensor *output_ztensor1, zdnn_ztensor *output_ztensor2,
-    void *func_sp_savearea_addr, uint32_t func_sp_parm1, uint32_t func_sp_parm2,
-    uint32_t func_sp_parm3, uint32_t func_sp_parm4, uint32_t func_sp_parm5) {
+    nnpa_parameter_block *parm_block, uint16_t parm_block_version,
+    const zdnn_ztensor *input_ztensor1, const zdnn_ztensor *input_ztensor2,
+    const zdnn_ztensor *input_ztensor3, zdnn_ztensor *output_ztensor1,
+    zdnn_ztensor *output_ztensor2, void *func_sp_savearea_addr,
+    const function_specific_parameters *fsp) {
 
   // clear the block up to CSB
   memset(parm_block, 0,
          sizeof(nnpa_parameter_block) -
              offsetof(nnpa_parameter_block, continuation_state_buffer));
-  parm_block->parm_block_version_number = NNPA_PARM_BLOCK_VERSION;
+  parm_block->parm_block_version_number = parm_block_version;
 
   nnpa_tensor_descriptor *cur_desc_ptr;
 
@@ -107,16 +107,12 @@ void populate_nnpa_parm_block(
 
   parm_block->function_specific_save_area_address =
       (uintptr_t)func_sp_savearea_addr;
-  parm_block->function_specific_parm1 = func_sp_parm1;
-  parm_block->function_specific_parm2 = func_sp_parm2;
-  parm_block->function_specific_parm3 = func_sp_parm3;
-  parm_block->function_specific_parm4 = func_sp_parm4;
-  parm_block->function_specific_parm5 = func_sp_parm5;
+  parm_block->function_specific_parms = *fsp;
 }
 
-/// Invoke the NNPA instruction to drive a request to the AIU
+/// Invoke the NNPA instruction to drive a request to the zAIU
 ///
-/// \param[in] function_code 1 byte AIU function code
+/// \param[in] function_code 1 byte zAIU function code
 /// \param[in] parm_block pointer to a nnpa_parameter_block
 /// \param[out] exception_flags 1 byte output exception flags
 ///
@@ -145,7 +141,13 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
 
       printf("invoke_nnpa func_code %d\n", function_code);
 
-      printf("invoke_nnpa input_tensor1:\n");
+      printf("            parm_block_version:\n");
+      print_hex(
+          sizeof(uint16_t),
+          &((nnpa_parameter_block *)parm_block)->parm_block_version_number);
+      printf("\n");
+
+      printf("            input_tensor1:\n");
       print_hex(sizeof(nnpa_tensor_descriptor),
                 &((nnpa_parameter_block *)parm_block)->input_tensor1);
       printf("\n");
@@ -172,27 +174,98 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
 
       printf("            function_specific_parm1:\n");
       print_hex(sizeof(uint32_t),
-                &((nnpa_parameter_block *)parm_block)->function_specific_parm1);
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm1);
       printf("\n");
 
       printf("            function_specific_parm2:\n");
       print_hex(sizeof(uint32_t),
-                &((nnpa_parameter_block *)parm_block)->function_specific_parm2);
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm2);
       printf("\n");
 
       printf("            function_specific_parm3:\n");
       print_hex(sizeof(uint32_t),
-                &((nnpa_parameter_block *)parm_block)->function_specific_parm3);
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm3);
       printf("\n");
 
       printf("            function_specific_parm4:\n");
       print_hex(sizeof(uint32_t),
-                &((nnpa_parameter_block *)parm_block)->function_specific_parm4);
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm4);
       printf("\n");
 
       printf("            function_specific_parm5:\n");
       print_hex(sizeof(uint32_t),
-                &((nnpa_parameter_block *)parm_block)->function_specific_parm5);
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm5);
+      printf("\n");
+
+      printf("            function_specific_parm6:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm6);
+      printf("\n");
+
+      printf("            function_specific_parm7:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm7);
+      printf("\n");
+
+      printf("            function_specific_parm8:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm8);
+      printf("\n");
+
+      printf("            function_specific_parm9:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm9);
+      printf("\n");
+
+      printf("            function_specific_parm10:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm10);
+      printf("\n");
+
+      printf("            function_specific_parm11:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm11);
+      printf("\n");
+
+      printf("            function_specific_parm12:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm12);
+      printf("\n");
+
+      printf("            function_specific_parm13:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm13);
+      printf("\n");
+
+      printf("            function_specific_parm14:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm14);
+      printf("\n");
+
+      printf("            function_specific_parm15:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm15);
+      printf("\n");
+
+      printf("            function_specific_parm16:\n");
+      print_hex(sizeof(uint32_t),
+                &((nnpa_parameter_block *)parm_block)
+                     ->function_specific_parms.function_specific_parm16);
       printf("\n");
 
       printf("            function_specific_save_area_address:\n");
@@ -202,7 +275,7 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
     }
   }
 
-// clang-format off
+  // clang-format off
 #if defined(__MVS__)
   struct psa *psaptr =
       (struct psa *)0;
@@ -212,7 +285,6 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
   struct ecvt *ecvtptr = (struct ecvt *)cvtptr->cvtecvt;
   struct facl *faclptr = (struct facl *)ecvtptr->ecvtfacl;
 
-#ifndef ZDNN_CONFIG_NO_NNPA   // If NNPA build, do NNPA with hardcoded opcode
   if (faclptr->faclnnpaf) {
     __asm volatile(
    "      LLGC      0,%[valfunctionCode]        \n\t" // Insert function in R0
@@ -233,43 +305,22 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
         return ZDNN_STATUS(ZDNN_UNAVAILABLE_FUNCTION,
                        "NNPA facility unavailable", NO_ARG);
   }
+
 #else
-    __asm volatile(
-   "      LLGC      0,%[valfunctionCode]        \n\t" // Insert function in R0
-   "      LG        1,%[parm_block]             \n\t" // R1=parm_block, which is a pointer
-   "      LGHI      %[areannpa_return],0        \n\t" // simulate goodness
-   "      LGHI      %[cc],0                     \n\t"
-
-   : [cc] "+d" (cc),                                  // ASM outputs
-     [areannpa_return] "=d" (rtn.r0)
-   : [valfunctionCode] "m" (function_code),           // ASM inputs
-     [parm_block] "m" (parm_block)
-   : "r0", "r1", "cc"); /* Clobbers - R0, R1, cond code */
-#endif // ifndef ZDNN_CONFIG_NO_NNPA
-
-#endif // defined(__MVS__)
-
-#ifndef __MVS__
     register uint64_t r0 __asm__("%r0") = function_code;
     register uint64_t r1 __asm__("%r1") = (uint64_t)parm_block;
 
     __asm__ __volatile__ (
-#ifndef ZDNN_CONFIG_NO_NNPA   // If NNPA build, do NNPA with hardcoded opcode
           "1: .long   0xb93b0000"     "\n\t"   // NNPA
           "   jo      1b"             "\n\t"   // on CC=3, jump to label '1'
           "   ipm     %[cc]"          "\n\t"   // fetch cc to cc reg
           "   srl     %[cc],28"       "\n\t"   // shift
-#else
-          "1: lghi    %[r0],0"        "\n\t"   // clear reg 0
-          "   lghi    %[cc],0"        "\n\t"   // this clears 'cc'
-
-#endif //! defined(ZDNN_CONFIG_NO_NNPA)
     : [r0] "+d" (r0), [cc] "+d" (cc)          // ASM outputs
     : "d" (r1)                           // ASM inputs
     : "memory", "cc");                   // ASM clobbers
     rtn.r0 = r0;
 
-#endif   // !defined(__MVS__)
+#endif   // defined(__MVS__)
   // clang-format on
 
   BEGIN_BLOCK_IF_LOGLEVEL_DEBUG {
@@ -289,7 +340,7 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
   }
 }
 
-/// Invoke the NNPA routine to drive a query request to the AIU
+/// Invoke the NNPA routine to drive a query request to the zAIU
 ///
 /// \param[in] parm_block pointer to a nnpa_parameter_block
 ///
@@ -302,7 +353,6 @@ zdnn_status invoke_nnpa(uint8_t function_code, char *parm_block,
 /// possible on NNPA_QAF.
 ///
 zdnn_status invoke_nnpa_query(nnpa_qaf_parameter_block *qpb) {
-#ifndef ZDNN_CONFIG_NO_NNPA
 #if defined(__MVS__)
   /***********************************************************************
    * On z/OS, use system copy of STFLE output ("faclnnpaf").  (LoZ has to
@@ -332,12 +382,6 @@ zdnn_status invoke_nnpa_query(nnpa_qaf_parameter_block *qpb) {
   } else {
     return ZDNN_STATUS(ZDNN_UNAVAILABLE_FUNCTION, "NNPA_QAF unavailable",
                        NO_ARG);
-  }
-#endif
-#else
-  {
-    // Non-NNPA build: invoke NNPA and it will return scaffolded data
-    return invoke_nnpa(NNPA_QAF, (char *)qpb, NULL);
   }
 #endif
 }

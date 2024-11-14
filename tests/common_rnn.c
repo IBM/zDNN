@@ -35,29 +35,24 @@ size_t calc_rnn_work_area_size(uint8_t function_code, uint32_t batch_size,
                                uint32_t hidden_state_size,
                                lstm_gru_direction direction) {
 
-  uint32_t padded_hidden_state_size = CEIL(hidden_state_size, 64) * 64 * 4;
-  uint32_t num_gates = get_func_code_num_gates(function_code);
-  zdnn_data_layouts layout = 0;
-
-  if (function_code == NNPA_LSTMACT) {
-    layout = ZDNN_4D;
-  } else if (function_code == NNPA_GRUACT) {
-    layout = ZDNN_3D;
-  } else {
+  if (function_code != NNPA_LSTMACT && function_code != NNPA_GRUACT) {
     TEST_FAIL_MESSAGE_FORMATTED("NNPA function code %d is not supported.",
                                 function_code);
   }
 
+  uint32_t padded_hidden_state_size = CEIL(hidden_state_size, 64) * 64 * 4;
+  uint32_t num_gates = get_func_code_num_gates(function_code);
+
   // Initialize descs for work area
   zdnn_tensor_desc fused_desc, bias_add_desc, c_desc;
 
-  init_transformed_desc(layout, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+  init_transformed_desc(ZDNN_4D, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
                         &fused_desc, num_timesteps, 1, batch_size,
                         padded_hidden_state_size);
-  init_transformed_desc(layout, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+  init_transformed_desc(ZDNN_4D, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
                         &bias_add_desc, num_gates, 1, batch_size,
                         hidden_state_size);
-  init_transformed_desc(layout, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, &c_desc,
+  init_transformed_desc(ZDNN_4D, ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, &c_desc,
                         2, 1, batch_size, hidden_state_size);
 
   size_t work_area_size =
@@ -219,7 +214,7 @@ void test_zdnn_api_lstm_gru(
     // Set work_area during second pass
     if (work_area_pass == 1) {
       work_area_size =
-          calc_rnn_work_area_size(NNPA_LSTMACT, batch_size, num_timesteps,
+          calc_rnn_work_area_size(function_code, batch_size, num_timesteps,
                                   hidden_state_size, direction);
       work_area = alloc_rnn_work_area(work_area_size);
       zeroed_work_area = alloc_rnn_work_area(work_area_size);

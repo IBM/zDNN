@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -159,7 +159,7 @@ static size_t setup_work_area_descs(uint8_t function_code, const uint32_t *nums,
 //
 // Legend: (see aiu_lstm_gru())
 // ----------------------+--------------+----------------------|
-//        AIU Op         | Input/Output | Shape                |
+//        zAIU Op         | Input/Output | Shape                |
 // ----------------------+--------------+----------------------|
 // NNPA_MATMUL_OP w/ Add |    Output    | (1, 1, b, in_pad)    |
 // NNPA_LSTMACT/GRUACT   |    Input     | (num_gates, 1, b, s) |
@@ -244,15 +244,21 @@ static void setup_internal_ztensors(uint8_t function_code, const uint32_t *nums,
   internal_ztens[TS_H_OUT].pre_transformed_desc = NULL;
   internal_ztens[TS_H_OUT].transformed_desc = &wa_descs[TS_HC_OUT_WA_DESC].desc;
 
-  // Use work_area buffer if GRU and request only last ts H output, otherwise
-  // write directly to the returned hn_output. This also implies LSTM never uses
-  // work_area for H output.
-  if (function_code == NNPA_GRUACT &&
-      (hn_output->transformed_desc->dim4 < nums[TS])) {
+  if (function_code == NNPA_LSTMACT ||
+      (hn_output->transformed_desc->dim4 >= nums[TS])) {
+    // LSTM doesn't need to use the work_area for storing the intermediate H
+    // outputs because LSTM doesn't need to feed to previous H outputs to
+    // anywhere.  (It uses the work_area for the C outputs though)
+    //
+    // With GRU, if not requesting only the last ts H output, we can use
+    // hn_output buffer directly because it has all the enough space for storing
+    // the intermediate H outputs
+    internal_ztens[TS_H_OUT].buffer = hn_output->buffer;
+  } else {
+    // if GRU and request only last ts H output, use the work_area for storing
+    // the intermediate H output
     internal_ztens[TS_H_OUT].buffer = (char *)internal_ztens[BIAS_ADD].buffer +
                                       internal_ztens[BIAS_ADD].buffer_size;
-  } else {
-    internal_ztens[TS_H_OUT].buffer = hn_output->buffer;
   }
   internal_ztens[TS_H_OUT].buffer_size =
       wa_descs[TS_HC_OUT_WA_DESC].buffer_size;
@@ -291,11 +297,11 @@ static void setup_internal_ztensors(uint8_t function_code, const uint32_t *nums,
 // the inputs for a single direction and processes each timestep over a loop of
 // RNN activation op calls.
 static zdnn_status
-directional_rnn(uint8_t function_code, const uint32_t *nums,
-                const zdnn_ztensor *input, const zdnn_ztensor **sliced_inputs,
-                zdnn_ztensor *hn_output, zdnn_ztensor *cf_output,
-                rnn_internal_direction direction, void *work_area,
-                work_area_descriptor *wa_descs) {
+directional_rnn(const uint16_t op_parm_block_version, uint8_t function_code,
+                const uint32_t *nums, const zdnn_ztensor *input,
+                const zdnn_ztensor **sliced_inputs, zdnn_ztensor *hn_output,
+                zdnn_ztensor *cf_output, rnn_internal_direction direction,
+                void *work_area, work_area_descriptor *wa_descs) {
   zdnn_status nnpa_results;
 
   BEGIN_BLOCK_IF_LOGLEVEL_TRACE {
@@ -329,17 +335,20 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
                           cf_output, wa_descs, work_area, int_descs,
                           internal_ztens);
 
-  // Build a func_sp_parm1_matmul_bcast_op as MATMUL_BCAST_OP_ADDITION for
+  // Build a func_sp_parm1_matmul_bcast as MATMUL_BCAST_OP_ADDITION for
   // NNPA_MATMUL_OP_BCAST23 call
-  func_sp_parm1_matmul_bcast_op matmul_bcast_op_parm1;
-  matmul_bcast_op_parm1.val = 0;
-  matmul_bcast_op_parm1.bits.operation = MATMUL_BCAST_OP_ADDITION;
+  function_specific_parameters fsp;
+  memset(&fsp, 0, sizeof(function_specific_parameters));
+  func_sp_parms_matmul_bcast *fsp_matmul_bcast =
+      (func_sp_parms_matmul_bcast *)&fsp;
+
+  fsp_matmul_bcast->parm1.operation = MATMUL_OP_ADDITION;
 
   // Perform matmul broadcast against input features, weights, and biases
   if ((nnpa_results = aiu_ops_func_specific(
-           NNPA_MATMUL_OP_BCAST23, input, sliced_inputs[IN_WEIGHTS],
-           sliced_inputs[IN_BIAS], &internal_ztens[FUSED], NULL, 0,
-           matmul_bcast_op_parm1.val, 0, 0, 0, 0)) != ZDNN_OK) {
+           op_parm_block_version, NNPA_MATMUL_OP_BCAST23, input,
+           sliced_inputs[IN_WEIGHTS], sliced_inputs[IN_BIAS],
+           &internal_ztens[FUSED], NULL, 0, &fsp)) != ZDNN_OK) {
     return ZDNN_STATUS(
         nnpa_results,
         "Failure within Matmul Biasadd Broadcast call (status = %d)\n",
@@ -438,26 +447,44 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
     loop_end = -1;
     loop_delta = -1;
     hn_out_shift = (all_timesteps) ? 2 : 0;
-    // Start at the last single h output position for BWD. See comment where
-    // TS_H_OUT is updated each loop for explanation for why. Since
-    // hn_output.buffer_size is set by the user and we only require they set it
-    // big enough (but not necessarily exact), we can't use it to find the right
-    // output address. So instead we use the TS_H_OUT size that we created
-    // which is the exact size of a single FWD or BWD output. Here loop_start
-    // gives us the index for the last horizontally concatenated output. So to
-    // reach the start of the correct concatenated output address we jump
-    // hn_out_shift (ie 2 or 0) * num concatenated outputs plus one more single
-    // output to reach the reverse's half.
-    internal_ztens[TS_H_OUT].buffer =
-        (char *)internal_ztens[TS_H_OUT].buffer +
-        loop_start * hn_out_shift * internal_ztens[TS_H_OUT].buffer_size +
-        internal_ztens[TS_H_OUT].buffer_size;
-    // TS_C_OUT is similar to TS_H_OUT. For BIDIR_BWD must write to the back
-    // half of the concatenated cf_output. We only ever return the final C
-    // output so there's no shifting like TS_H_OUT. However we only write to
-    // cf_output's buffer on the last timestep, any other we write to work_area
-    // which is sliced between FWD and BWD BIDIR. So the only case we have to
-    // handle right here is if there's only one TS total.
+
+    if (function_code == NNPA_LSTMACT || all_timesteps) {
+      // The case that we're using hn_output buffer directly for storing
+      // the intermediate H outputs, i.e., not using work_area
+      //
+      // We need start from the BWD half of the last timestep H output. See the
+      // diagram above for explanation of how the TS_H_OUT pointer is updated
+      // after every loop.
+      //
+      // hn_output.buffer_size is set by the user and we only require it to be
+      // big enough (but not necessarily exact), therefore we can't use it to
+      // find that correct address
+      //
+      // Instead we use the internal_ztens[TS_H_OUT].buffer_size that was
+      // calculated by us in setup_work_area_descs(), that is the exact size of
+      // a single FWD or BWD output.
+      //
+      // loop_start is the the index for the last timestep, so:
+      //
+      // loop_start * hn_out_shift (ie 2 or 0) * TS_H_OUT.buffer_size
+      //
+      // gets us to the last H, then + TS_H_OUT.buffer_size to reach BWD's half.
+      internal_ztens[TS_H_OUT].buffer =
+          (char *)internal_ztens[TS_H_OUT].buffer +
+          loop_start * hn_out_shift * internal_ztens[TS_H_OUT].buffer_size +
+          internal_ztens[TS_H_OUT].buffer_size;
+    } // otherwise, internal_ztens[TS_H_OUT].buffer is pointing to work_area and
+      // there's nothing we need to do
+
+    // For TS_C_OUT (LSTM only), we also need to write to the BWD half of the
+    // output.
+    //
+    // When nums[TS] > 1, we use the work_area for storing the intermediate C
+    // outputs that nothing we need to do in that case
+    //
+    // When nums[TS] == 1, internal_ztens[TS_C_OUT].buffer points to cf_output
+    // buffer, so we need to + TS_C_OUT.buffer_size here to make it point to the
+    // BWD half
     if (function_code == NNPA_LSTMACT && nums[TS] == 1) {
       internal_ztens[TS_C_OUT].buffer =
           (char *)internal_ztens[TS_C_OUT].buffer +
@@ -484,11 +511,11 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
                          : (void *)((uintptr_t)internal_ztens[TS_H_OUT].buffer +
                                     internal_ztens[TS_H_OUT].buffer_size)};
 
-  // Build a func_sp_parm1_matmul_op as MATMUL_OP_ADDITION for NNPA_MATMUL_OP
+  // Build a func_sp_parm1_matmul as MATMUL_OP_ADDITION for NNPA_MATMUL_OP
   // call
-  func_sp_parm1_matmul_op matmul_op_parm1;
-  matmul_op_parm1.val = 0;
-  matmul_op_parm1.bits.operation = MATMUL_OP_ADDITION;
+  memset(&fsp, 0, sizeof(function_specific_parameters));
+  func_sp_parms_matmul *fsp_matmul = (func_sp_parms_matmul *)&fsp;
+  fsp_matmul->parm1.operation = MATMUL_OP_ADDITION;
 
   // Loop through timesteps based on direction
   for (int64_t i = loop_start, c = 0; i != loop_end; i += loop_delta, c++) {
@@ -502,10 +529,9 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
 
     // Set BIAS_ADD based on previous loop's output (or H0 if first loop).
     if ((nnpa_results = aiu_ops_func_specific(
-             NNPA_MATMUL_OP, &internal_ztens[PREV_H_OUT],
+             op_parm_block_version, NNPA_MATMUL_OP, &internal_ztens[PREV_H_OUT],
              sliced_inputs[HID_WEIGHTS], sliced_inputs[HID_BIAS],
-             &internal_ztens[BIAS_ADD], NULL, 0, matmul_op_parm1.val, 0, 0, 0,
-             0)) != ZDNN_OK) {
+             &internal_ztens[BIAS_ADD], NULL, 0, &fsp)) != ZDNN_OK) {
       return ZDNN_STATUS(
           nnpa_results,
           "Failure within Matmul Biasadd for timestep %ld (status = %d)\n", i,
@@ -518,7 +544,7 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
 
     // Get results from NNPA
     if ((nnpa_results = aiu_ops(
-             function_code, &internal_ztens[TS_FUSED],
+             op_parm_block_version, function_code, &internal_ztens[TS_FUSED],
              &internal_ztens[BIAS_ADD],
              (function_code == NNPA_LSTMACT) ? &internal_ztens[PREV_C_OUT]
                                              : &internal_ztens[PREV_H_OUT],
@@ -633,25 +659,27 @@ directional_rnn(uint8_t function_code, const uint32_t *nums,
 /// it cleans up the work area and returns the final status. Method stops and
 /// returns on the first error encountered or ZDNN_OK.
 ///
+/// \param[in] op_parm_block_version Parmblock Version
 /// \param[in] function_code NNPA_LSTMACT or NNPA_GRUACT
-/// \param[in] input The lstm input ztensor fed into the AIU.
-/// \param[in] h0 The hidden state ztensor fed into the AIU.
-/// \param[in] c0 The cell state ztensor from the AIU (ignored when mode is GRU)
-/// \param[in] weights The input weights ztensor from the AIU.
-/// \param[in] biases The input biases ztensor from the AIU.
-/// \param[in] hidden_weights The hidden weights ztensor from the AIU.
-/// \param[in] hidden_biases The hidden biases ztensor from the AIU.
+/// \param[in] input The lstm input ztensor fed into the zAIU.
+/// \param[in] h0 The hidden state ztensor fed into the zAIU.
+/// \param[in] c0 The cell state ztensor from the zAIU (ignored when mode is
+/// GRU)
+/// \param[in] weights The input weights ztensor from the zAIU.
+/// \param[in] biases The input biases ztensor from the zAIU.
+/// \param[in] hidden_weights The hidden weights ztensor from the zAIU.
+/// \param[in] hidden_biases The hidden biases ztensor from the zAIU
 /// \param[in] direction LSTM/GRU direction (FWD, BWD, BIDIR)
 /// \param[in] work_area Pointer to pre-allocated work area for our internal
 ///                      output ztensors or NULL.
-/// \param[out] hn_output The returned hidden_state ztensor from the AIU.
-/// \param[out] cf_output The returned cell_state ztensor from the AIU.
+/// \param[out] hn_output The returned hidden_state ztensor from the zAIU.
+/// \param[out] cf_output The returned cell_state ztensor from the zAIU.
 ///
 /// \return ZDNN_OK if all checks pass or a failure based on why it failed.
 ///
-zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
-                         const zdnn_ztensor *h0, const zdnn_ztensor *c0,
-                         const zdnn_ztensor *weights,
+zdnn_status aiu_lstm_gru(uint16_t op_parm_block_version, uint8_t function_code,
+                         const zdnn_ztensor *input, const zdnn_ztensor *h0,
+                         const zdnn_ztensor *c0, const zdnn_ztensor *weights,
                          const zdnn_ztensor *biases,
                          const zdnn_ztensor *hidden_weights,
                          const zdnn_ztensor *hidden_biases,
@@ -704,6 +732,10 @@ zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
 
   zdnn_status status;
 
+  if (!is_query_parmblock_installed(op_parm_block_version)) {
+    return ZDNN_UNAVAILABLE_FUNCTION;
+  }
+
   // Store special dimensions/values to pass to various internal methods.
   uint32_t nums[NUM_INTEGER_INDICES];
   nums[TS] = input->transformed_desc->dim4;
@@ -753,14 +785,14 @@ zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
   switch (direction) {
   // Skip slicing for unidirectional RNN calls
   case FWD:
-    status =
-        directional_rnn(function_code, nums, input, sliceable_inputs, hn_output,
-                        cf_output, UNI_FWD, internal_work_area, wa_descs);
+    status = directional_rnn(op_parm_block_version, function_code, nums, input,
+                             sliceable_inputs, hn_output, cf_output, UNI_FWD,
+                             internal_work_area, wa_descs);
     break;
   case BWD:
-    status =
-        directional_rnn(function_code, nums, input, sliceable_inputs, hn_output,
-                        cf_output, UNI_BWD, internal_work_area, wa_descs);
+    status = directional_rnn(op_parm_block_version, function_code, nums, input,
+                             sliceable_inputs, hn_output, cf_output, UNI_BWD,
+                             internal_work_area, wa_descs);
     break;
   // Slice input along direction dim and make unidirectional calls for each.
   case BIDIR: {
@@ -807,9 +839,10 @@ zdnn_status aiu_lstm_gru(uint8_t function_code, const zdnn_ztensor *input,
 
       void *dir_work_area =
           (char *)internal_work_area + (dir_idx * dir_work_area_size);
-      status = directional_rnn(
-          function_code, nums, input, sliced_inputs_ptrs[dir_idx], hn_output,
-          cf_output, rnn_direction, dir_work_area, wa_descs);
+      status =
+          directional_rnn(op_parm_block_version, function_code, nums, input,
+                          sliced_inputs_ptrs[dir_idx], hn_output, cf_output,
+                          rnn_direction, dir_work_area, wa_descs);
       if (status != ZDNN_OK) {
         break;
       }

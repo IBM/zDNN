@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
 
     LOG_TRACE("Strategy: full memcpy()", NO_ARG);
     memcpy(dest->buffer, src->buffer, zdnn_getsize_ztensor(src_tfrmd_desc));
-
+    dest->is_transformed = true;
     return ZDNN_STATUS_OK;
   }
 
@@ -158,6 +158,7 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
         }
       }
     }
+    dest->is_transformed = true;
     return ZDNN_STATUS_OK;
   }
 
@@ -170,7 +171,7 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
   // NOTE: this will change when we have "no conversion stick/unstick"
   // for now, unstick to FP32 and restick to preserve precision.
 
-  char stack_tmpbuf[STACK_TMPBUF_SIZE];
+  char stack_tmpbuf[STACK_TMPBUF_SIZE] = {0};
   void *malloc_tmpbuf = NULL;
 
   zdnn_ztensor tmp_tensor_src, tmp_tensor_dest;
@@ -208,6 +209,9 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
 
   if (malloc_tmpbuf) {
     free(malloc_tmpbuf);
+  }
+  if (status == ZDNN_OK) {
+    dest->is_transformed = true;
   }
   return status;
 }

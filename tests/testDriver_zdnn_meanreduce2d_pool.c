@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 #include "common_pool.h"
 
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
 
   tol_bfloat.ulps = 64;
   tol_bfloat.epsilon_mult = (0.1 / EPSILON_BFLOAT) + 1;
@@ -31,8 +31,7 @@ void setUp(void) { /* This is run before EACH TEST */
   VERIFY_HW_ENV;
 }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 void test_meanreduce2d(uint32_t *input_shape, zdnn_data_layouts input_layout,
                        bool repeat_first_input_value, float *input_values,
@@ -48,8 +47,6 @@ void test_meanreduce2d(uint32_t *input_shape, zdnn_data_layouts input_layout,
   zdnn_ztensor *output_ztensor = alloc_ztensor_with_values(
       output_shape, output_layout, test_datatype, NO_CONCAT, true, ZERO_ARRAY);
 
-// Test requires AIU
-#ifdef TEST_AIU
   // Call public NNPA method
   zdnn_status status = zdnn_meanreduce2d(input_ztensor, output_ztensor);
 
@@ -82,7 +79,6 @@ void test_meanreduce2d(uint32_t *input_shape, zdnn_data_layouts input_layout,
     assert_ztensor_values_adv(output_ztensor, repeat_first_expected_value,
                               expected_values, *tol);
   }
-#endif
 
   // Cleanup test ztensors
   free_ztensor_buffers(2, input_ztensor, output_ztensor);
@@ -191,9 +187,10 @@ void zdnn_meanreduce2d_over_max_width_fail() {
 int main() {
 
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(zdnn_meanreduce2d_basic);
-  RUN_TEST_ALL_DATATYPES(zdnn_meanreduce2d_max_height_width_dims_pass);
-  RUN_TEST_ALL_DATATYPES(zdnn_meanreduce2d_over_max_height_fail);
-  RUN_TEST_ALL_DATATYPES(zdnn_meanreduce2d_over_max_width_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_meanreduce2d_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_meanreduce2d_max_height_width_dims_pass);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_meanreduce2d_over_max_height_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_meanreduce2d_over_max_width_fail);
   return UNITY_END();
 }

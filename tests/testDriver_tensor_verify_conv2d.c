@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ input_set valid_padding_zero_stride;
   set.info.layout = l;                                                         \
   set.info.dtype = t;
 
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
 
   VERIFY_HW_ENV;
 
@@ -88,8 +88,7 @@ void setUp(void) { /* This is run before EACH TEST */
   valid_padding_zero_stride.stride_width = 0;
 }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 #define NON_EXISTENT_FORMAT -1
 #define NON_EXISTENT_DTYPE -1
@@ -126,20 +125,27 @@ void run_verify_conv2d_tensors_full(input_set set, zdnn_conv2d_act act_func,
   }
 
   func_sp_parm1_conv2d conv2d_parm1;
-  conv2d_parm1.val = 0;
-  conv2d_parm1.bits.act = act_func;
-  conv2d_parm1.bits.pad = set.padding;
+  memset(&conv2d_parm1, 0, sizeof(func_sp_parm1_conv2d));
+  conv2d_parm1.act = act_func;
+  conv2d_parm1.pad = set.padding;
+
+  func_sp_parm2_conv2d conv2d_parm2;
+  memset(&conv2d_parm2, 0, sizeof(func_sp_parm2_conv2d));
+  conv2d_parm2.stride_width = set.stride_width;
+
+  func_sp_parm3_conv2d conv2d_parm3;
+  memset(&conv2d_parm3, 0, sizeof(func_sp_parm3_conv2d));
+  conv2d_parm3.stride_height = set.stride_height;
 
   func_sp_parm4_conv2d conv2d_parm4;
-  conv2d_parm4.val = 0;
-  conv2d_parm4.bits.clipping_value = 0;
+  memset(&conv2d_parm4, 0, sizeof(func_sp_parm4_conv2d));
+  conv2d_parm4.clipping_value = 0;
 
   // Make call to verify with our newly created ztensors and other inputs
   TEST_ASSERT_MESSAGE_FORMATTED(
       verify_conv2d_tensors(input_ztensor, kernel_ztensor, bias_ztensor,
-                            conv2d_parm1.val, set.stride_height,
-                            set.stride_width, conv2d_parm4.val,
-                            output_ztensor) == expected_status,
+                            &conv2d_parm1, &conv2d_parm2, &conv2d_parm3,
+                            &conv2d_parm4, output_ztensor) == expected_status,
       "Call to verify_conv2d_tensors() returned zdnn_status %08x but we "
       "expected %08x",
       status, expected_status);

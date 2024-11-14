@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "common_rnn.h"
 #include "testsupport.h"
 
 #include <stddef.h>
@@ -22,9 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 
@@ -174,14 +173,9 @@ void verify_format(uint8_t function_code, tensor_idx idx,
          description);
 }
 
-// this macro assume values of NNPA_LSTMACT and NNPA_GRUACT are next to each
-// other
-#define LOOP_LSTM_AND_GRU(lg)                                                  \
-  for (int lg = NNPA_LSTMACT; lg < NNPA_GRUACT; lg++)
-
 #define TEST_DIM_VAL(tensor_idx, dim_idx, val, exp_status)                     \
   snprintf(msg, MAX_DESC_LEN, "%s %s dim%s", __func__,                         \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #dim_idx);                    \
+           get_function_code_str(act), #dim_idx);                              \
   verify_shape(act, tensor_idx, dim_idx, val, exp_status, msg);
 
 /*
@@ -221,20 +215,19 @@ void verify_fail_output_shape() {
  * All input tensors will have acceptable descriptors.
  */
 void verify_fail_output2_shape() {
-  LOOP_LSTM_AND_GRU(act) {
+  int act = NNPA_LSTMACT;
 
-    // Expect failure when output_ztensor dimension 4 (timestep) is not 1
-    TEST_DIM_VAL(OUTPUT2, 4, 2, ZDNN_INVALID_SHAPE);
+  // Expect failure when output_ztensor dimension 4 (timestep) is not 1
+  TEST_DIM_VAL(OUTPUT2, 4, 2, ZDNN_INVALID_SHAPE);
 
-    // Expect failure when output_ztensor dimension 3 is not 1
-    TEST_DIM_VAL(OUTPUT2, 3, 2, ZDNN_INVALID_SHAPE);
+  // Expect failure when output_ztensor dimension 3 is not 1
+  TEST_DIM_VAL(OUTPUT2, 3, 2, ZDNN_INVALID_SHAPE);
 
-    // Expect failure when output_ztensor dimension 2 does not match num_batches
-    TEST_DIM_VAL(OUTPUT2, 2, num_batches + 1, ZDNN_INVALID_SHAPE);
+  // Expect failure when output_ztensor dimension 2 does not match num_batches
+  TEST_DIM_VAL(OUTPUT2, 2, num_batches + 1, ZDNN_INVALID_SHAPE);
 
-    // Expect failure when output_ztensor dimension 1 does not match num_hidden
-    TEST_DIM_VAL(OUTPUT2, 1, num_hidden + 1, ZDNN_INVALID_SHAPE);
-  }
+  // Expect failure when output_ztensor dimension 1 does not match num_hidden
+  TEST_DIM_VAL(OUTPUT2, 1, num_hidden + 1, ZDNN_INVALID_SHAPE);
 }
 
 /*
@@ -308,7 +301,7 @@ void verify_fail_cellstate_shape() {
 
 #define TEST_FORMAT(tensor_idx, format, exp_status)                            \
   snprintf(msg, MAX_DESC_LEN, "%s %s %s", __func__,                            \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx);                 \
+           get_function_code_str(act), #tensor_idx);                           \
   verify_format(act, tensor_idx, format, exp_status, msg);
 
 /*
@@ -317,6 +310,8 @@ void verify_fail_cellstate_shape() {
 void verify_fail_format() {
   LOOP_LSTM_AND_GRU(act) {
     for (int i = 0; i < MAX_TENSOR_IDX; i++) {
+      if (act == NNPA_GRUACT && (i == CELLSTATE || i == OUTPUT2))
+        continue;
       TEST_FORMAT(i, BAD_FORMAT, ZDNN_INVALID_FORMAT);
     }
   }
@@ -324,7 +319,7 @@ void verify_fail_format() {
 
 #define TEST_TYPE(tensor_idx, type, exp_status)                                \
   snprintf(msg, MAX_DESC_LEN, "%s %s %s", __func__,                            \
-           act == NNPA_LSTMACT ? "LSTM" : "GRU", #tensor_idx);                 \
+           get_function_code_str(act), #tensor_idx);                           \
   verify_type(act, tensor_idx, type, exp_status, msg);
 
 /*
@@ -333,6 +328,8 @@ void verify_fail_format() {
 void verify_fail_type() {
   LOOP_LSTM_AND_GRU(act) {
     for (int i = 0; i < MAX_TENSOR_IDX; i++) {
+      if (act == NNPA_GRUACT && (i == CELLSTATE || i == OUTPUT2))
+        continue;
       TEST_TYPE(i, BAD_TYPE, ZDNN_INVALID_TYPE);
     }
   }

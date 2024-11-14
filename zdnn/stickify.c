@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "convert.h"
@@ -29,7 +30,66 @@
 #ifdef __MVS__
 #pragma export(zdnn_transform_ztensor)
 #pragma export(zdnn_transform_origtensor)
+#pragma export(zdnn_transform_quantized_ztensor)
+#pragma export(zdnn_transform_ztensor_with_saturation)
 #endif
+
+/// Prefetch a memory block for reading
+///
+/// \param[in] ptr pointer to the base address of the memory block
+/// \param[in] offset offset from the base address to the memory block to
+/// prefetch
+///
+static inline void prefetch_read(const void *ptr, uintptr_t offset) {
+#if defined(__MVS__)
+  __dcbt((void *)((uintptr_t)ptr + offset));
+#else
+  __builtin_prefetch((void *)((uintptr_t)ptr + offset), 0);
+#endif
+}
+/// Prefetch a memory block for for writing
+///
+/// \param[in] ptr pointer to the base address of the memory block
+/// \param[in] offset offset from the base address to the memory block to
+/// prefetch
+///
+static inline void prefetch_write(const void *ptr, uintptr_t offset) {
+#if defined(__MVS__)
+  __dcbtst((void *)((uintptr_t)ptr + offset));
+#else
+  __builtin_prefetch((void *)((uintptr_t)ptr + offset), 1);
+#endif
+}
+/// Flush a memory block from cache
+///
+/// \param[in] ptr pointer to the base address of the memory block
+/// \param[in] offset from the base address to the memory block to flush
+///
+static inline void cache_flush(const void *ptr, uintptr_t offset) {
+#if defined(__MVS__)
+  __dcbf((void *)((uintptr_t)ptr + offset));
+#else
+  // No equivalent for non-MVS, leave empty or add necessary code
+#endif
+}
+
+// resultant vector from vec_perm() is 16 bytes.  we're merging entries from 2
+// sticks so we grab max 8 entries from each when int8, or 4 entries when bfloat
+#define VECPERM_MAX_INT8_ENTRIES 8
+#define VECPERM_MAX_BFLOAT_ENTRIES 4
+
+#define BEGIN_PRINT_PARMS()                                                    \
+  printf("\n%s parameters start "                                              \
+         ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n",               \
+         __func__)
+
+#define PRINT_PARM_ZTENSOR_PTR(ztnsr) print_ztensor(ztnsr, #ztnsr, false)
+#define PRINT_PARM_BOOL(val)                                                   \
+  printf("\nParameter %s (bool): %s\n", #val, val ? "true" : "false");
+#define END_PRINT_PARMS()                                                      \
+  printf("\n%s parameters end "                                                \
+         "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",               \
+         __func__)
 
 /// Return the byte offset of the field in the stick array, based on the input
 /// fields indexes, and the overall dimensions of the input tensor. The use of
@@ -150,7 +210,6 @@ size_t get_stick_offset(uint32_t e4x, uint32_t e3x, uint32_t e2x, uint32_t e1x,
     // quantify those values in number of bytes
     return page * AIU_PAGESIZE_IN_BYTES + stick * AIU_BYTES_PER_STICK +
            cell * AIU_2BYTE_CELL_SIZE;
-
   } else {
     // Stickified kernel tensor elements follow the HWCK layout,
     // so use the h, w, c, k notation for easier read.
@@ -254,12 +313,15 @@ convert_data_format_in_stride(void *input_data, zdnn_data_types in_data_fmt,
 /// \param[in] output_data Pointer to output tensor data stream
 /// \param[in] out_data_fmt Output tensor stream data format
 /// \param[in] num_fields Number of fields to convert
+/// \param[in] saturation_func Function to use for (or skip) saturation
 ///
 /// \return Number of fields converted, or 0 if error
 ///
-uint32_t convert_data_format(void *input_data, zdnn_data_types in_data_fmt,
-                             void *output_data, zdnn_data_types out_data_fmt,
-                             uint32_t num_fields) {
+uint32_t convert_data_format(
+    void *input_data, zdnn_data_types in_data_fmt, void *output_data,
+    zdnn_data_types out_data_fmt, uint32_t num_fields,
+    void (*saturate_func)(const vec_float32 *, const vec_float32 *,
+                          vec_float32 *, vec_float32 *)) {
 
   uint64_t num_fields_converted = 0;
 
@@ -271,18 +333,19 @@ uint32_t convert_data_format(void *input_data, zdnn_data_types in_data_fmt,
                                            (uint16_t *)output_data, num_fields);
       break;
     case FP32:
-      num_fields_converted = fp32_to_dlf16((float *)input_data,
-                                           (uint16_t *)output_data, num_fields);
+      num_fields_converted =
+          fp32_to_dlf16((float *)input_data, (uint16_t *)output_data,
+                        num_fields, saturate_func);
       break;
     case BFLOAT:
-      num_fields_converted = bfloat_to_dlf16(
-          (uint16_t *)input_data, (uint16_t *)output_data, num_fields);
+      num_fields_converted =
+          bfloat_to_dlf16((uint16_t *)input_data, (uint16_t *)output_data,
+                          num_fields, saturate_func);
       break;
     default:
-      break; // something really wrong, get out and return 0
+      // something really wrong, get out and return 0
       return 0;
     }
-
   } else if (in_data_fmt == ZDNN_DLFLOAT16) {
     switch (out_data_fmt) {
     case FP16:
@@ -298,13 +361,14 @@ uint32_t convert_data_format(void *input_data, zdnn_data_types in_data_fmt,
           (uint16_t *)input_data, (uint16_t *)output_data, num_fields);
       break;
     default:
-      break; // something really wrong, get out and return 0
+      // something really wrong, get out and return 0
       return 0;
     }
   } else {
     // something really wrong
     return 0;
   }
+
   return num_fields_converted;
 } // End convert_data_format
 
@@ -319,7 +383,7 @@ zdnn_status handle_fp_errors(int fe) {
     LOG_WARN("Some tensor elements too small and forced to zero in "
              "target.",
              NO_ARG); // underflow (bit 11)
-    // no error externalized
+                      // no error externalized
   }
   if ((fe & FE_INVALID) || (fe & FE_OVERFLOW)) {
     return ZDNN_STATUS(ZDNN_CONVERT_FAILURE,
@@ -337,17 +401,59 @@ zdnn_status handle_fp_errors(int fe) {
   return ZDNN_STATUS_OK;
 }
 
+/// Call HW to transform from FP32 -> DLFLOAT16 only.
+///
+/// \param[in] in_buf data buffer to be stickified
+/// \param[in] saturation_control saturation control
+/// \param[out] ztensor Pointer to zdnn_ztensor to contain stickified data
+///
+/// \return ZDNN_OK
+///         TODO
+///
+zdnn_status hw_transform_ztensor(const void *in_buf, bool saturation_control,
+                                 zdnn_ztensor *output) {
+  // Create a temporary ztensor to point to user's data buffer
+  zdnn_tensor_desc temp_desc;
+  init_transformed_desc(
+      ZDNN_NHWC, ZDNN_BINARY_FP32, ZDNN_FORMAT_4DGENERIC, &temp_desc,
+      output->transformed_desc->dim4, output->transformed_desc->dim3,
+      output->transformed_desc->dim2, output->transformed_desc->dim1);
+  zdnn_ztensor temp_input;
+  zdnn_init_ztensor(&temp_desc, &temp_desc, &temp_input);
+  temp_input.buffer = (void *)in_buf;
+
+  if (precheck_enabled) {
+    BEGIN_PRINT_PARMS();
+    PRINT_PARM_ZTENSOR_PTR(&temp_input);
+    PRINT_PARM_BOOL(saturation_control);
+    PRINT_PARM_ZTENSOR_PTR(output);
+    END_PRINT_PARMS();
+  }
+
+  function_specific_parameters fsp;
+  memset(&fsp, 0, sizeof(function_specific_parameters));
+  func_sp_parms_transform *fsp_transform = (func_sp_parms_transform *)&fsp;
+  // Setup Function Specific Parameters:
+  fsp_transform->parm1.sc = saturation_control;
+  fsp_transform->parm1.toc = NNPA_TOC_STICK_DLFLOAT;
+
+  return aiu_ops_func_specific(NNPA_PARMBLKFORMAT_1, NNPA_TRANSFORM,
+                               &temp_input, NULL, NULL, output, NULL, 0, &fsp);
+}
+
 /// The actual routine for stickification, only does the following:
 ///    NHWC -> NHWC, NCHW -> NHWC, HWCK -> HWCK
 /// Does NOT handle concatenated types.
 ///
 /// \param[in] in_buf data buffer to be stickified
 /// \param[out] ztensor Pointer to zdnn_ztensor to contain stickified data
+/// \param[in] saturation_control saturation control
 ///
 /// \return ZDNN_OK
 ///         ZDNN_CONVERT_FAILURE
 ///
-zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
+zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor,
+                              bool saturation_control) {
   uint64_t input_offset =
       0; // moving position as the input is processed, in BYTES
   uint64_t output_offset =
@@ -367,10 +473,22 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
   feclearexcept(
       FE_ALL_EXCEPT); /* clear exception flags set during conversion */
 
+  // select saturation control function if requested, otherwise pass skip func
+  void (*saturate_func)(const vec_float32 *, const vec_float32 *, vec_float32 *,
+                        vec_float32 *) = saturation_control
+                                             ? &saturate_fp32_to_dlf16
+                                             : &skip_saturate_fp32_to_dlf16;
   if (ztensor->transformed_desc->layout == ZDNN_NHWC) {
 
     // Expected layout is NHWC, stickify normally. Requires a single data
     // buffer.
+
+    // If FP32 and NNPA_TRANSFORM is available, send to hardware
+    if (ztensor->pre_transformed_desc->layout != ZDNN_NCHW &&
+        ztensor->pre_transformed_desc->type == FP32 &&
+        zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
+      return hw_transform_ztensor(in_buf, saturation_control, ztensor);
+    }
 
     // loop invariant values
     uint64_t bytes_all_h =
@@ -396,11 +514,8 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
             // Prefetch (read) the next input buffer to be used. The HW should
             // "notice" our sequential accesses and continue them, so we won't
             // need to aggressively prefetch here.
-#if defined(__MVS__)
-            __dcbt((void *)((uintptr_t)in_buf + input_offset));
-#else
-            __builtin_prefetch((void *)((uintptr_t)in_buf + input_offset), 0);
-#endif
+            prefetch_read(in_buf, input_offset);
+
             // used for pushing out_offset from w to w+1 (i.e., +
             // AIU_BYTES_PER_STICK)
             uint64_t out_offset_w = output_offset;
@@ -411,12 +526,7 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
                  e1x += AIU_2BYTE_CELLS_PER_STICK) {
               // Prefetch to L1 newest offset to write that HW wouldn't
               // know about
-#if defined(__MVS__)
-              __dcbtst((void *)((uintptr_t)ztensor->buffer + output_offset));
-#else
-              __builtin_prefetch(
-                  (void *)((uintptr_t)ztensor->buffer + output_offset), 1);
-#endif
+              prefetch_write(ztensor->buffer, output_offset);
               fields_to_convert = MIN((ztensor->transformed_desc->dim1 - e1x),
                                       AIU_2BYTE_CELLS_PER_STICK);
 
@@ -424,20 +534,15 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
                   (void *)((uintptr_t)in_buf + input_offset),
                   ztensor->pre_transformed_desc->type,
                   (void *)((uintptr_t)ztensor->buffer + output_offset),
-                  ztensor->transformed_desc->type, fields_to_convert);
+                  ztensor->transformed_desc->type, fields_to_convert,
+                  saturate_func);
 
               if (nbr_fields_converted == 0)
                 return ZDNN_STATUS_NO_MSG(ZDNN_CONVERT_FAILURE);
 
-                // Release L1 cacheline for stick. The next "touch" will be
-                // from NNPA, and it doesn't need L1 caching.
-#if defined(__MVS__)
-              __dcbf((void *)((uintptr_t)ztensor->buffer + output_offset));
-#else
-// No known equivalent fn without dropping to ASM....
-#endif
-              // push input_offset the next c-stick, fake the multiply by
-              // bit-shifting
+              // Release L1 cacheline for stick. The next "touch" will be
+              // from NNPA, and it doesn't need L1 caching.
+              cache_flush(ztensor->buffer, output_offset);
               input_offset += (nbr_fields_converted << input_cell_shift);
 
               // push output_offset to the next c-stick of the same super
@@ -460,7 +565,6 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
         // to the next n
         output_offset = out_offset_n + bytes_per_n;
       }
-
     } else { // NCHW
 
       uint8_t sizeof_dlf16 = get_data_type_size(ZDNN_DLFLOAT16);
@@ -492,16 +596,12 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
             // Prefetch (read) the next input buffer to be used. The HW should
             // "notice" our sequential accesses and continue them, so we won't
             // need to aggressively prefetch here.
-#if defined(__MVS__)
-            __dcbt((void *)((uintptr_t)in_buf + input_offset));
-#else
-            __builtin_prefetch((void *)((uintptr_t)in_buf + input_offset), 0);
-#endif
-
-            nbr_fields_converted = convert_data_format(
-                (void *)((uintptr_t)in_buf + input_offset),
-                ztensor->pre_transformed_desc->type, temp_buff,
-                ztensor->transformed_desc->type, fields_to_convert);
+            prefetch_read(in_buf, input_offset);
+            nbr_fields_converted =
+                convert_data_format((void *)((uintptr_t)in_buf + input_offset),
+                                    ztensor->pre_transformed_desc->type,
+                                    temp_buff, ztensor->transformed_desc->type,
+                                    fields_to_convert, saturate_func);
 
             if (nbr_fields_converted == 0)
               return ZDNN_STATUS_NO_MSG(ZDNN_CONVERT_FAILURE);
@@ -512,13 +612,7 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
             for (uint32_t w = 0; w < fields_to_convert; w++) {
               // Prefetch to L1 newest offset to write that HW wouldn't
               // know about
-#if defined(__MVS__)
-              __dcbtst((void *)((uintptr_t)ztensor->buffer + output_offset));
-#else
-              __builtin_prefetch(
-                  (void *)((uintptr_t)ztensor->buffer + output_offset), 1);
-#endif
-
+              prefetch_write(ztensor->buffer, output_offset);
               *(uint16_t *)((uintptr_t)ztensor->buffer + output_offset) =
                   temp_buff[w];
               // go to same C location of the next stick
@@ -576,14 +670,8 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
             // need to aggressively prefetch here.
             // Also, Prefetch the new output offset to write that HW wouldn't
             // know about.
-#if defined(__MVS__)
-            __dcbt((void *)((uintptr_t)in_buf + input_offset));
-            __dcbtst((void *)((uintptr_t)ztensor->buffer + output_offset));
-#else
-            __builtin_prefetch((void *)((uintptr_t)in_buf + input_offset), 0);
-            __builtin_prefetch(
-                (void *)((uintptr_t)ztensor->buffer + output_offset), 1);
-#endif
+            prefetch_read(in_buf, input_offset);
+            prefetch_write(ztensor->buffer, output_offset);
             fields_to_convert = MIN((ztensor->transformed_desc->dim1 - e1x),
                                     AIU_2BYTE_CELLS_PER_STICK);
 
@@ -591,7 +679,8 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
                 (void *)((uintptr_t)in_buf + input_offset),
                 ztensor->pre_transformed_desc->type,
                 (void *)((uintptr_t)ztensor->buffer + output_offset),
-                ztensor->transformed_desc->type, fields_to_convert);
+                ztensor->transformed_desc->type, fields_to_convert,
+                saturate_func);
 
             if (nbr_fields_converted == 0)
               return ZDNN_STATUS_NO_MSG(ZDNN_CONVERT_FAILURE);
@@ -620,7 +709,6 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor) {
       // to the next h
       output_offset = out_offset_h + bytes_per_h;
     }
-
   } else {
     // caller messed up if we ever arrive here
     return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
@@ -683,25 +771,20 @@ zdnn_status transform_bidir_weight_ztensor(const void *in_buf,
   uint64_t bytes_all_w = ztensor->transformed_desc->dim2 / AIU_STICKS_PER_PAGE *
                          AIU_PAGESIZE_IN_BYTES;
 
+  // use no-op function to request no saturation be used during data conversion
+  void (*skip_func)(const vec_float32 *, const vec_float32 *, vec_float32 *,
+                    vec_float32 *) = &skip_saturate_fp32_to_dlf16;
+
   // exactly 2 rounds, each round processes (real_dim2 * dim1) elements
   for (uint32_t i = 0; i < 2; i++) {
 
     for (uint32_t e2x = 0; e2x < real_dim2; e2x++) {
-#if defined(__MVS__)
-      __dcbt((void *)((uintptr_t)in_buf + input_offset));
-#else
-      __builtin_prefetch((void *)((uintptr_t)in_buf + input_offset), 0);
-#endif
+      prefetch_read(in_buf, input_offset);
       uint64_t out_offset_w = output_offset;
 
       for (uint32_t e1x = 0; e1x < ztensor->transformed_desc->dim1;
            e1x += AIU_2BYTE_CELLS_PER_STICK) {
-#if defined(__MVS__)
-        __dcbtst((void *)((uintptr_t)ztensor->buffer + output_offset));
-#else
-        __builtin_prefetch((void *)((uintptr_t)ztensor->buffer + output_offset),
-                           1);
-#endif
+        prefetch_write(ztensor->buffer, output_offset);
         fields_to_convert = MIN((ztensor->transformed_desc->dim1 - e1x),
                                 AIU_2BYTE_CELLS_PER_STICK);
 
@@ -709,14 +792,11 @@ zdnn_status transform_bidir_weight_ztensor(const void *in_buf,
             (void *)((uintptr_t)in_buf + input_offset),
             ztensor->pre_transformed_desc->type,
             (void *)((uintptr_t)ztensor->buffer + output_offset),
-            ztensor->transformed_desc->type, fields_to_convert);
+            ztensor->transformed_desc->type, fields_to_convert, skip_func);
 
         if (nbr_fields_converted == 0)
           return ZDNN_STATUS_NO_MSG(ZDNN_CONVERT_FAILURE);
-#if defined(__MVS__)
-        __dcbf((void *)((uintptr_t)ztensor->buffer + output_offset));
-#else
-#endif
+        cache_flush(ztensor->buffer, output_offset);
         input_offset += (nbr_fields_converted << input_cell_shift);
         output_offset += bytes_all_w;
       }
@@ -750,6 +830,13 @@ zdnn_status transform_bidir_weight_ztensor(const void *in_buf,
 ///
 zdnn_status transform_ztensor_smalldim1(const void *in_buf,
                                         zdnn_ztensor *ztensor) {
+
+  // If FP32 and NNPA_TRANSFORM is available, send to hardware
+  if (ztensor->pre_transformed_desc->type == FP32 &&
+      zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
+    return hw_transform_ztensor(in_buf, false, ztensor);
+  }
+
   uint64_t output_offset =
       0; // moving position as the output is processed, in BYTES
 
@@ -796,12 +883,7 @@ zdnn_status transform_ztensor_smalldim1(const void *in_buf,
       for (uint32_t e2x = 0;
            e2x < ztensor->transformed_desc->dim2 / rows_in_vec; e2x++) {
 
-#if defined(__MVS__)
-        __dcbt(cur_input_data);
-#else
-        __builtin_prefetch(cur_input_data, 0);
-#endif
-
+        prefetch_read(cur_input_data, 0);
         // convert + put 8 DLFLOAT16s in tmp_out
         switch (ztensor->pre_transformed_desc->type) {
         case FP16:
@@ -954,13 +1036,7 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
             get_data_type_str(ztensor->pre_transformed_desc->type),
             get_data_type_str(ztensor->transformed_desc->type));
 
-  if ((status = verify_pre_transformed_descriptor(
-           ztensor->pre_transformed_desc)) != ZDNN_OK) {
-    return status;
-  }
-
-  if ((status = verify_transformed_descriptor(ztensor->transformed_desc)) !=
-      ZDNN_OK) {
+  if ((status = verify_descriptors_transform_ztensor(ztensor)) != ZDNN_OK) {
     return status;
   }
 
@@ -993,13 +1069,11 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
 
     const void *data = va_arg(argptr, void *);
     status = transform_ztensor_smalldim1(data, ztensor);
-
   } else if (ztensor->transformed_desc->layout == ZDNN_NHWC ||
              ztensor->transformed_desc->layout == ZDNN_HWCK) {
 
     const void *data = va_arg(argptr, void *);
-    status = transform_ztensor(data, ztensor);
-
+    status = transform_ztensor(data, ztensor, false);
   } else if (ztensor->transformed_desc->layout == ZDNN_FICO ||
              ztensor->transformed_desc->layout == ZDNN_ZRH ||
              ztensor->transformed_desc->layout == ZDNN_BIDIR_FICO ||
@@ -1155,7 +1229,7 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
           // ztensor
           if (ztensor->transformed_desc->layout != ZDNN_BIDIR_FICO &&
               ztensor->transformed_desc->layout != ZDNN_BIDIR_ZRH) {
-            status = transform_ztensor(gate_data_slice, &temp_ztensor);
+            status = transform_ztensor(gate_data_slice, &temp_ztensor, false);
           } else {
             // transform_bidir_weight_ztensor() wants the actual b/2,
             // not the PADDED one in temp_ztensor->dim2
@@ -1165,10 +1239,16 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
           }
 
           if (status != ZDNN_OK) {
-            LOG_ERROR("transform_ztensor() on slice %d of gate data %d "
-                      "failed, status = %08x (%s)\n",
-                      slice, gate, status, zdnn_get_status_message(status));
-            break;
+            if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+              LOG_WARN("transform_ztensor() returned a warning, status = "
+                       "%08x (%s)\n",
+                       status, zdnn_get_status_message(status));
+            } else {
+              LOG_ERROR("transform_ztensor() on slice %d of gate data %d "
+                        "failed, status = %08x (%s)\n",
+                        slice, gate, status, zdnn_get_status_message(status));
+              break;
+            }
           }
 
           // Increment the temp_ztensor buffer by one sliced gate size
@@ -1187,13 +1267,13 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
         }
       }
 
-      if (status == ZDNN_OK) {
-        // Set that the output ztensor has completed transformation.
+      if ((status == ZDNN_OK) ||
+          ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING)) {
+        // Set that the output ztensor has completed transforma
         ztensor->is_transformed = true;
       }
 
     } while (false);
-
   } else {
     status = ZDNN_STATUS(
         ZDNN_INVALID_LAYOUT, "Invalid layout for transformation: %s",
@@ -1201,6 +1281,640 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
   }
 
   va_end(argptr);
+  return status;
+}
+
+/// Converts the input tensor to the supported stick format for
+/// execution by zDNN operations.
+///
+/// \param[out] tensor Pointer to zdnn_ztensor to contain stickified
+/// data
+/// \param[in] data data buffer currently, only supporting 1.
+///
+/// \return ZDNN_OK
+///         ZDNN_INVALID_FORMAT
+///         ZDNN_INVALID_LAYOUT
+///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_SHAPE
+///         ZDNN_INVALID_BUFFER
+///         ZDNN_INVALID_STATE
+///         ZDNN_ELEMENT_RANGE_VIOLATION
+///
+zdnn_status zdnn_transform_ztensor_with_saturation(zdnn_ztensor *ztensor, ...) {
+  zdnn_status status;
+
+  LOG_DEBUG("zdnn_transform_ztensor layout %s -> %s",
+            get_data_layout_str(ztensor->pre_transformed_desc->layout),
+            get_data_layout_str(ztensor->transformed_desc->layout));
+  LOG_DEBUG("zdnn_transform_ztensor type %s -> %s",
+            get_data_type_str(ztensor->pre_transformed_desc->type),
+            get_data_type_str(ztensor->transformed_desc->type));
+
+  if ((status = verify_descriptors_transform_ztensor(ztensor)) != ZDNN_OK) {
+    return status;
+  }
+
+  const uint32_t *dims_ptr = &(ztensor->transformed_desc->dim4);
+
+  // is the dimension above the limit or zero?
+  // transformed layout uses all dim* entries, so we'll check them all
+  for (int i = 0; i < ZDNN_MAX_DIMS; i++) {
+    LOG_DEBUG("dim%d: %d", ZDNN_MAX_DIMS - i, dims_ptr[i]);
+    if (!dims_ptr[i]) {
+      return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
+                         "Invalid shape for dim%d. (reason: dimension is 0)",
+                         ZDNN_MAX_DIMS - i);
+    }
+
+    if (dims_ptr[i] > zdnn_get_max_for_dim(ZDNN_MAX_DIMS - i)) {
+
+      if (!zdnn_get_max_for_dim(ZDNN_MAX_DIMS - i)) {
+        return ZDNN_STATUS(ZDNN_UNSUPPORTED_AIU_EXCEPTION,
+                           "Unable to verify shape. (reason: HW environment "
+                           "may not be setup properly)",
+                           NO_ARG);
+      } else {
+        return ZDNN_STATUS(
+            ZDNN_INVALID_SHAPE,
+            "Invalid shape for dim%d. (reason: dimension value %d exceeds %d)",
+            ZDNN_MAX_DIMS - i, dims_ptr[i],
+            zdnn_get_max_for_dim(ZDNN_MAX_DIMS - i));
+      }
+    }
+  }
+
+  // is stick area size above the limit?
+  if (zdnn_getsize_ztensor(ztensor->transformed_desc) >
+      zdnn_get_nnpa_max_tensor_size()) {
+    return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
+                       "Invalid shape (reasons: tensor size: %" PRIu64
+                       ", maximum: %" PRIu64 " bytes",
+                       zdnn_getsize_ztensor(ztensor->transformed_desc),
+                       zdnn_get_nnpa_max_tensor_size());
+  }
+
+  /*
+   * Check for buffer issues. Return an error if:
+   *
+   * a) buffer is a NULL pointer
+   * b) buffer does not start on a 4k boundary
+   * c) buffer_size is smaller than what's needed
+   */
+  if (!ztensor->buffer || (uintptr_t)ztensor->buffer & 0xFFF ||
+      ztensor->buffer_size < zdnn_getsize_ztensor(ztensor->transformed_desc)) {
+    return ZDNN_STATUS_NO_MSG(ZDNN_INVALID_BUFFER);
+  }
+
+  // Make sure the buffer doesn't have stickified data
+  if (ztensor->is_transformed) {
+    return ZDNN_STATUS(ZDNN_INVALID_STATE,
+                       "Attempted to transform data into a tensor that is "
+                       "already transformed.",
+                       NO_ARG);
+  }
+
+  va_list argptr;
+  va_start(argptr, ztensor);
+  const void *data = va_arg(argptr, void *);
+  status = transform_ztensor(data, ztensor, true);
+  if (status == ZDNN_OK) {
+    // Set that the ztensor has completed transformation.
+    ztensor->is_transformed = true;
+  }
+  va_end(argptr);
+  return status;
+}
+
+zdnn_status transform_quantized_ztensor(const void *in_buf, int8_t clip_min,
+                                        int8_t clip_max, zdnn_ztensor *output) {
+  // Create a temporary ztensor to point to user's data buffer
+  zdnn_tensor_desc temp_desc;
+  init_transformed_desc(
+      ZDNN_NHWC, ZDNN_BINARY_FP32, ZDNN_FORMAT_4DGENERIC, &temp_desc,
+      output->transformed_desc->dim4, output->transformed_desc->dim3,
+      output->transformed_desc->dim2, output->transformed_desc->dim1);
+  zdnn_ztensor temp_input;
+  zdnn_init_ztensor(&temp_desc, &temp_desc, &temp_input);
+  temp_input.buffer = (void *)in_buf;
+
+  if (precheck_enabled) {
+    BEGIN_PRINT_PARMS();
+    PRINT_PARM_ZTENSOR_PTR(output);
+    END_PRINT_PARMS();
+  }
+
+  function_specific_parameters fsp;
+  memset(&fsp, 0, sizeof(function_specific_parameters));
+  func_sp_parms_transform *fsp_transform = (func_sp_parms_transform *)&fsp;
+  // Setup Function Specific Parameters:
+  fsp_transform->parm1.toc = NNPA_TOC_STICK_INT8;
+  fsp_transform->parm2.rec_scale = cnvt_1_fp32_to_dlf16(output->rec_scale);
+  fsp_transform->parm3.offset = cnvt_1_fp32_to_dlf16(output->offset);
+  fsp_transform->parm4.clip_min = clip_min;
+  fsp_transform->parm5.clip_max = clip_max;
+
+  return aiu_ops_func_specific(NNPA_PARMBLKFORMAT_1, NNPA_TRANSFORM,
+                               &temp_input, NULL, NULL, output, NULL, 0, &fsp);
+}
+
+zdnn_status transform_quantized_int8_ztensor(const int8_t *in_buf,
+                                             zdnn_ztensor *output) {
+  // moving position as the input is processed, in BYTES
+  uint64_t input_offset = 0;
+  // moving position as the output is processed, in BYTES
+  uint64_t output_offset = 0;
+
+  uint32_t fields_to_convert;
+
+  // loop invariant values
+  uint64_t bytes_all_h =
+      (uint64_t)output->transformed_desc->dim3 *
+      CEIL(output->transformed_desc->dim2, AIU_STICKS_PER_PAGE) *
+      AIU_PAGESIZE_IN_BYTES;
+
+  uint64_t bytes_per_n = bytes_all_h * CEIL(output->transformed_desc->dim1,
+                                            AIU_1BYTE_CELLS_PER_STICK);
+
+  // N
+  for (uint32_t e4x = 0; e4x < output->transformed_desc->dim4; e4x++) {
+
+    // used for pushing out_offset from n to n+1 (i.e., + bytes_per_n)
+    uint64_t out_offset_n = output_offset;
+
+    // H
+    for (uint32_t e3x = 0; e3x < output->transformed_desc->dim3; e3x++) {
+
+      // W
+      for (uint32_t e2x = 0; e2x < output->transformed_desc->dim2; e2x++) {
+
+        // used for pushing out_offset from w to w+1 (i.e., +
+        // AIU_BYTES_PER_STICK)
+        uint64_t out_offset_w = output_offset;
+
+        for (uint32_t e1x = 0; e1x < output->transformed_desc->dim1;
+             e1x += AIU_1BYTE_CELLS_PER_STICK) {
+          prefetch_write(output->buffer, output_offset);
+          fields_to_convert = MIN((output->transformed_desc->dim1 - e1x),
+                                  AIU_1BYTE_CELLS_PER_STICK);
+          memcpy((void *)((uintptr_t)output->buffer + output_offset),
+                 in_buf + input_offset, fields_to_convert);
+
+          // move on to the next set
+          input_offset += fields_to_convert;
+          output_offset += bytes_all_h;
+        }
+
+        // output_offset was pushed around in dim1 loops, so reset it to
+        // the next w
+        output_offset = out_offset_w + AIU_BYTES_PER_STICK;
+      }
+
+      // after processing all the w-entries, go to the next 4k-boundary
+      // location (aka stick padding)
+      output_offset = (output_offset + (AIU_PAGESIZE_IN_BYTES - 1)) &
+                      (-AIU_PAGESIZE_IN_BYTES);
+    }
+
+    // output_offset was pushed around in the dims[2-0] loops, so reset it
+    // to the next n
+    output_offset = out_offset_n + bytes_per_n;
+  }
+
+  // Update the tensor's format to indicate it has been stickified
+  output->is_transformed = true;
+  return ZDNN_STATUS_OK;
+}
+
+zdnn_status transform_quantized_weights_ztensor(const void *in_buf,
+                                                zdnn_ztensor *output) {
+
+  // moving position as the input is processed, in BYTES
+  uint64_t input_offset = 0;
+  // moving position as the output is processed, in BYTES
+  uint64_t output_offset = 0;
+
+  // vec_perm(): vector1 bytes are indexed 0 - 15, vector2 16 - 31
+  //
+  // this pattern selects:
+  // 1st byte from vector1, then
+  // 1st byte from vector2, then
+  // 2nd byte from vector1, then
+  // 2nd byte from vector2, and so forth
+  vec_char8 sel_vec_full = {0, 16, 1, 17, 2, 18, 3, 19,
+                            4, 20, 5, 21, 6, 22, 7, 23};
+
+  vec_char8 sel_vec_partial = {0};
+
+  // selection vector for the leftovers when e1 isn't multiples of
+  // VECPERM_MAX_INT8_ENTRIES
+  memcpy((void *)&sel_vec_partial, (void *)&sel_vec_full,
+         (output->transformed_desc->dim1 % VECPERM_MAX_INT8_ENTRIES) * 2);
+
+  // loop invariant values
+  uint64_t bytes_all_h =
+      (uint64_t)output->transformed_desc->dim3 *
+      CEIL(CEIL(output->transformed_desc->dim2, 2), AIU_STICKS_PER_PAGE) *
+      AIU_PAGESIZE_IN_BYTES;
+
+  uint64_t bytes_per_n = bytes_all_h * CEIL(output->transformed_desc->dim1,
+                                            (AIU_1BYTE_CELLS_PER_STICK / 2));
+
+  // N
+  for (uint32_t e4x = 0; e4x < output->transformed_desc->dim4; e4x++) {
+
+    // used for pushing out_offset from n to n+1 (i.e., + bytes_per_n)
+    uint64_t out_offset_n = output_offset;
+
+    // H
+    for (uint32_t e3x = 0; e3x < output->transformed_desc->dim3; e3x++) {
+
+      // W, sticks are processed in pairs
+      for (uint32_t e2x = 0; e2x < output->transformed_desc->dim2;
+           e2x = e2x + 2) {
+
+        // used for pushing out_offset from w to w+1 (i.e., +
+        // AIU_BYTES_PER_STICK)
+        uint64_t out_offset_w = output_offset;
+
+        // true when dim2 is odd number and we're at the last w
+        bool no_stick2 = ((output->transformed_desc->dim2 - e2x) == 1);
+
+        int8_t *stick1 = (int8_t *)in_buf + input_offset;
+        int8_t *stick2 = no_stick2 ? stick1
+                                   // duplicate stick1 entries if no stick2
+                                   : stick1 + output->transformed_desc->dim1;
+
+        prefetch_read(stick1, 0);
+        prefetch_read(stick2, 0);
+
+        // this C loop takes care of the full VECPERM_MAX_INT8_ENTRIES-entries
+        // groups
+        for (uint32_t i = 0;
+             i < output->transformed_desc->dim1 / VECPERM_MAX_INT8_ENTRIES;
+             i++) {
+          prefetch_write(output->buffer, output_offset);
+          *(vec_char8 *)((int8_t *)output->buffer + output_offset) = vec_perm(
+              *(vec_char8 *)stick1, *(vec_char8 *)stick2, sel_vec_full);
+
+          stick1 += VECPERM_MAX_INT8_ENTRIES;
+          stick2 += VECPERM_MAX_INT8_ENTRIES;
+          output_offset += VECPERM_MAX_INT8_ENTRIES * 2;
+
+          if ((i + 1) %
+                  (AIU_BYTES_PER_STICK / (VECPERM_MAX_INT8_ENTRIES * 2)) ==
+              0) {
+            // we need to jump to the next c-stick of the same super c-stick
+            //
+            // roll-back to the beginning and jump to bytes_all_h number of
+            // bytes away
+            output_offset = output_offset - AIU_BYTES_PER_STICK + bytes_all_h;
+          }
+        }
+
+        // takes care of the leftever c entries
+        if ((output->transformed_desc->dim1 % VECPERM_MAX_INT8_ENTRIES) != 0) {
+          *(vec_char8 *)((int8_t *)output->buffer + output_offset) = vec_perm(
+              *(vec_char8 *)stick1, *(vec_char8 *)stick2, sel_vec_partial);
+        }
+
+        // move on to the next set
+        input_offset += output->transformed_desc->dim1 * (no_stick2 ? 1 : 2);
+        // output_offset was pushed around in dim1 loops, so reset it to
+        // the next w
+        output_offset = out_offset_w + AIU_BYTES_PER_STICK;
+      }
+
+      // after processing all the w-entries, go to the next 4k-boundary
+      // location (aka stick padding)
+      output_offset = (output_offset + (AIU_PAGESIZE_IN_BYTES - 1)) &
+                      (-AIU_PAGESIZE_IN_BYTES);
+    }
+
+    // output_offset was pushed around in the dims[2-0] loops, so reset it
+    // to the next n
+    output_offset = out_offset_n + bytes_per_n;
+  }
+
+  // Update the tensor's format to indicate it has been stickified
+  output->is_transformed = true;
+  return ZDNN_STATUS_OK;
+}
+
+/// Converts a data buffer of fp16 to fp32 and stores it into a malloc'd space.
+float *convert_fp16_fp32_and_store(zdnn_tensor_desc *tfd_desc,
+                                   const void *data) {
+  uint64_t total_elements = (uint64_t)tfd_desc->dim4 * tfd_desc->dim3 *
+                            tfd_desc->dim2 * tfd_desc->dim1;
+
+  // fp16_to_dlf16() / dlf16_to_fp32() work best when there are
+  // STICKCVT_MAX_ENTRIES_TO_CONVERT entries to do
+  uint64_t size = sizeof(float) *
+                  CEIL(total_elements, STICKCVT_MAX_ENTRIES_TO_CONVERT) *
+                  STICKCVT_MAX_ENTRIES_TO_CONVERT;
+
+  float *fp32_data = malloc(size);
+  if (fp32_data == NULL) {
+    return NULL;
+  }
+
+  uint16_t tmp_dlf16[STICKCVT_MAX_ENTRIES_TO_CONVERT] = {0};
+
+  uint16_t *data16 = (uint16_t *)(data);
+  float *data32 = fp32_data;
+
+  // do the full STICKCVT_MAX_ENTRIES_TO_CONVERT groups 1st
+  for (uint64_t i = 0; i < total_elements / STICKCVT_MAX_ENTRIES_TO_CONVERT;
+       i++) {
+
+    fp16_to_dlf16(data16, tmp_dlf16, STICKCVT_MAX_ENTRIES_TO_CONVERT);
+    dlf16_to_fp32(tmp_dlf16, data32, STICKCVT_MAX_ENTRIES_TO_CONVERT);
+
+    data16 += STICKCVT_MAX_ENTRIES_TO_CONVERT;
+    data32 += STICKCVT_MAX_ENTRIES_TO_CONVERT;
+  }
+
+  // do the leftovers
+  if (total_elements % STICKCVT_MAX_ENTRIES_TO_CONVERT) {
+    fp16_to_dlf16(data16, tmp_dlf16,
+                  total_elements % STICKCVT_MAX_ENTRIES_TO_CONVERT);
+    dlf16_to_fp32(tmp_dlf16, data32, STICKCVT_MAX_ENTRIES_TO_CONVERT);
+  }
+
+  return fp32_data;
+}
+
+/// Converts a data buffer of bfloat to fp32 and stores it into a malloc'd
+/// space.
+float *convert_bf_fp32_and_store(zdnn_tensor_desc *tfd_desc, const void *data) {
+
+  // vec_perm(): vector1 bytes are indexed 0 - 15, vector2 16 - 31
+  //
+  // this pattern selects:
+  // 1st 2 bytes from vector1, then
+  // 1st 2 bytes from vector2, then
+  // 2nd 2 bytes from vector1, then
+  // 2nd 2 bytes from vector2, and so forth
+  vec_char8 sel_vec_full = {0, 1, 16, 17, 2, 3, 18, 19,
+                            4, 5, 20, 21, 6, 7, 22, 23};
+
+  vec_char8 sel_vec_partial = {0};
+
+  vec_int16 zeros = {0};
+
+  // selection vector for the leftovers when e1 isn't multiples of
+  // VECPERM_MAX_BFLOAT_ENTRIES
+  memcpy((void *)&sel_vec_partial, (void *)&sel_vec_full,
+         (tfd_desc->dim1 % VECPERM_MAX_BFLOAT_ENTRIES) * 2);
+
+  uint64_t total_elements = (uint64_t)tfd_desc->dim4 * tfd_desc->dim3 *
+                            tfd_desc->dim2 * tfd_desc->dim1;
+
+  float *fp32_data = malloc(sizeof(float) * total_elements);
+  if (fp32_data == NULL) {
+    return NULL;
+  }
+
+  uint16_t *data16 = (uint16_t *)(data);
+  float *data32 = fp32_data;
+
+  // do the full VECPERM_MAX_BFLOAT_ENTRIES groups 1st
+  for (uint64_t i = 0; i < total_elements / VECPERM_MAX_BFLOAT_ENTRIES; i++) {
+
+    // cppcheck-suppress invalidPointerCast
+    *(vec_int16 *)data32 = vec_perm(*(vec_int16 *)data16, zeros, sel_vec_full);
+
+    data16 += VECPERM_MAX_BFLOAT_ENTRIES;
+    data32 += VECPERM_MAX_BFLOAT_ENTRIES;
+  }
+
+  // do the leftovers
+  if (total_elements % VECPERM_MAX_BFLOAT_ENTRIES) {
+    // cppcheck-suppress invalidPointerCast
+    *(vec_int16 *)data32 =
+        vec_perm(*(vec_int16 *)data16, zeros, sel_vec_partial);
+  }
+
+  return fp32_data;
+}
+
+/// Converts the input tensor to a quantized stick format for
+/// execution by zDNN operations.
+///
+///
+/// \return ZDNN_OK
+///         ZDNN_INVALID_FORMAT
+///         ZDNN_INVALID_LAYOUT
+///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_SHAPE
+///         ZDNN_INVALID_BUFFER
+///         ZDNN_INVALID_STATE
+///         ZDNN_CONVERT_FAILURE
+///         ZDNN_ALLOCATION_FAILURE
+///
+zdnn_status zdnn_transform_quantized_ztensor(zdnn_ztensor *ztensor,
+                                             bool saturation_control,
+                                             int8_t clip_min, int8_t clip_max,
+                                             const void *data) {
+  zdnn_status status;
+
+  LOG_DEBUG("zdnn_transform_quantized_ztensor layout %s -> %s",
+            get_data_layout_str(ztensor->pre_transformed_desc->layout),
+            get_data_layout_str(ztensor->transformed_desc->layout));
+  LOG_DEBUG("zdnn_transform_quantized_ztensor type %s -> %s",
+            get_data_type_str(ztensor->pre_transformed_desc->type),
+            get_data_type_str(ztensor->transformed_desc->type));
+
+  /*
+   * Check for buffer issues. Return an error if:
+   *
+   * a) buffer is a NULL pointer
+   * b) buffer does not start on a 4k boundary
+   * c) buffer_size is smaller than what's needed
+   */
+  if (!ztensor->buffer || (uintptr_t)ztensor->buffer & 0xFFF ||
+      ztensor->buffer_size < zdnn_getsize_ztensor(ztensor->transformed_desc)) {
+    return ZDNN_STATUS_NO_MSG(ZDNN_INVALID_BUFFER);
+  }
+
+  // Make sure the buffer doesn't have stickified data
+  if (ztensor->is_transformed) {
+    return ZDNN_STATUS(ZDNN_INVALID_STATE,
+                       "Attempted to transform data into a tensor that is "
+                       "already transformed.",
+                       NO_ARG);
+  }
+
+  // Make sure layout is ZDNN_NHWC
+  if (ztensor->transformed_desc->layout != ZDNN_NHWC) {
+    return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
+                       "Invalid transformed layout for transformation: %s",
+                       get_data_layout_str(ztensor->transformed_desc->layout));
+  }
+
+  // Make sure pre_transformed layout is valid.
+  switch (ztensor->pre_transformed_desc->layout) {
+  case ZDNN_1D:
+  case ZDNN_2D:
+  case ZDNN_2DS:
+  case ZDNN_3D:
+  case ZDNN_3DS:
+  case ZDNN_4D:
+  case ZDNN_NHWC:
+    break;
+  default:
+    return ZDNN_STATUS(
+        ZDNN_INVALID_LAYOUT,
+        "Invalid pre-transformed layout for transformation: %s",
+        get_data_layout_str(ztensor->pre_transformed_desc->layout));
+    break;
+  }
+
+  if ((status = verify_transformed_dimensions(ztensor->transformed_desc)) !=
+      ZDNN_OK) {
+    return status;
+  }
+
+  if (ztensor->transformed_desc->format == ZDNN_FORMAT_4DFEATURE) {
+    if (ztensor->transformed_desc->type == ZDNN_DLFLOAT16) {
+      switch (ztensor->pre_transformed_desc->type) {
+      case FP32:
+        status = hw_transform_ztensor(data, saturation_control, ztensor);
+        break;
+      case FP16:
+      case BFLOAT:
+        status = transform_ztensor(data, ztensor, false);
+        break;
+      default:
+        status =
+            ZDNN_STATUS(ZDNN_INVALID_TYPE,
+                        "Invalid pre-transform type to be transformed to "
+                        "quantized type of DLFLOAT16: %d (%s)",
+                        ztensor->transformed_desc->type,
+                        get_data_type_str(ztensor->transformed_desc->type));
+      }
+    } else if (ztensor->transformed_desc->type == ZDNN_BINARY_INT8) {
+      zdnn_tensor_desc *pt_desc = ztensor->pre_transformed_desc;
+      zdnn_tensor_desc *tfd_desc = ztensor->transformed_desc;
+      switch (pt_desc->type) {
+      case FP16: {
+        float *fp32_data = convert_fp16_fp32_and_store(tfd_desc, data);
+
+        if (fp32_data == NULL) {
+          return ZDNN_STATUS(
+              ZDNN_ALLOCATION_FAILURE,
+              "Unable to allocate required bytes for fp16 to fp32 conversion.",
+              NO_ARG);
+        }
+
+        status =
+            transform_quantized_ztensor(fp32_data, clip_min, clip_max, ztensor);
+        free(fp32_data);
+        break;
+      }
+      case BFLOAT: {
+        float *fp32_data = convert_bf_fp32_and_store(tfd_desc, data);
+
+        if (fp32_data == NULL) {
+          return ZDNN_STATUS(
+              ZDNN_ALLOCATION_FAILURE,
+              "Unable to allocate required bytes for bf to fp32 conversion.",
+              NO_ARG);
+        }
+        status =
+            transform_quantized_ztensor(fp32_data, clip_min, clip_max, ztensor);
+        free(fp32_data);
+        break;
+      }
+      case FP32:
+        status = transform_quantized_ztensor(data, clip_min, clip_max, ztensor);
+        break;
+      case INT8:
+        status = transform_quantized_int8_ztensor(data, ztensor);
+        break;
+      default:
+        return ZDNN_STATUS(
+            ZDNN_INVALID_TYPE,
+            "Invalid pre-transform type to be transformed to "
+            "quantized type of INT8: %d (%s)",
+            ztensor->pre_transformed_desc->type,
+            get_data_type_str(ztensor->pre_transformed_desc->type));
+      }
+    } else {
+      return ZDNN_STATUS(ZDNN_INVALID_TYPE,
+                         "Invalid transform type for transformation: %d (%s)",
+                         ztensor->transformed_desc->type,
+                         get_data_type_str(ztensor->transformed_desc->type));
+    }
+  } else if (ztensor->transformed_desc->format == ZDNN_FORMAT_4DWEIGHTS) {
+    if (ztensor->transformed_desc->type != ZDNN_BINARY_INT8) {
+      return ZDNN_STATUS(ZDNN_INVALID_TYPE,
+                         "Invalid transform type for transformation: %d (%s)",
+                         ztensor->transformed_desc->type,
+                         get_data_type_str(ztensor->transformed_desc->type));
+    }
+    if (ztensor->pre_transformed_desc->type != INT8) {
+      return ZDNN_STATUS(ZDNN_INVALID_TYPE,
+                         "Invalid pre-transform type to be transformed to "
+                         "quantized type of WEIGHTS_INT8: %d (%s)",
+                         ztensor->transformed_desc->type,
+                         get_data_type_str(ztensor->transformed_desc->type));
+    }
+    status = transform_quantized_weights_ztensor(data, ztensor);
+  } else {
+    return ZDNN_STATUS(ZDNN_INVALID_FORMAT,
+                       "Invalid transform format for transformation: %d (%s)",
+                       ztensor->transformed_desc->format,
+                       get_data_format_str(ztensor->transformed_desc->format));
+  }
+
+  return status;
+}
+
+/// Call HW to transform from DLFLOAT16 -> FP32 only.
+///
+/// \param[in] input Pointer to zdnn_ztensor, containing data to be
+///                    unstickified
+/// \param[out] out_buf data buffer to unstickify to
+///
+/// \return ZDNN_OK
+///         TODO
+///
+zdnn_status hw_transform_origtensor(const zdnn_ztensor *input, void *out_buf) {
+  // Create a temporary ztensor to point to user's data buffer
+  zdnn_tensor_desc temp_desc;
+  init_transformed_desc(
+      ZDNN_NHWC, ZDNN_BINARY_FP32, ZDNN_FORMAT_4DGENERIC, &temp_desc,
+      input->transformed_desc->dim4, input->transformed_desc->dim3,
+      input->transformed_desc->dim2, input->transformed_desc->dim1);
+  zdnn_ztensor temp_output;
+  temp_output.transformed_desc = &temp_desc;
+  temp_output.buffer = (void *)out_buf;
+
+  if (precheck_enabled) {
+    BEGIN_PRINT_PARMS();
+    PRINT_PARM_ZTENSOR_PTR(input);
+    END_PRINT_PARMS();
+  }
+
+  function_specific_parameters fsp;
+  memset(&fsp, 0, sizeof(function_specific_parameters));
+  func_sp_parms_transform *fsp_transform = (func_sp_parms_transform *)&fsp;
+  // Setup Function Specific Parameters:
+  fsp_transform->parm1.toc = NNPA_TOC_UNSTICK_DLFLOAT;
+
+  // NNPA_TRANSFORM with TOC=UNSTICK_DLFLOAT requires 8K SaveArea.
+  void *savearea_addr;
+  if (!(savearea_addr = malloc_aligned_4k(ZDNN_8K_SAVEAREA_SIZE))) {
+    return ZDNN_STATUS(ZDNN_ALLOCATION_FAILURE,
+                       "Unable to allocate %" PRIu64 " bytes for save area.",
+                       ZDNN_8K_SAVEAREA_SIZE);
+  }
+
+  zdnn_status status;
+  status = aiu_ops_func_specific(NNPA_PARMBLKFORMAT_1, NNPA_TRANSFORM, input,
+                                 NULL, NULL, &temp_output, NULL,
+                                 (uintptr_t)savearea_addr, &fsp);
+  free_aligned_4k(savearea_addr);
   return status;
 }
 
@@ -1244,7 +1958,17 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
   feclearexcept(
       FE_ALL_EXCEPT); /* clear exception flags set during conversion */
 
+  // use no-op function to request no saturation be used during data conversion
+  void (*skip_func)(const vec_float32 *, const vec_float32 *, vec_float32 *,
+                    vec_float32 *) = &skip_saturate_fp32_to_dlf16;
+
   if (ztensor->pre_transformed_desc->layout != ZDNN_NCHW) {
+
+    // If FP32 and NNPA_TRANSFORM is available, send to hardware
+    if (ztensor->pre_transformed_desc->type == FP32 &&
+        zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
+      return hw_transform_origtensor(ztensor, out_buf);
+    }
 
     for (uint32_t e4x = 0; e4x < ztensor->transformed_desc->dim4; e4x++) {
 
@@ -1269,15 +1993,9 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
             // them, so we won't need to aggressively prefetch here.
             // Also, Prefetch the new output offset to write that HW
             // wouldn't know about.
-#if defined(__MVS__)
-            __dcbt((void *)((uintptr_t)ztensor->buffer + input_offset));
-            __dcbtst((void *)((uintptr_t)out_buf + output_offset));
-#else
-            __builtin_prefetch(
-                (void *)((uintptr_t)ztensor->buffer + input_offset), 0);
-            __builtin_prefetch((void *)((uintptr_t)out_buf + output_offset), 1);
-#endif
 
+            prefetch_read(ztensor->buffer, input_offset);
+            prefetch_write(out_buf, output_offset);
             fields_to_convert = MIN((ztensor->transformed_desc->dim1 - e1x),
                                     AIU_2BYTE_CELLS_PER_STICK);
 
@@ -1285,7 +2003,8 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
                 (void *)((uintptr_t)ztensor->buffer + input_offset),
                 ztensor->transformed_desc->type,
                 (void *)((uintptr_t)out_buf + output_offset),
-                ztensor->pre_transformed_desc->type, fields_to_convert);
+                ztensor->pre_transformed_desc->type, fields_to_convert,
+                skip_func);
 
             if (nbr_fields_converted == 0)
               return ZDNN_STATUS_NO_MSG(ZDNN_CONVERT_FAILURE);
@@ -1314,7 +2033,6 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
       // it to the next n
       input_offset = in_offset_n + bytes_per_n;
     }
-
   } else {
 
     // the loops are in N -> C -> H -> W order in order to write the W
@@ -1340,14 +2058,9 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
           // so we won't need to aggressively prefetch here. Also,
           // Prefetch the new output offset to write that HW wouldn't
           // know about.
-#if defined(__MVS__)
-          __dcbt((void *)((uintptr_t)ztensor->buffer + input_offset));
-          __dcbtst((void *)((uintptr_t)out_buf + output_offset));
-#else
-          __builtin_prefetch(
-              (void *)((uintptr_t)ztensor->buffer + input_offset), 0);
-          __builtin_prefetch((void *)((uintptr_t)out_buf + output_offset), 1);
-#endif
+
+          prefetch_read(ztensor->buffer, input_offset);
+          prefetch_write(out_buf, output_offset);
           // send all the W entries of a given set of N/H/C to
           // convert_data_format_in_stride(), the entries are
           // AIU_BYTES_PER_STICK entries apart
@@ -1407,6 +2120,13 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
 ///
 zdnn_status transform_origtensor_smalldim1(const zdnn_ztensor *ztensor,
                                            void *out_buf) {
+
+  // If FP32 and NNPA_TRANSFORM is available, send to hardware
+  if (ztensor->pre_transformed_desc->type == FP32 &&
+      zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
+    return hw_transform_origtensor(ztensor, out_buf);
+  }
+
   uint64_t input_offset =
       0; // moving position as the input is processed, in BYTES
 
@@ -1519,11 +2239,7 @@ zdnn_status transform_origtensor_smalldim1(const zdnn_ztensor *ztensor,
         idx_left = idx + idx_left_incr;
         idx_right = idx + idx_right_incr;
 
-#if defined(__MVS__)
-        __dcbtst((void *)output_data);
-#else
-        __builtin_prefetch((void *)output_data, 1);
-#endif
+        prefetch_write((void *)output_data, 0);
 
         input_data = (vec_int16){in_data[idx_left[0]],  in_data[idx_left[1]],
                                  in_data[idx_left[2]],  in_data[idx_left[3]],
@@ -1675,6 +2391,47 @@ zdnn_status transform_origtensor_smalldim1(const zdnn_ztensor *ztensor,
 
 } // End transform_origtensor_smalldim1
 
+/// Unstickification when type is int32 and when dim1 is == 1, only does the
+/// following:
+///    NHWC -> NHWC, NHWC -> NCHW
+/// Does NOT handle concatenated types nor HWCK
+///
+/// \param[in] ztensor Pointer to zdnn_ztensor, containing data to be
+///                    unstickified
+/// \param[out] out_buf unsigned integer data buffer to unstickify to
+///
+void transform_origtensor_int32(const zdnn_ztensor *ztensor,
+                                uint32_t *out_buf) {
+  uint64_t output_offset =
+      0; // moving position as the output is processed, in BYTES
+  uint64_t input_offset =
+      0; // moving position as the input is processed, in BYTES
+
+  // Since C == 1, NHWC and NCHW are the same.
+  for (uint32_t e4x = 0; e4x < ztensor->transformed_desc->dim4; e4x++) {
+
+    for (uint32_t e3x = 0; e3x < ztensor->transformed_desc->dim3; e3x++) {
+
+      for (uint32_t e2x = 0; e2x < ztensor->transformed_desc->dim2; e2x++) {
+
+        out_buf[output_offset] =
+            *(uint32_t *)((void *)((uintptr_t)ztensor->buffer + input_offset));
+
+        // push input_offset to the next stick.
+        input_offset += AIU_BYTES_PER_STICK;
+
+        // push output_offset to the next element.
+        output_offset++;
+      }
+
+      // after processing all the w-entries, go to the next 4k-boundary location
+      // (aka stick padding)
+      input_offset = (input_offset + (AIU_PAGESIZE_IN_BYTES - 1)) &
+                     (-AIU_PAGESIZE_IN_BYTES);
+    }
+  }
+} // End transform_origtensor_int32
+
 /// Given a ztensor and target data buffer, fill the target data buffer
 /// with converted data from the sticks
 ///
@@ -1692,11 +2449,9 @@ zdnn_status transform_origtensor_smalldim1(const zdnn_ztensor *ztensor,
 ///
 zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor,
                                       void *out_buf) {
-
   zdnn_status status = ZDNN_OK; // Assume success
 
-  if ((status = verify_pre_transformed_descriptor(
-           ztensor->pre_transformed_desc)) != ZDNN_OK) {
+  if ((status = verify_descriptors_transform_origtensor(ztensor)) != ZDNN_OK) {
     return status;
   }
 
@@ -1711,18 +2466,10 @@ zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor,
                        NO_ARG);
   }
 
-  // we don't do 4DKERNEL unstickify
-  if (ztensor->transformed_desc->format != ZDNN_FORMAT_4DFEATURE) {
-    return ZDNN_STATUS(ZDNN_INVALID_FORMAT,
-                       "Only transforming feature tensor is supported", NO_ARG);
-  }
-
-  // We expect the type to be DLFLOAT16
-  if (ztensor->transformed_desc->type != ZDNN_DLFLOAT16) {
-    return ZDNN_STATUS(ZDNN_INVALID_TYPE,
-                       "Only transforming from ZDNN_DLFLOAT16 type is "
-                       "supported",
-                       NO_ARG);
+  // We allow the type to be ZDNN_BINARY_INT32
+  if (ztensor->transformed_desc->type == ZDNN_BINARY_INT32) {
+    transform_origtensor_int32(ztensor, out_buf);
+    return ZDNN_OK;
   }
 
   if (ztensor->transformed_desc->layout == ZDNN_NHWC) {
@@ -1730,9 +2477,16 @@ zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor,
         ztensor->transformed_desc->dim1 <= 2) {
       if ((status = transform_origtensor_smalldim1(ztensor, out_buf)) !=
           ZDNN_OK) {
-        LOG_ERROR("transform_origtensor_smalldim1() (ZDNN_NHWC) failed, "
-                  "status = %08x (%s)\n",
-                  status, zdnn_get_status_message(status));
+        if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+          LOG_WARN(
+              "transform_origtensor_smalldim1() returned a warning, status = "
+              "%08x (%s)\n",
+              status, zdnn_get_status_message(status));
+        } else {
+          LOG_ERROR("transform_origtensor_smalldim1() (ZDNN_NHWC) failed, "
+                    "status = %08x (%s)\n",
+                    status, zdnn_get_status_message(status));
+        }
       }
     } else if ((ztensor->pre_transformed_desc->layout == ZDNN_4DS) &&
                (ztensor->pre_transformed_desc->dim3 != 1)) {
@@ -1794,15 +2548,27 @@ zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor,
       temp_trans_desc.layout = ZDNN_NHWC;
 
       if ((status = transform_origtensor(&temp_ztensor, out_buf)) != ZDNN_OK) {
-        LOG_ERROR("transform_origtensor() failed (bidir output), status = "
-                  "%08x (%s)\n",
-                  status, zdnn_get_status_message(status));
+        if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+          LOG_WARN("transform_origtensor() returned a warning, status = "
+                   "%08x (%s)\n",
+                   status, zdnn_get_status_message(status));
+        } else {
+          LOG_ERROR("transform_origtensor() failed (bidir output), status = "
+                    "%08x (%s)\n",
+                    status, zdnn_get_status_message(status));
+        }
       }
     } else {
       if ((status = transform_origtensor(ztensor, out_buf)) != ZDNN_OK) {
-        LOG_ERROR("transform_origtensor() (ZDNN_NHWC) failed, status = "
-                  "%08x (%s)\n",
-                  status, zdnn_get_status_message(status));
+        if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+          LOG_WARN("zdnn_transform_origtensor() returned a warning, status = "
+                   "%08x (%s)\n",
+                   status, zdnn_get_status_message(status));
+        } else {
+          LOG_ERROR("transform_origtensor() (ZDNN_NHWC) failed, status = "
+                    "%08x (%s)\n",
+                    status, zdnn_get_status_message(status));
+        }
       }
     }
     return status;

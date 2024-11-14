@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,218 +50,246 @@ zdnn_concat_info no_vconcat_infos[NUM_NO_VCONCAT_INFOS] = {
     PREV_LAYER_UNI | USAGE_WEIGHTS,
 };
 
-// Generate size_t offset array based on dimensions of ztensor.
-//
-// NOTE: when transformed dim1 is > 64, dim3 can not be > 1
-void quick_generate_offsets(zdnn_ztensor *ztensor, size_t *offsets) {
+// a simple (dumb) routine to convert a NHWC datastream to NCHW
+void nhwc_2_nchw(void *nhwc_ptr, uint32_t n, uint32_t h, uint32_t w, uint32_t c,
+                 int element_size, void *nchw_ptr) {
+  uint32_t nx, hx, wx, cx;
 
-  uint64_t total_elements;
+  for (nx = 0; nx < n; nx++) {
+    for (hx = 0; hx < h; hx++) {
+      for (wx = 0; wx < w; wx++) {
+        for (cx = 0; cx < c; cx++) {
+          uint64_t nhwc_idx = nx * (h * w * c) + hx * (w * c) + wx * (c) + cx;
+          uint64_t nchw_idx = nx * (c * h * w) + cx * (h * w) + hx * (w) + wx;
+          if (element_size == 2) {
+            ((uint16_t *)nchw_ptr)[nchw_idx] = ((uint16_t *)nhwc_ptr)[nhwc_idx];
+          } else if (element_size == 4) {
+            ((uint32_t *)nchw_ptr)[nchw_idx] = ((uint32_t *)nhwc_ptr)[nhwc_idx];
+          } else if (element_size == 8) {
+            ((uint64_t *)nchw_ptr)[nchw_idx] = ((uint64_t *)nhwc_ptr)[nhwc_idx];
+          }
+        }
+      }
+    }
+  }
+}
 
-  // fail the testcase right now if dim1 > 64 && dim3 > 1
-  // the e1_offset_template[i] = <...> loop doesn't handle that case
+size_t *alloc_offsets(zdnn_ztensor *ztensor) {
+  // create offsets array using the formulas described in the z/Architecture
+  // Principles of Operation
 
-  TEST_ASSERT_MESSAGE_FORMATTED(!(ztensor->transformed_desc->dim3 > 1 &&
-                                  ztensor->transformed_desc->dim1 > 64),
-                                "incorrect quick_generate_offsets() usage: "
-                                "dim3 (%u) > 1 and dim1 (%u) > 64",
-                                ztensor->transformed_desc->dim3,
-                                ztensor->transformed_desc->dim1);
+  uint64_t total_elements = get_num_elements(ztensor, ELEMENTS_PRE);
 
-  if ((ztensor->transformed_desc->layout == ZDNN_ZRH) ||
-      (ztensor->transformed_desc->layout == ZDNN_FICO) ||
-      (ztensor->transformed_desc->layout == ZDNN_BIDIR_ZRH) ||
-      (ztensor->transformed_desc->layout == ZDNN_BIDIR_FICO)) {
-    total_elements = get_num_elements(ztensor, ELEMENTS_PRE_ALL_GATES);
-  } else {
-    total_elements = get_num_elements(ztensor, ELEMENTS_PRE);
+  size_t *offsets = malloc(total_elements * sizeof(size_t));
+
+  uint32_t e4 = ztensor->transformed_desc->dim4,
+           e3 = ztensor->transformed_desc->dim3,
+           e2 = ztensor->transformed_desc->dim2,
+           e1 = ztensor->transformed_desc->dim1;
+
+  uint8_t eps = ztensor->transformed_desc->type != ZDNN_BINARY_INT8
+                    ? AIU_2BYTE_CELLS_PER_STICK
+                    : AIU_1BYTE_CELLS_PER_STICK;
+
+  uint64_t c = 0;
+
+  switch (ztensor->transformed_desc->format) {
+  case ZDNN_FORMAT_4DFEATURE: {
+    uint32_t e2_limit = CEIL(e2, 32) * 32;
+    uint32_t e1_limit = CEIL(e1, eps) * eps;
+
+    for (uint32_t e4x = 0; e4x < e4; e4x++) {
+      for (uint32_t e3x = 0; e3x < e3; e3x++) {
+        for (uint32_t e2x = 0; e2x < e2; e2x++) {
+          for (uint32_t e1x = 0; e1x < e1; e1x++) {
+            offsets[c] =
+                ( // get to the correct N = e4x
+                    (e3 * e2_limit * e1_limit * e4x) +
+                    // get to the currect H = e3x, assuming e1x = 0
+                    (e2_limit * e3x * eps) +
+                    // get to the correct stick (e2x), still assuming e1x = 0
+                    (e2x * eps) +
+                    // jump to the correct e1x = [0..63] [64..127] of that stick
+                    ((uint32_t)(e1x / eps) * e2_limit * e3 * eps) +
+                    // jump to correct element within the stick
+                    (e1x % eps)) *
+                (128 / eps);
+            c++;
+          }
+        }
+      }
+    }
+    if (ztensor->pre_transformed_desc->layout == ZDNN_NCHW) {
+      size_t *tmp = malloc(total_elements * sizeof(size_t));
+      nhwc_2_nchw(offsets, e4, e3, e2, e1, sizeof(size_t), tmp);
+      free(offsets);
+      offsets = tmp;
+    }
+    break;
+  }
+  case ZDNN_FORMAT_4DKERNEL: {
+    uint32_t e2_limit = CEIL(e2, 32) * 32;
+
+    for (uint32_t e4x = 0; e4x < e4; e4x++) {
+      for (uint32_t e3x = 0; e3x < e3; e3x++) {
+        for (uint32_t e2x = 0; e2x < e2; e2x++) {
+          for (uint32_t e1x = 0; e1x < e1; e1x++) {
+            offsets[c] =
+                ( // jump to the correct e1x = [0..63] [64..127] of that stick
+                    ((uint32_t)(e1x / eps) * e4 * e3 * e2_limit * eps) +
+                    // get to the correct W = e3x, assuming e1x = 0
+                    (e2_limit * e3x * eps) +
+                    // get to the correct stick (e2x), still assuming e1x = 0
+                    (e2x * eps) +
+                    // get to the correct H
+                    (e4x * e3 * e2_limit * eps) +
+                    // jump to correct element within the stick
+                    (e1x % eps)) *
+                (128 / eps);
+            c++;
+          }
+        }
+      }
+    }
+    break;
+  }
+  case ZDNN_FORMAT_4DWEIGHTS: {
+    uint32_t e2_limit = CEIL(e2, 64) * 64;
+    uint32_t e1_limit = CEIL(e1, 64) * 64;
+
+    for (uint32_t e4x = 0; e4x < e4; e4x++) {
+      for (uint32_t e3x = 0; e3x < e3; e3x++) {
+        for (uint32_t e2x = 0; e2x < e2; e2x++) {
+          for (uint32_t e1x = 0; e1x < e1; e1x++) {
+            offsets[c] =
+                // get to the correct N = e4x
+                (e4x * e3 * e2_limit * e1_limit) +
+                // get to the currect H = e3x, assuming e1x = 0
+                (e3x * e2_limit * 64) +
+                // get to the correct stick
+                ((uint32_t)(e2x / 2) * 128) +
+                // jump to the correct e1x = [0..63] [64..127] of that stick
+                ((uint32_t)(e1x / 64) * e2_limit * e3 * 64) +
+                // jump to the correct pair within the stick
+                ((e1x * 2) % 128) +
+                // jump to correct entry within that pair
+                (e2x % 2);
+            c++;
+          }
+        }
+      }
+    }
+    break;
+  }
+  default:
+    TEST_FAIL_MESSAGE_FORMATTED("unknown transformed descriptor format: %d",
+                                ztensor->transformed_desc->format);
   }
 
-  // Concatenated trfmd->dim1/dim2 includes padding so get the pre-padded ones.
-  // Non-concatenated this will be equal to pre-trfmd's.
-  uint32_t unpadded_dim1 = ztensor->pre_transformed_desc->dim1;
-  uint32_t unpadded_dim2;
+  return offsets;
+}
 
-  // Offset template for e1 elements. These offsets will be added to the e1 loop
-  // when determining correct offsets for test cases.
-  size_t e1_offset_template[unpadded_dim1];
+size_t *alloc_rnn_offsets(const zdnn_ztensor *ztensor) {
+
+  // generate basic offsets based off vanilla ZDNN_2DS/ZDNN_3DS shape
+
+  zdnn_tensor_desc slice_t_desc;
+  zdnn_ztensor slice_ztensor;
+
+  size_t *offsets, *slice_offsets = NULL;
 
   if (ztensor->transformed_desc->layout != ZDNN_BIDIR_FICO &&
       ztensor->transformed_desc->layout != ZDNN_BIDIR_ZRH) {
 
-    // transformed_desc->dim2 has the correct value we need
-    unpadded_dim2 = ztensor->transformed_desc->dim2;
+    // ZDNN_FICO/ZDNN_ZRH is like having a stickified vanilla ZDNN_2DS/ZDNN_3DS
+    // stitched together 4 (FICO) or 3 (ZRH) times.
+    //
+    // so we get the basic stificifed offsets for the ZDNN_2DS/ZDNN_3DS first,
+    // then duplicate it 2 or 3 more times while adding some offset to each
+    // value
 
-    for (uint32_t i = 0; i < unpadded_dim1; i++) {
-      // build an offset template for the unpadded_dim1 number of elements.  all
-      // eventual offsets are going to follow that pattern
-      e1_offset_template[i] =
-          ((i / AIU_2BYTE_CELLS_PER_STICK) *
-           CEIL(unpadded_dim2, AIU_STICKS_PER_PAGE) * AIU_PAGESIZE_IN_BYTES) +
-          (i % AIU_2BYTE_CELLS_PER_STICK) * get_data_type_size(ZDNN_DLFLOAT16);
-      LOG_TRACE("e1_offset_template[%d] = %d", i, e1_offset_template[i]);
-    }
+    zdnn_generate_transformed_desc(ztensor->pre_transformed_desc,
+                                   &slice_t_desc);
+    zdnn_init_ztensor(ztensor->pre_transformed_desc, &slice_t_desc,
+                      &slice_ztensor);
 
-    uint64_t offset_i = 0;
-    size_t e1_offset_start = 0;
+    slice_offsets = alloc_offsets(&slice_ztensor);
+    uint64_t slice_total_elements =
+        get_num_elements(&slice_ztensor, ELEMENTS_PRE);
+    uint64_t slice_size = zdnn_getsize_ztensor(slice_ztensor.transformed_desc);
 
-    // Generate an offset for each element. Note: For concatenated ztensors,
-    // padding elements will not be included in the offsets.
-    while (unpadded_dim1 && offset_i < total_elements) {
-      // Add relative e1 template to current stick start to get target offset.
-      for (uint32_t dim1_i = 0; dim1_i < unpadded_dim1; dim1_i++) {
-        offsets[offset_i] = e1_offset_start + e1_offset_template[dim1_i];
-        LOG_TRACE("offsets[%d] = %+08x", offset_i, offsets[offset_i]);
-        offset_i++;
-      }
+    short num_slices =
+        get_data_layout_num_gates(ztensor->transformed_desc->layout);
+    offsets = malloc(num_slices * slice_total_elements * sizeof(size_t));
 
-      // Jump e1_offset_start to the start of the next unused page as soon as
-      // all dim1 elements for each dim2 are processed
-      if (offset_i % (unpadded_dim2 * unpadded_dim1) == 0) {
-        // We already incremented offset_i so use previous offset_i to determine
-        // current page number.
-        uint32_t curr_page_num = offsets[offset_i - 1] / AIU_PAGESIZE_IN_BYTES;
-        // Reset the e1 offset start to start of next page.
-        e1_offset_start = (curr_page_num + 1) * AIU_PAGESIZE_IN_BYTES;
-        LOG_TRACE("Jumped to start of next page location = %+08x",
-                  e1_offset_start);
-      } else {
-        // The e1 templates can skip over whole sticks if the number of elements
-        // is larger than a single stick. Once the current dim1 row is fully
-        // processed, reset e1_offset_start to jump back to the start of the
-        // first empty stick.
-        e1_offset_start += AIU_2BYTE_CELLS_PER_STICK * AIU_2BYTE_CELL_SIZE;
-        LOG_TRACE("Jumped to start of first empty stick = %+08x",
-                  e1_offset_start);
+    // make num_slices copies of those offsets, each set is seperated by
+    // slice_size bytes
+    for (uint64_t i = 0; i < num_slices; i++) {
+      for (uint64_t j = 0; j < slice_total_elements; j++) {
+        offsets[i * slice_total_elements + j] =
+            slice_offsets[j] + i * slice_size;
       }
     }
+
   } else {
 
-    // transformed_desc->dim2 is vertically concatenated, so instead grab the
-    // actual dim2 from pre_transformed_desc
-    unpadded_dim2 = ztensor->pre_transformed_desc->dim2;
+    zdnn_tensor_desc tmp_f_desc, tmp_t_desc;
+    zdnn_ztensor tmp_ztensor;
 
-    // number of pages needed to store a single c-stick (max:
-    // AIU_2BYTE_CELLS_PER_STICK) worth of elements
-    uint32_t num_pages_vertical =
-        PADDED(unpadded_dim2 / 2) / AIU_STICKS_PER_PAGE * 2;
+    // get the basic stificifed offsets as if it were a ZDNN_3D of (2,
+    // PADDED(dim2 / 2), dim1).
+    // set dim3 = 2 to simulate the effect of dividing the entries into 2 halves
+    // don't care about num_dirs (dim3) for now
+    memcpy(&tmp_f_desc, ztensor->pre_transformed_desc,
+           sizeof(zdnn_tensor_desc));
+    tmp_f_desc.layout = ZDNN_3D;
+    tmp_f_desc.dim3 = 2;
+    tmp_f_desc.dim2 = PADDED(tmp_f_desc.dim2 / 2);
 
-    for (uint32_t i = 0; i < unpadded_dim1; i++) {
-      e1_offset_template[i] =
-          ((i / AIU_2BYTE_CELLS_PER_STICK) * num_pages_vertical *
-           AIU_PAGESIZE_IN_BYTES) +
-          (i % AIU_2BYTE_CELLS_PER_STICK) * get_data_type_size(ZDNN_DLFLOAT16);
-      LOG_TRACE("e1_offset_template[%d] = %d", i, e1_offset_template[i]);
+    zdnn_generate_transformed_desc(&tmp_f_desc, &tmp_t_desc);
+    zdnn_init_ztensor(&tmp_f_desc, &tmp_t_desc, &tmp_ztensor);
+
+    size_t *tmp_offsets = alloc_offsets(&tmp_ztensor);
+    uint64_t tmp_ztensor_size =
+        zdnn_getsize_ztensor(tmp_ztensor.transformed_desc);
+
+    // we generated (2 * PADDED(dim2 / 2) * dim1) number of offsets, but we
+    // actually only care (dim2 / 2 * dim1) of those
+    uint64_t slice_total_elements = ztensor->pre_transformed_desc->dim2 *
+                                    ztensor->pre_transformed_desc->dim1;
+
+    // in the generated offsets array, only the first (slice_total_elements / 2)
+    // entries are valid because the entries follow are simply for the vertical
+    // paddings.
+    //
+    // the 2 halves are actually PADDED(dim2 / 2) * AIU_BYTES_PER_STICK bytes
+    // apart
+    for (int q = 0; q < slice_total_elements / 2; q++) {
+      tmp_offsets[slice_total_elements / 2 + q] =
+          tmp_offsets[q] + (PADDED(ztensor->pre_transformed_desc->dim2 / 2) *
+                            AIU_BYTES_PER_STICK);
     }
 
-    uint64_t offset_i = 0;
-    size_t e1_offset_start = 0;
-    size_t e1_offset_start_slice = 0;
+    short num_slices =
+        get_data_layout_num_gates(ztensor->transformed_desc->layout);
 
-    while (unpadded_dim1 && offset_i < total_elements) {
-      // build an offset template like the other case
-      for (uint32_t dim1_i = 0; dim1_i < unpadded_dim1; dim1_i++) {
-        offsets[offset_i] = e1_offset_start + e1_offset_template[dim1_i];
-        LOG_TRACE("offsets[%d] = %+08x", offset_i, offsets[offset_i]);
-        offset_i++;
-      }
+    offsets = malloc(ztensor->pre_transformed_desc->dim3 * num_slices *
+                     slice_total_elements * sizeof(size_t));
 
-      uint32_t curr_page_num = offsets[offset_i - 1] / AIU_PAGESIZE_IN_BYTES;
-      if (offset_i % (unpadded_dim2 * unpadded_dim1) == 0) {
-        // when we're done with this slice, reset the e1 offset start.  the new
-        // page number is always in multiples of 2 due to vertical concatenation
-        e1_offset_start =
-            CEIL(curr_page_num + 1, 2) * 2 * AIU_PAGESIZE_IN_BYTES;
-        // save the offset start of this new slice to jump back to later
-        e1_offset_start_slice = e1_offset_start;
-        LOG_TRACE("Jumped to start of new page location = %+08x",
-                  e1_offset_start);
-      } else if (offset_i % (unpadded_dim2 / 2 * unpadded_dim1) == 0) {
-        // when we're done with 1st half of dim2, reset e1_offset_start to
-        // beginning of this slice + half num_pages_vertical worth of bytes
-        e1_offset_start = e1_offset_start_slice +
-                          num_pages_vertical / 2 * AIU_PAGESIZE_IN_BYTES;
-        LOG_TRACE("Jumped back to start of 2nd half = %+08x", e1_offset_start);
-      } else {
-        // go to the next c-stick
-        e1_offset_start += AIU_2BYTE_CELLS_PER_STICK * AIU_2BYTE_CELL_SIZE;
-        LOG_TRACE("Jumped to start of first empty stick = %+08x",
-                  e1_offset_start);
+    // make num_slices * num_dirs copies of those offsets, each set is seperated
+    // by tmp_ztensor_size bytes
+    for (uint64_t i = 0; i < ztensor->pre_transformed_desc->dim3; i++) {
+      for (uint64_t j = 0; j < num_slices; j++) {
+        for (uint64_t k = 0; k < slice_total_elements; k++) {
+          offsets[i * num_slices * slice_total_elements +
+                  j * slice_total_elements + k] =
+              tmp_offsets[k] + tmp_ztensor_size * (i * num_slices + j);
+        }
       }
     }
   }
-}
 
-// Get integer values from a txt file and put them in the size_t array.
-// used by the stickify/unstickify test routines. Returns number of values
-// read.
-uint64_t get_offsets_from_file(const char *file_name, size_t *array) {
-  if (file_name == NULL) {
-    TEST_FAIL_MESSAGE("file_name required for get_offsets_from_file");
-  }
-
-  FILE *file = fopen(file_name, "r");
-  uint64_t i = 0;
-
-  if (file) {
-    while (!feof(file)) {
-      // Read integers from file, stopping at the first non-integer
-      // (ie final newline)
-      if (fscanf(file, "%" PRIu64 "", &array[i]) != 1) {
-        break;
-      }
-      i++;
-    }
-    fclose(file);
-  }
-
-  return i;
-}
-
-size_t *alloc_offsets(zdnn_ztensor *ztensor, offset_mode mode,
-                      const char *path) {
-
-  if (path != NULL && mode != FILE_OFFSETS) {
-    TEST_FAIL_MESSAGE("path only valid for file mode");
-  }
-
-  uint64_t total_elements;
-
-  if ((ztensor->transformed_desc->layout == ZDNN_ZRH) ||
-      (ztensor->transformed_desc->layout == ZDNN_FICO) ||
-      (ztensor->transformed_desc->layout == ZDNN_BIDIR_ZRH) ||
-      (ztensor->transformed_desc->layout == ZDNN_BIDIR_FICO)) {
-    total_elements = get_num_elements(ztensor, ELEMENTS_PRE_ALL_GATES);
-  } else {
-    total_elements = get_num_elements(ztensor, ELEMENTS_PRE);
-  }
-
-  LOG_TRACE("ztensor->transformed_desc->layout = %s, total_elements = %ld",
-            get_data_layout_str(ztensor->transformed_desc->layout),
-            total_elements);
-
-  size_t *offsets = malloc(total_elements * sizeof(size_t));
-
-  switch (mode) {
-  case QUICK_OFFSETS: {
-    quick_generate_offsets(ztensor, offsets);
-    break;
-  }
-  case FILE_OFFSETS: {
-    uint64_t num_offsets = get_offsets_from_file(path, offsets);
-    TEST_ASSERT_MESSAGE_FORMATTED(
-        get_offsets_from_file(path, offsets) == total_elements,
-        "for %" PRIu64
-        " elements get_offsets_from_file() on file \"%s\" returned %" PRIu64
-        " offsets",
-        total_elements, path, num_offsets);
-    break;
-  }
-  default: {
-    TEST_FAIL_MESSAGE_FORMATTED("unknown mode: %d", mode);
-    break;
-  }
-  }
-
+  free(slice_offsets);
   return offsets;
 }
 
@@ -273,8 +301,7 @@ size_t *alloc_rnn_output_offsets(const zdnn_ztensor *ztensor) {
   zdnn_tensor_desc tmp_p_desc, tmp_t_desc;
   zdnn_ztensor tmp_ztensor;
 
-  // create a ZDNN_2D (dim2, dim1) tensor and get the offsets of that via
-  // alloc_offsets()
+  // create a ZDNN_2D (dim2, dim1) tensor and get the offsets of that
   zdnn_init_pre_transformed_desc(ZDNN_2D, test_datatype, &tmp_p_desc,
                                  ztensor->pre_transformed_desc->dim2,
                                  ztensor->pre_transformed_desc->dim1);
@@ -287,7 +314,7 @@ size_t *alloc_rnn_output_offsets(const zdnn_ztensor *ztensor) {
       status == ZDNN_OK, "zdnn_init_ztensor_with_malloc() failed status = %08x",
       status);
 
-  size_t *piece_offsets = alloc_offsets(&tmp_ztensor, QUICK_OFFSETS, NULL);
+  size_t *piece_offsets = alloc_offsets(&tmp_ztensor);
 
   // each replication is seperated by this many bytes
   uint64_t piece_size = zdnn_getsize_ztensor(&tmp_t_desc);
@@ -332,7 +359,8 @@ size_t *alloc_rnn_output_offsets(const zdnn_ztensor *ztensor) {
 /// \return a pointer with alloced memory containing the converted values
 ///
 void *alloc_and_convert_float_values(zdnn_data_types type, uint64_t num_values,
-                                     bool repeat_first_value, float *values) {
+                                     bool repeat_first_value,
+                                     const float *values) {
 
   // Malloc the data buffer
   size_t data_size = num_values * get_data_type_size(type);
@@ -477,8 +505,8 @@ zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
   uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_PRE_SINGLE_GATE);
 
   if (pre_tfrmd_layout == ZDNN_4DS) {
-    // For testing outputs, we want to be able initialize rnn output ztensors to
-    // zeros but we don't need to support setting arbitrary values
+    // For testing outputs, we want to be able initialize rnn output ztensors
+    // to zeros but we don't need to support setting arbitrary values
     memset(ztensor->buffer, 0, ztensor->buffer_size);
   } else {
     uint32_t num_things;
@@ -523,6 +551,100 @@ zdnn_ztensor *alloc_ztensor_with_values(uint32_t *shape,
   }
 
   va_end(values_list);
+  return ztensor;
+}
+
+/// Creates a ztensor with no value. The resulting ztensor is not transformed
+/// and ready for use as an output in zDNN operations.
+///
+/// Example usage:
+/// Setup input tensor
+/// \code
+///  ztensor *zt = alloc_ztensor_with_values(shape, pre_tfrmd_layout,
+///                                          type, NO_CONCAT, false, values);
+/// \endcode
+/// Setup Output tensor
+/// \code
+/// ztensor *zt = alloc_output_ztensor(shape, pre_tfrmd_layout, type,
+///                                    NO_CONCAT);
+/// \endcode
+///
+/// \param[in] shape array of dimensions
+/// \param[in] pre_tfrmd_layout pre-transformed data layout
+/// \param[in] type data type
+/// \param[in] zdnn_concat_info
+///                     indicates the type of concatenation to use
+///                     This indirectly sets the transformed ztensor layout
+///                     and the number of values arrays to expect.
+///
+/// \return zdnn_ztensor* Pointer to a malloc'd ztensor without transformed data
+///
+zdnn_ztensor *alloc_output_ztensor(uint32_t *shape,
+                                   zdnn_data_layouts pre_tfrmd_layout,
+                                   zdnn_data_types type,
+                                   zdnn_concat_info info) {
+  // Create the pretransformed description
+  zdnn_tensor_desc *pre_tfrmd_desc =
+      (zdnn_tensor_desc *)malloc(sizeof(zdnn_tensor_desc));
+
+  switch (pre_tfrmd_layout) {
+  case (ZDNN_1D):
+    zdnn_init_pre_transformed_desc(pre_tfrmd_layout, type, pre_tfrmd_desc,
+                                   shape[0]);
+    break;
+  case (ZDNN_2D):
+  case (ZDNN_2DS):
+    zdnn_init_pre_transformed_desc(pre_tfrmd_layout, type, pre_tfrmd_desc,
+                                   shape[0], shape[1]);
+    break;
+  case (ZDNN_3D):
+  case (ZDNN_3DS):
+    zdnn_init_pre_transformed_desc(pre_tfrmd_layout, type, pre_tfrmd_desc,
+                                   shape[0], shape[1], shape[2]);
+    break;
+  case (ZDNN_4D):
+  case (ZDNN_4DS):
+  case (ZDNN_NHWC):
+  case (ZDNN_NCHW):
+  case (ZDNN_HWCK):
+    zdnn_init_pre_transformed_desc(pre_tfrmd_layout, type, pre_tfrmd_desc,
+                                   shape[0], shape[1], shape[2], shape[3]);
+    break;
+  default:
+    TEST_FAIL_MESSAGE_FORMATTED(
+        "I'm dreadfully sorry but I don't seem to know how to deal with a %s "
+        "pre_tfrmd_layout. Could you teach me?",
+        get_data_layout_str(pre_tfrmd_layout));
+    break;
+  }
+
+  // Create the transformed description
+  zdnn_tensor_desc *tfrmd_desc =
+      (zdnn_tensor_desc *)malloc(sizeof(zdnn_tensor_desc));
+
+  zdnn_status status;
+  if (info == NO_CONCAT) {
+    status = zdnn_generate_transformed_desc(pre_tfrmd_desc, tfrmd_desc);
+    TEST_ASSERT_MESSAGE_FORMATTED(
+        status == ZDNN_OK,
+        "zdnn_generate_transformed_desc failed (status = %08x)", status);
+  } else {
+    status = zdnn_generate_transformed_desc_concatenated(pre_tfrmd_desc, info,
+                                                         tfrmd_desc);
+    TEST_ASSERT_MESSAGE_FORMATTED(status == ZDNN_OK,
+                                  "zdnn_generate_transformed_desc_concatenated "
+                                  "with info %08x failed (status = %08x)",
+                                  info, status);
+  }
+
+  // Create the ztensor with malloc'd buffer pointer
+  zdnn_ztensor *ztensor = (zdnn_ztensor *)malloc(sizeof(zdnn_ztensor));
+
+  status = zdnn_init_ztensor_with_malloc(pre_tfrmd_desc, tfrmd_desc, ztensor);
+  TEST_ASSERT_MESSAGE_FORMATTED(
+      status == ZDNN_OK, "zdnn_init_ztensor_with_malloc failed (status = %08x)",
+      status);
+
   return ztensor;
 }
 
@@ -685,6 +807,22 @@ bool almost_equal_dlf16(uint16_t actual, uint16_t expected) {
 void assert_ztensor_values_adv(zdnn_ztensor *ztensor,
                                bool repeat_first_expected_value, void *values,
                                fp_tolerance tol) {
+
+  // Read in ZDNN_TEST_ERROR_ELEMENT_COUNT env var if set
+  // Controls the number of errors that get printed to stdout when running tests
+  // default to print at most ERROR_ELEMENT_COUNT_MAX_DEFAULT (10) errors
+  // per test. If ZDNN_TEST_ERROR_ELEMENT_COUNT=0 all informational output and
+  // errors will be printed to stdout.
+  uint64_t error_element_count_max = ERROR_ELEMENT_COUNT_MAX_DEFAULT;
+  bool always_print = false;
+  char *ptr = NULL;
+  if ((ptr = getenv(ENVVAR_TEST_ERROR_COUNT))) {
+    error_element_count_max = (uint64_t)strtoull(ptr, NULL, 10);
+    if (error_element_count_max == 0) {
+      always_print = true;
+    }
+  }
+
   zdnn_status status;
   zdnn_tensor_desc *pre_tfrmd_desc = ztensor->pre_transformed_desc;
 
@@ -740,6 +878,12 @@ void assert_ztensor_values_adv(zdnn_ztensor *ztensor,
   // process applies for FP32.
 
   for (uint64_t i = 0; i < num_elements; i++) {
+    // Handle INT32 case first, since it does not require a conversion.
+    if (pre_tfrmd_desc->type == INT32) {
+      ((uint32_t *)expected_vals)[i] = ((uint32_t *)values)[i];
+      continue;
+    }
+
     uint16_t tmp_dlf16;
 
     if (!repeat_first_expected_value) {
@@ -776,74 +920,168 @@ void assert_ztensor_values_adv(zdnn_ztensor *ztensor,
   bool all_pass = true;
   // Loop appends to error_msg so reset it first
   error_msg[0] = '\0';
-
+  char *info_fmt =
+      "Element %" PRIu64 " == %f expecting %f (within tolerance)\n";
+  char *info_fmt_int32 =
+      "Element %" PRIu64 " == %u expecting %u (within tolerance)\n";
   char *error_fmt = "Element %" PRIu64 " == %f expecting %f";
+  char *error_fmt_int32 = "Element %" PRIu64 " == %u expecting %u";
   char *error_fmt2 =
-      " <==== FAILED (diff beyond ULPs %u, epsilon multiplier %u)";
+      " <==== FAILED (diff beyond ULPs %u, epsilon multiplier %u)\n";
 
+  uint64_t error_count = 0;
   // Compared the actual and expected values
   for (uint64_t i = 0; i < num_elements; i++) {
-
     bool is_almost_equal = false;
+    // new line at beginning of each test
+    if (i == 0) {
+      snprintf(error_msg + strlen(error_msg),
+               big_error_message_size - strlen(error_msg), "\n");
+    }
 
     switch (pre_tfrmd_desc->type) {
     case BFLOAT: {
-      // Record all actual vs expected values (only printed if one fails)
-      // For printf-ing error_msg we'll need to convert "actual" to float
       uint16_t actual = ((uint16_t *)actual_vals)[i];
       uint16_t expected = ((uint16_t *)expected_vals)[i];
 
-      snprintf(error_msg + strlen(error_msg),
-               big_error_message_size - strlen(error_msg), error_fmt, i,
-               cnvt_1_bfloat_to_fp32(actual), cnvt_1_bfloat_to_fp32(expected));
+      is_almost_equal = almost_equal_bfloat_adv(actual, expected, tol);
+      if (!is_almost_equal) {
+        // Test not within tolerance
+        if (error_count <= error_element_count_max || always_print) {
+          // print test failed if error_count < error_element_count_max
+          // or always_print=true (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+          // prints message like: Element xxxx == xxxx expecting xxxx
+          snprintf(error_msg + strlen(error_msg),
+                   big_error_message_size - strlen(error_msg), error_fmt, i,
+                   cnvt_1_bfloat_to_fp32(actual),
+                   cnvt_1_bfloat_to_fp32(expected));
+        }
+        error_count++;
+      } else if (always_print) {
+        // Test within tolerance
+        // Output informational message only if always_print=true
+        // (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+        // prints message like: Element xxxx == xxxx expecting xxxx (within
+        // tolerance)
+        snprintf(error_msg + strlen(error_msg),
+                 big_error_message_size - strlen(error_msg), info_fmt, i,
+                 cnvt_1_bfloat_to_fp32(actual),
+                 cnvt_1_bfloat_to_fp32(expected));
+      }
 
       LOG_DEBUG(error_fmt, i, cnvt_1_bfloat_to_fp32(actual),
                 cnvt_1_bfloat_to_fp32(expected));
-
-      is_almost_equal = almost_equal_bfloat_adv(actual, expected, tol);
       break;
     }
     case FP16: {
       uint16_t actual = ((uint16_t *)actual_vals)[i];
       uint16_t expected = ((uint16_t *)expected_vals)[i];
 
-      snprintf(error_msg + strlen(error_msg),
-               big_error_message_size - strlen(error_msg), error_fmt, i,
-               cnvt_1_fp16_to_fp32(actual), cnvt_1_fp16_to_fp32(expected));
+      is_almost_equal = almost_equal_fp16_adv(actual, expected, tol);
+      if (!is_almost_equal) {
+        // Test not within tolerance
+        if (error_count < error_element_count_max || always_print) {
+          // print test failed if error_count < error_element_count_max
+          // or always_print=true (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+          // prints message like: Element xxxx == xxxx expecting xxxx
+          snprintf(error_msg + strlen(error_msg),
+                   big_error_message_size - strlen(error_msg), error_fmt, i,
+                   cnvt_1_fp16_to_fp32(actual), cnvt_1_fp16_to_fp32(expected));
+        }
+        error_count++;
+      } else if (always_print) {
+        // Test within tolerance
+        // Output informational message only if always_print=true
+        // (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+        // prints message like: Element xxxx == xxxx expecting xxxx (within
+        // tolerance)
+        snprintf(error_msg + strlen(error_msg),
+                 big_error_message_size - strlen(error_msg), info_fmt, i,
+                 cnvt_1_fp16_to_fp32(actual), cnvt_1_fp16_to_fp32(expected));
+      }
 
       LOG_DEBUG(error_fmt, i, cnvt_1_fp16_to_fp32(actual),
                 cnvt_1_fp16_to_fp32(expected));
-
-      is_almost_equal = almost_equal_fp16_adv(actual, expected, tol);
       break;
     }
+
     case FP32: {
       float actual = ((float *)actual_vals)[i];
       float expected = ((float *)expected_vals)[i];
 
-      snprintf(error_msg + strlen(error_msg),
-               big_error_message_size - strlen(error_msg), error_fmt, i, actual,
-               expected);
+      is_almost_equal = almost_equal_float_adv(actual, expected, tol);
+      if (!is_almost_equal) {
+        // Test not within tolerance
+        if (error_count < error_element_count_max || always_print) {
+          // print test failed if error_count < error_element_count_max
+          // or always_print=true (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+          // prints message like: Element xxxx == xxxx expecting xxxx
+          snprintf(error_msg + strlen(error_msg),
+                   big_error_message_size - strlen(error_msg), error_fmt, i,
+                   actual, expected);
+        }
+        error_count++;
+
+      } else if (always_print) {
+        // Test within tolerance
+        // Output informational message only if always_print=true
+        // (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+        // prints message like: Element xxxx == xxxx expecting xxxx (within
+        // tolerance)
+        snprintf(error_msg + strlen(error_msg),
+                 big_error_message_size - strlen(error_msg), info_fmt, i,
+                 actual, expected);
+      }
 
       LOG_DEBUG(error_fmt, i, actual, expected);
+      break;
+    }
+    case INT32: {
+      uint32_t actual = ((uint32_t *)actual_vals)[i];
+      uint32_t expected = ((uint32_t *)expected_vals)[i];
 
-      is_almost_equal = almost_equal_float_adv(actual, expected, tol);
+      is_almost_equal = (actual == expected);
+      if (!is_almost_equal) {
+        // Test not within tolerance
+        if (error_count <= error_element_count_max || always_print) {
+          // print test failed if error_count < error_element_count_max
+          // or always_print=true (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+          // prints message like: Element xxxx == xxxx expecting xxxx
+          snprintf(error_msg + strlen(error_msg),
+                   big_error_message_size - strlen(error_msg), error_fmt_int32,
+                   i, actual, expected);
+        }
+        error_count++;
+
+      } else if (always_print) {
+        // Test within tolerance
+        // Output informational message only if always_print=true
+        // (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+        // prints message like: Element xxxx == xxxx expecting xxxx (within
+        // tolerance)
+        snprintf(error_msg + strlen(error_msg),
+                 big_error_message_size - strlen(error_msg), info_fmt_int32, i,
+                 actual, expected);
+      }
+
+      LOG_DEBUG(error_fmt_int32, i, actual, expected);
       break;
     }
     default:
       // would have died earlier
       break;
     }
-
-    if (!is_almost_equal) {
+    // Only print when not within tolerance and error_count <=
+    // error_element_count_max OR always_print (ZDNN_TEST_ERROR_ELEMENT_COUNT=0)
+    // is true. Prints message like:
+    // <==== FAILED (diff beyond ULPs X, epsilon multiplier X)
+    if ((!is_almost_equal) &&
+        (error_count <= error_element_count_max || always_print)) {
+      all_pass = false;
       snprintf(error_msg + strlen(error_msg),
                big_error_message_size - strlen(error_msg), error_fmt2, tol.ulps,
                tol.epsilon_mult);
-      all_pass = false;
     }
-
-    snprintf(error_msg + strlen(error_msg),
-             big_error_message_size - strlen(error_msg), "\n");
   }
 
   // Assert that all passed and clean up temp data
@@ -889,7 +1127,6 @@ void assert_ztensor_values(zdnn_ztensor *ztensor,
 /// \return None (assert fails if freeing any buffer fails
 ///
 void free_ztensor_buffers(uint32_t num_ztensors, ...) {
-  zdnn_status status;
 
   // Create ztensor_list to handle the multple input ztensors passed in.
   va_list ztensor_list;
@@ -897,15 +1134,16 @@ void free_ztensor_buffers(uint32_t num_ztensors, ...) {
 
   // Free data buffer for each provided ztensor
   for (uint32_t i = 0; i < num_ztensors; i++) {
+    zdnn_status status;
     zdnn_ztensor *ztensor = va_arg(ztensor_list, zdnn_ztensor *);
     if ((status = zdnn_free_ztensor_buffer(ztensor)) != ZDNN_OK) {
-      free(ztensor->transformed_desc);
-      free(ztensor->pre_transformed_desc);
-      free(ztensor);
       TEST_FAIL_MESSAGE_FORMATTED(
           "zdnn_free_ztensor_buffer() failed on tensor %u with status %08x", i,
           status);
     }
+    free(ztensor->transformed_desc);
+    free(ztensor->pre_transformed_desc);
+    free(ztensor);
   }
 
   va_end(ztensor_list);
@@ -953,7 +1191,32 @@ unsigned char *create_and_fill_random_fp_data(zdnn_ztensor *ztensor) {
       break;
     case ZDNN_DLFLOAT16:
       ((uint16_t *)data)[i] = cnvt_1_fp32_to_dlf16(filling);
+    default:
+      LOG_WARN("Unknown data type: %d", dtype);
     }
+  }
+
+  return data;
+}
+
+/// Allocates a data buffer then fills it with random INT8 values
+///
+/// \param[out] ztensor A zdnn tensor
+///
+/// \return pointer to filled data buffer
+///
+int8_t *create_and_fill_random_int8_data(zdnn_ztensor *ztensor) {
+
+  uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_PRE_SINGLE_GATE);
+  int8_t *data = (int8_t *)malloc(num_elements);
+
+  struct timeval t1;
+  gettimeofday(&t1, NULL);
+  srand(t1.tv_usec * t1.tv_sec);
+
+  int upper = 127, lower = -128;
+  for (int i = 0; i < num_elements; i++) {
+    data[i] = (rand() % (upper - lower + 1)) + lower;
   }
 
   return data;
@@ -981,9 +1244,9 @@ void gen_random_float_array(int size, float arr[]) {
 }
 
 /**
- * Helper that generates random negative floats and populate the given array.
- * This will be used for populating tensor buffers in the end-to-end unit
- * tests.
+ * Helper that generates random negative floats and populate the given
+ * array. This will be used for populating tensor buffers in the end-to-end
+ * unit tests.
  */
 void gen_random_float_array_neg(int size, float arr[]) {
   struct timeval t1;
@@ -1023,6 +1286,23 @@ void gen_random_float_array_pos_neg(int size, float arr[]) {
 }
 
 /**
+ * Helper that generates random floats and populate the given array. This will
+ * be used for populating tensor buffers in the end-to-end unit tests.
+ *
+ * https://stackoverflow.com/questions/13408990/how-to-generate-random-float-number-in-c
+ */
+void gen_random_float_array_range(int size, float arr[], float min, float max) {
+  struct timeval t1;
+  gettimeofday(&t1, NULL);
+  srand(t1.tv_usec * t1.tv_sec);
+
+  // The raw output value will be [min, max].
+  for (int i = 0; i < size; i++) {
+    arr[i] = min + ((float)rand() / (float)(RAND_MAX)) * (max - min);
+  }
+}
+
+/**
  * Helper that generates 0 values for a given size
  * and for a given array, meant for populating tensor buffers
  * in end-to-end unit tests.
@@ -1038,7 +1318,7 @@ void gen_float_array_zeros(int size, float arr[]) {
  * for a given array, meant for populating tensor buffers in
  * end-to-end unit tests.
  */
-void copy_to_array(int size, float input[], float output[]) {
+void copy_to_array(int size, const float input[], float output[]) {
   for (int i = 0; i < size; i++) {
     output[i] = input[i];
   }
@@ -1071,6 +1351,18 @@ void fill_everyother_with_zero_float_array(int size, float arr[]) {
 void fill_all_with_zero_float_array(int size, float arr[]) {
   for (int i = 0; i < size; i++) {
     arr[i] = 0;
+  }
+}
+
+/**
+ * Helper that recieves a function pointer to some function that estimates a
+ * value. For example, this could be the GeLu approximator function. This will
+ * calculate the expected results based on the input values passed.
+ */
+void generate_expected_output(float (*fn)(float), float input_values[],
+                              int num_values, float expected_values[]) {
+  for (int i = 0; i < num_values; i++) {
+    expected_values[i] = fn(input_values[i]);
   }
 }
 
@@ -1145,47 +1437,179 @@ void restore_stderr(char *buf, int buf_size) {
  * Enhanced Unity Functions/Macros
  **********************************************************/
 
-#define NUM_PRE_TFRMD_TYPES 3
-zdnn_data_types pre_tfrmd_types[NUM_PRE_TFRMD_TYPES] = {FP16, FP32, BFLOAT};
+#define NUM_ALL_PRE_TFRMD_TYPES 5
+zdnn_data_types all_pre_tfrmd_types[NUM_ALL_PRE_TFRMD_TYPES] = {
+    INT8, INT32, FP16, FP32, BFLOAT};
 
-#define NUM_TFRMD_TYPES 1
-zdnn_data_types tfrmd_types[NUM_TFRMD_TYPES] = {ZDNN_DLFLOAT16};
+#define NUM_DLFLOAT16_PRE_TFRMD_TYPES 3
+zdnn_data_types dlfloat_pre_tfrmd_types[NUM_DLFLOAT16_PRE_TFRMD_TYPES] = {
+    FP16, FP32, BFLOAT};
+
+#define NUM_QUANTIZED_PRE_TFRMD_TYPES 1
+zdnn_data_types quantized_pre_tfrmd_types[NUM_QUANTIZED_PRE_TFRMD_TYPES] = {
+    INT8};
+
+#define NUM_INDEX_PRE_TFRMD_TYPES 1
+zdnn_data_types index_pre_tfrmd_types[NUM_INDEX_PRE_TFRMD_TYPES] = {INT32};
+
+#define NUM_ALL_TFRMD_TYPES 4
+zdnn_data_types all_tfrmd_types[NUM_ALL_PRE_TFRMD_TYPES] = {
+    ZDNN_DLFLOAT16, ZDNN_BINARY_FP32, ZDNN_BINARY_INT8, ZDNN_BINARY_INT32};
+
+#define NUM_DLFLOAT16_TFRMD_TYPES 1
+zdnn_data_types dlfloat_tfrmd_types[NUM_DLFLOAT16_TFRMD_TYPES] = {
+    ZDNN_DLFLOAT16};
+
+#define NUM_QUANTIZED_TFRMD_TYPES 1
+zdnn_data_types quantized_tfrmd_types[NUM_QUANTIZED_TFRMD_TYPES] = {
+    ZDNN_BINARY_INT8};
+
+#define NUM_INDEX_TFRMD_TYPES 1
+zdnn_data_types index_tfrmd_types[NUM_INDEX_TFRMD_TYPES] = {ZDNN_BINARY_INT32};
 
 // indicates which data-type UnityDefaultTestRunWith*DataType() is currently
 // testing
 zdnn_data_types test_datatype = 128; // set initial value to something invalid
 
 // Wrapper of Unity's UnityDefaultTestRun() that runs func() against all
-// input data-types.  Uses CamelCase intentionally to align with Unity
-void UnityDefaultTestRunWithDataType(UnityTestFunction Func,
-                                     const char *FuncName,
-                                     const int FuncLineNum) {
-  for (int i = 0; i < NUM_PRE_TFRMD_TYPES; i++) {
-    test_datatype = pre_tfrmd_types[i];
+// input data-types. Uses CamelCase intentionally to align with Unity.
+// Function for All, DLFloat16, Quantized, and Index pre-transformed types.
+void UnityDefaultTestRunWithAllPreDataType(UnityTestFunction Func,
+                                           const char *FuncName,
+                                           const int FuncLineNum) {
+  for (int i = 0; i < NUM_ALL_PRE_TFRMD_TYPES; i++) {
+    test_datatype = all_pre_tfrmd_types[i];
 
     // FuncNameWithDataType is FuncName + " (data-type)" for printing
     char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
     Unity.CurrentTestName = FuncNameWithDataType;
     snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
-             get_data_type_str(pre_tfrmd_types[i]));
+             get_data_type_str(all_pre_tfrmd_types[i]));
 
     UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
   }
 }
 
-// UnityDefaultTestRunWithDataType() but with transformed data-types
-void UnityDefaultTestRunWithTfrmdDataType(UnityTestFunction Func,
-                                          const char *FuncName,
-                                          const int FuncLineNum) {
-  for (int i = 0; i < NUM_TFRMD_TYPES; i++) {
-    test_datatype = tfrmd_types[i];
+void UnityDefaultTestRunWithDLFloat16PreDataType(UnityTestFunction Func,
+                                                 const char *FuncName,
+                                                 const int FuncLineNum) {
+  for (int i = 0; i < NUM_DLFLOAT16_PRE_TFRMD_TYPES; i++) {
+    test_datatype = dlfloat_pre_tfrmd_types[i];
 
     // FuncNameWithDataType is FuncName + " (data-type)" for printing
     char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
     Unity.CurrentTestName = FuncNameWithDataType;
     snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
-             get_data_type_str(tfrmd_types[i]));
+             get_data_type_str(dlfloat_pre_tfrmd_types[i]));
 
     UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
   }
+}
+
+void UnityDefaultTestRunWithQuantizedPreDataType(UnityTestFunction Func,
+                                                 const char *FuncName,
+                                                 const int FuncLineNum) {
+  for (int i = 0; i < NUM_QUANTIZED_PRE_TFRMD_TYPES; i++) {
+    test_datatype = quantized_pre_tfrmd_types[i];
+
+    // FuncNameWithDataType is FuncName + " (data-type)" for printing
+    char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
+    Unity.CurrentTestName = FuncNameWithDataType;
+    snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
+             get_data_type_str(quantized_pre_tfrmd_types[i]));
+
+    UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
+  }
+}
+
+void UnityDefaultTestRunWithIndexPreDataType(UnityTestFunction Func,
+                                             const char *FuncName,
+                                             const int FuncLineNum) {
+  for (int i = 0; i < NUM_INDEX_PRE_TFRMD_TYPES; i++) {
+    test_datatype = index_pre_tfrmd_types[i];
+
+    // FuncNameWithDataType is FuncName + " (data-type)" for printing
+    char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
+    Unity.CurrentTestName = FuncNameWithDataType;
+    snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
+             get_data_type_str(index_pre_tfrmd_types[i]));
+
+    UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
+  }
+}
+
+// UnityDefaultTestRunWithAllPreDataType() but with all transformed data-types
+void UnityDefaultTestRunWithAllTfrmdDataType(UnityTestFunction Func,
+                                             const char *FuncName,
+                                             const int FuncLineNum) {
+  for (int i = 0; i < NUM_ALL_TFRMD_TYPES; i++) {
+    test_datatype = all_tfrmd_types[i];
+
+    // FuncNameWithDataType is FuncName + " (data-type)" for printing
+    char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
+    Unity.CurrentTestName = FuncNameWithDataType;
+    snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
+             get_data_type_str(all_tfrmd_types[i]));
+
+    UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
+  }
+}
+
+// UnityDefaultTestRunWithDLFloat16PreDataType() but with transformed
+// data-types
+void UnityDefaultTestRunWithDLFloat16TfrmdDataType(UnityTestFunction Func,
+                                                   const char *FuncName,
+                                                   const int FuncLineNum) {
+  for (int i = 0; i < NUM_DLFLOAT16_TFRMD_TYPES; i++) {
+    test_datatype = dlfloat_tfrmd_types[i];
+
+    // FuncNameWithDataType is FuncName + " (data-type)" for printing
+    char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
+    Unity.CurrentTestName = FuncNameWithDataType;
+    snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
+             get_data_type_str(dlfloat_tfrmd_types[i]));
+
+    UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
+  }
+}
+
+// UnityDefaultTestRunWithQuantizedPreDataType() but with transformed data-types
+// cppcheck-suppress unusedFunction
+void UnityDefaultTestRunWithQuantizedTfrmdDataType(UnityTestFunction Func,
+                                                   const char *FuncName,
+                                                   const int FuncLineNum) {
+  for (int i = 0; i < NUM_QUANTIZED_TFRMD_TYPES; i++) {
+    test_datatype = quantized_tfrmd_types[i];
+
+    // FuncNameWithDataType is FuncName + " (data-type)" for printing
+    char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
+    Unity.CurrentTestName = FuncNameWithDataType;
+    snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
+             get_data_type_str(quantized_tfrmd_types[i]));
+
+    UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
+  }
+}
+
+// UnityDefaultTestRunWithIndexPreDataType() but with transformed data-types
+// cppcheck-suppress unusedFunction
+void UnityDefaultTestRunWithIndexTfrmdDataType(UnityTestFunction Func,
+                                               const char *FuncName,
+                                               const int FuncLineNum) {
+  for (int i = 0; i < NUM_INDEX_TFRMD_TYPES; i++) {
+    test_datatype = index_tfrmd_types[i];
+
+    // FuncNameWithDataType is FuncName + " (data-type)" for printing
+    char FuncNameWithDataType[FUNCNAME_BANNER_LENGTH];
+    Unity.CurrentTestName = FuncNameWithDataType;
+    snprintf(FuncNameWithDataType, FUNCNAME_BANNER_LENGTH, "%s (%s)", FuncName,
+             get_data_type_str(index_tfrmd_types[i]));
+
+    UnityDefaultTestRun(Func, FuncNameWithDataType, FuncLineNum);
+  }
+}
+
+bool isTelumI() {
+  return (zdnn_is_nnpa_installed() && (zdnn_is_nnpa_parmblk_fmt_installed(
+                                           1, NNPA_PARMBLKFORMAT_1) == false));
 }

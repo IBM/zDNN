@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Copyright IBM Corp. 2021
+# Copyright IBM Corp. 2021, 2024
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,18 @@
 #
 import glob
 import os
+import argparse
 
-results_path = "bin/testDriver*.txt"
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--dir", type=str, default="bin/", help="directory with test results"
+)
+args = parser.parse_args()
+results_dir = args.dir
+if not results_dir.endswith("/"):
+    results_dir = f"{results_dir}/"
+
+results_path = f"{results_dir}testDriver*.txt"
 
 num_passes = 0
 num_ignores = 0
@@ -62,8 +72,9 @@ for filename in glob.glob(results_path):
 
                 if "FAIL" in status:
                     num_fails = num_fails + 1
-                    fail_txt = fail_txt + test_file + ":" + test_name + ":" + status + NL
-
+                    fail_txt = (
+                        fail_txt + test_file + ":" + test_name + ":" + status + NL
+                    )
 
         # Unity prints a "final status" text at the end.  If the last line isn't either
         # of these then likely the testDriver crashed

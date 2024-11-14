@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,8 +51,8 @@ int main(int argc, char *argv[]) {
 
   // read input_data
 
-  // check status for AIU availability, supported ops, etc. here
-  // status = zdnn_query(…);
+  // check status for zAIU availability, supported ops, etc. here
+  // status = zdnn_query();
 
   // set input tensor data to 0 to 127 sequentially and repeat
   for (uint64_t i = 0; i < num_elements; i++) {

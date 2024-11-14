@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,11 @@
 #include <inttypes.h>
 #include <stddef.h>
 
+#define STICKCVT_MAX_ENTRIES_TO_CONVERT 8
+/* Number of entries to be converted at a time. Conversion to/from
+   FP32 to DLFLOAT require 2 vector regs to contain the 8 values,
+   all others use 1 VR */
+
 /* Within convert.h/convert.c, we must treat the floating point values
    to be converted as simple INT values for the conversions to be
    successful, so we typedef those here.    */
@@ -37,12 +42,28 @@ typedef union uint32_float_u {
   float f;
 } uint32_float_u;
 
+// -----------------------------------------------------------------------------
+// convert_hw.c wrapper Functions and types
+// -----------------------------------------------------------------------------
+typedef vector unsigned int vec_float32;
+
+void saturate_fp32_to_dlf16(const vec_float32 *, const vec_float32 *,
+                            vec_float32 *, vec_float32 *);
+void skip_saturate_fp32_to_dlf16(const vec_float32 *, const vec_float32 *,
+                                 vec_float32 *, vec_float32 *);
+
 uint64_t fp16_to_dlf16(uint16_t *input_fp16_data, uint16_t *output_dflt16_data,
                        uint64_t nbr_fields_to_convert);
 uint64_t fp32_to_dlf16(float *input_data, uint16_t *output_data,
-                       uint64_t nbr_fields_to_convert);
+                       uint64_t nbr_fields_to_convert,
+                       void (*saturate_func)(const vec_float32 *,
+                                             const vec_float32 *, vec_float32 *,
+                                             vec_float32 *));
 uint64_t bfloat_to_dlf16(uint16_t *input_data, uint16_t *output_data,
-                         uint64_t nbr_fields_to_convert);
+                         uint64_t nbr_fields_to_convert,
+                         void (*saturate_func)(const vec_float32 *,
+                                               const vec_float32 *,
+                                               vec_float32 *, vec_float32 *));
 
 uint64_t dlf16_to_fp16(uint16_t *input_dflt16_data, uint16_t *output_fp16_data,
                        uint64_t nbr_fields_to_convert);

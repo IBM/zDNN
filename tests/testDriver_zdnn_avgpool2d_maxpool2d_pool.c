@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 #include "common_pool.h"
 
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
 
   // note: maxpool2d is actually OK with default tolerance values, but avgpool2d
   // needs custom tolerance
@@ -34,8 +34,7 @@ void setUp(void) { /* This is run before EACH TEST */
   VERIFY_HW_ENV;
 }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 /*
  * Simple test of basic pool with non-zero strides and SAME_PADDING
@@ -632,7 +631,7 @@ void max_stride_height_fail(nnpa_function_code function_code,
   zdnn_data_layouts layout = ZDNN_NHWC;
 
   // over_stride_max is a valid tensor dimension size but is too large for a
-  // stride. This should lead to a condition code from the AIU. If not, update
+  // stride. This should lead to a condition code from the zAIU. If not, update
   // the test constant and the API documentation to the new value.
   uint32_t over_stride_max = MAXIMUM_POOL_NONZERO_STRIDES_STRIDE_SIZE + 1;
 
@@ -687,7 +686,7 @@ void max_stride_width_fail(nnpa_function_code function_code,
   zdnn_data_layouts layout = ZDNN_NHWC;
 
   // over_stride_max is a valid tensor dimension size but is too large for a
-  // stride. This should lead to a condition code from the AIU. If not, update
+  // stride. This should lead to a condition code from the zAIU. If not, update
   // the test constant and the API documentation to the new value.
   uint32_t over_stride_max = MAXIMUM_POOL_NONZERO_STRIDES_STRIDE_SIZE + 1;
 
@@ -808,71 +807,107 @@ void avgpool2d_non_zero_strides_same_padding_width_fail() {
 int main(int argc, char *argv[]) {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(maxpool2d_same_basic);
-  RUN_TEST_ALL_DATATYPES(maxpool2d_valid_basic);
-  RUN_TEST_ALL_DATATYPES(avgpool2d_same_basic);
-  RUN_TEST_ALL_DATATYPES(avgpool2d_valid_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(maxpool2d_same_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(maxpool2d_valid_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(avgpool2d_same_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(avgpool2d_valid_basic);
 
-  RUN_TEST_ALL_DATATYPES(maxpool2d_zero_strides);
-  RUN_TEST_ALL_DATATYPES(avgpool2d_zero_strides);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(maxpool2d_zero_strides);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(avgpool2d_zero_strides);
 
   // Tests to confirm we get the expected condition codes from the NNPA.
   // Technically these don't test our library. However we document these
   // in our API. These tests should fail if hardware changes the underlying
   // conditions meaning we need to update our documentation (and tests).
   {
-    RUN_TEST_ALL_DATATYPES(maxpool2d_unexpected_padding_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_unexpected_padding_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(maxpool2d_unexpected_padding_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(avgpool2d_unexpected_padding_fail);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_zero_strides_max_kernel_dims_pass);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_zero_strides_max_kernel_height_fail);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_zero_strides_max_kernel_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_zero_strides_max_kernel_dims_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_zero_strides_max_kernel_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_zero_strides_max_kernel_width_fail);
 
-    RUN_TEST_ALL_DATATYPES(avgpool2d_zero_strides_max_kernel_dims_pass);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_zero_strides_max_kernel_height_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_zero_strides_max_kernel_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_zero_strides_max_kernel_dims_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_zero_strides_max_kernel_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_zero_strides_max_kernel_width_fail);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_kernel_valid_padding_pass);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_kernel_same_padding_pass);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_kernel_valid_padding_pass);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_kernel_same_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_kernel_valid_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_kernel_same_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_kernel_valid_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_kernel_same_padding_pass);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_kernel_valid_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_kernel_same_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_kernel_valid_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_kernel_same_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_kernel_valid_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_kernel_same_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_kernel_valid_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_kernel_same_padding_height_fail);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_kernel_valid_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_kernel_same_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_kernel_valid_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_kernel_same_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_kernel_valid_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_kernel_same_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_kernel_valid_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_kernel_same_padding_width_fail);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_stride_valid_padding_pass);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_stride_same_padding_pass);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_stride_valid_padding_pass);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_stride_same_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_stride_valid_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_stride_same_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_stride_valid_padding_pass);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_stride_same_padding_pass);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_stride_valid_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_stride_same_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_stride_valid_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_stride_same_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_stride_valid_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_stride_same_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_stride_valid_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_stride_same_padding_height_fail);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_stride_valid_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_max_stride_same_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_stride_valid_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_max_stride_same_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_stride_valid_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_max_stride_same_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_stride_valid_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_max_stride_same_padding_width_fail);
 
-    RUN_TEST_ALL_DATATYPES(
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
         maxpool2d_non_zero_strides_valid_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_non_zero_strides_same_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_non_zero_strides_same_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
         avgpool2d_non_zero_strides_valid_padding_height_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_non_zero_strides_same_padding_height_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_non_zero_strides_same_padding_height_fail);
 
-    RUN_TEST_ALL_DATATYPES(maxpool2d_non_zero_strides_valid_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(maxpool2d_non_zero_strides_same_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_non_zero_strides_valid_padding_width_fail);
-    RUN_TEST_ALL_DATATYPES(avgpool2d_non_zero_strides_same_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_non_zero_strides_valid_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        maxpool2d_non_zero_strides_same_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_non_zero_strides_valid_padding_width_fail);
+    RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+        avgpool2d_non_zero_strides_same_padding_width_fail);
   }
 
   return UNITY_END();

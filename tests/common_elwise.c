@@ -245,8 +245,6 @@ void test_elwise_api_1_input(uint32_t *shape, zdnn_data_layouts layout,
   zdnn_ztensor *output_ztensor = alloc_ztensor_with_values(
       shape, layout, test_datatype, NO_CONCAT, true, ZERO_ARRAY);
 
-#ifdef TEST_AIU // Test requires AIU
-
   // calculate number of values in each tensor buffer for helper function
   uint64_t num_elements = get_num_elements(output_ztensor, ELEMENTS_PRE);
 
@@ -259,7 +257,7 @@ void test_elwise_api_1_input(uint32_t *shape, zdnn_data_layouts layout,
   switch (function_code) {
   case NNPA_LOG:
     strcpy(api_method, "zdnn_log");
-    // Use public zDNN method to make NNPA call to AIU
+    // Use public zDNN method to make NNPA call to zAIU
     status = zdnn_log(input_ztensor, output_ztensor);
 
     // fill expected_values array with calculated expected values using
@@ -268,7 +266,7 @@ void test_elwise_api_1_input(uint32_t *shape, zdnn_data_layouts layout,
     break;
   case NNPA_EXP:
     strcpy(api_method, "zdnn_exp");
-    // Use public zDNN method to make NNPA call to AIU
+    // Use public zDNN method to make NNPA call to zAIU
     status = zdnn_exp(input_ztensor, output_ztensor);
 
     // fill expected_values array with calculated expected values using
@@ -288,7 +286,6 @@ void test_elwise_api_1_input(uint32_t *shape, zdnn_data_layouts layout,
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values(output_ztensor, false, expected_values);
   }
-#endif
 
   // Cleanup test tensor buffers
   free_ztensor_buffers(2, input_ztensor, output_ztensor);
@@ -317,8 +314,6 @@ void test_elwise_api_2_inputs_adv(uint32_t *shape, zdnn_data_layouts layout,
   zdnn_ztensor *output_ztensor = alloc_ztensor_with_values(
       shape, layout, type, NO_CONCAT, true, ZERO_ARRAY);
 
-#ifdef TEST_AIU // Test requires AIU
-
   // calculate number of values in each tensor buffer for helper function
   uint64_t num_elements = get_num_elements(output_ztensor, ELEMENTS_PRE);
 
@@ -328,7 +323,7 @@ void test_elwise_api_2_inputs_adv(uint32_t *shape, zdnn_data_layouts layout,
   char api_method[AIU_METHOD_STR_LENGTH];
   zdnn_status status = GENERAL_TESTCASE_FAILURE;
 
-  // Use public zDNN method to make NNPA call to AIU
+  // Use public zDNN method to make NNPA call to zAIU
   // then fill expected_values array with calculated expected values using
   // helper function if we expect to succeed.  Otherwise don't bother.
 #define CASE(func_code, func_name)                                             \
@@ -359,7 +354,6 @@ void test_elwise_api_2_inputs_adv(uint32_t *shape, zdnn_data_layouts layout,
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values(output_ztensor, false, expected_values);
   }
-#endif
 
   // Cleanup test tensor buffers
   free_ztensor_buffers(3, input1_ztensor, input2_ztensor, output_ztensor);

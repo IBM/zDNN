@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,12 +29,9 @@
 //          https://en.wikipedia.org/wiki/Softmax_function
 // -----------------------------------------------------------------------------
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 /**
  * zdnn_softmax_test
@@ -72,11 +69,9 @@ void zdnn_softmax_test(uint32_t *shape, zdnn_data_layouts layout, float *input,
       "but expected %08x\n",
       act_func, status, expected_status);
 
-#ifdef TEST_AIU
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values(output_ztensor, false, expected_values);
   }
-#endif
 
   zdnn_reset_ztensor(output_ztensor);
 
@@ -91,11 +86,10 @@ void zdnn_softmax_test(uint32_t *shape, zdnn_data_layouts layout, float *input,
       "work_area returned status %08x but expected %08x\n",
       act_func, status, expected_status);
 
-#ifdef TEST_AIU
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values(output_ztensor, false, expected_values);
   }
-#endif
+
   free_aligned_4k(self_workarea);
   free_ztensor_buffers(2, input_ztensor, output_ztensor);
 }
@@ -457,10 +451,10 @@ void zdnn_softmax_balanced_3ds_large() {
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(zdnn_softmax_basic_3ds);
-  RUN_TEST_ALL_DATATYPES(zdnn_softmax_basic_3ds_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_softmax_balanced_3ds);
-  RUN_TEST_ALL_DATATYPES(zdnn_softmax_negative_3ds);
-  RUN_TEST_ALL_DATATYPES(zdnn_softmax_balanced_3ds_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_softmax_basic_3ds);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_softmax_basic_3ds_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_softmax_balanced_3ds);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_softmax_negative_3ds);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_softmax_balanced_3ds_large);
   return UNITY_END();
 }
