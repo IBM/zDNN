@@ -34,9 +34,6 @@ void test_pool_function(nnpa_function_code function_code, uint32_t *input_shape,
                         bool repeat_first_expected_value,
                         float *expected_values) {
 
-// Test requires AIU
-#ifdef TEST_AIU
-
   // Create input and output ztensors
   zdnn_ztensor *input_ztensor = alloc_ztensor_with_values(
       input_shape, input_layout, test_datatype, NO_CONCAT,
@@ -98,5 +95,4 @@ void test_pool_function(nnpa_function_code function_code, uint32_t *input_shape,
 
   // Cleanup test ztensors
   free_ztensor_buffers(2, input_ztensor, output_ztensor);
-#endif
 }

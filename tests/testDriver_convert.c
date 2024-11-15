@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,6 +71,10 @@ typedef
 __attribute__((packed))
 #endif
 midfloat_str;
+
+// skip performing saturation for all convert tests using this function
+void (*saturate_func)(const vec_float32 *, const vec_float32 *, vec_float32 *,
+                      vec_float32 *) = &skip_saturate_fp32_to_dlf16;
 
 // expected_data_str structure with a union to
 // allow us to convert individual values then compare as
@@ -174,8 +178,9 @@ int convert_and_compare(zdnn_data_types in_type, int numvalues,
 
   // call convert_data to convert/stickify the original data
   LOG_DEBUG("Calling convert_data_format", NO_ARG);
-  int converted_cnt = convert_data_format(
-      fixeddata, in_type, converted_DLF_data, ZDNN_DLFLOAT16, numvalues);
+  int converted_cnt =
+      convert_data_format(fixeddata, in_type, converted_DLF_data,
+                          ZDNN_DLFLOAT16, numvalues, saturate_func);
   if (converted_cnt != numvalues) {
     LOG_DEBUG("convert_data (to DLF) did not return proper result (%d != %d)",
               converted_cnt, numvalues);
@@ -258,9 +263,9 @@ int convert_and_compare(zdnn_data_types in_type, int numvalues,
   int orig_data_size = numvalues * get_data_type_size(in_type);
 
   LOG_DEBUG("call convert_data", NO_ARG);
-  int converted_cnt2 =
-      convert_data_format(converted_DLF_data, ZDNN_DLFLOAT16,
-                          converted_orig_data, in_type, numvalues);
+  int converted_cnt2 = convert_data_format(converted_DLF_data, ZDNN_DLFLOAT16,
+                                           converted_orig_data, in_type,
+                                           numvalues, saturate_func);
   if (converted_cnt2 != numvalues) {
     LOG_DEBUG("converted count (to_orig) did not match actual (%d != %d)",
               converted_cnt2, numvalues);
@@ -350,53 +355,17 @@ void test_16_DLF(zdnn_data_types type, int count) {
                       "Converted and expected areas did not match");
 }
 
-void test_FP16_DLF_1() {
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE(
-      "when ZDNN_CONFIG_NO_NNPA is set FP16<->DLFLOAT16 is noop");
-#endif
-  test_16_DLF(FP16, 1);
-}
+void test_FP16_DLF_1() { test_16_DLF(FP16, 1); }
 
-void test_FP16_DLF_7() {
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE(
-      "when ZDNN_CONFIG_NO_NNPA is set FP16<->DLFLOAT16 is noop");
-#endif
-  test_16_DLF(FP16, 7);
-}
+void test_FP16_DLF_7() { test_16_DLF(FP16, 7); }
 
-void test_FP16_DLF_8() {
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE(
-      "when ZDNN_CONFIG_NO_NNPA is set FP16<->DLFLOAT16 is noop");
-#endif
-  test_16_DLF(FP16, 8);
-}
+void test_FP16_DLF_8() { test_16_DLF(FP16, 8); }
 
-void test_FP16_DLF_9() {
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE(
-      "when ZDNN_CONFIG_NO_NNPA is set FP16<->DLFLOAT16 is noop");
-#endif
-  test_16_DLF(FP16, 9);
-}
+void test_FP16_DLF_9() { test_16_DLF(FP16, 9); }
 
-void test_FP16_DLF_63() {
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE(
-      "when ZDNN_CONFIG_NO_NNPA is set FP16<->DLFLOAT16 is noop");
-#endif
-  test_16_DLF(FP16, 63);
-}
+void test_FP16_DLF_63() { test_16_DLF(FP16, 63); }
 
-void test_FP16_DLF_64() {
-#ifdef ZDNN_CONFIG_NO_NNPA
-  TEST_IGNORE_MESSAGE(
-      "when ZDNN_CONFIG_NO_NNPA is set FP16<->DLFLOAT16 is noop");
-#endif
-  test_16_DLF(FP16, 64);
-}
+void test_FP16_DLF_64() { test_16_DLF(FP16, 64); }
 
 void test_BFLOAT_DLF_1() { test_16_DLF(BFLOAT, 1); }
 
@@ -410,12 +379,8 @@ void test_BFLOAT_DLF_63() { test_16_DLF(BFLOAT, 63); }
 
 void test_BFLOAT_DLF_64() { test_16_DLF(BFLOAT, 64); }
 
-// cppcheck-suppress 	unusedFunction
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-// cppcheck-suppress 	unusedFunction
 void tearDown(void) {}
 
 int main() {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
 
   tol_bfloat.ulps = 64;
   tol_bfloat.epsilon_mult = (0.1 / EPSILON_BFLOAT) + 1;
@@ -34,8 +34,7 @@ void setUp(void) { /* This is run before EACH TEST */
   VERIFY_HW_ENV;
 }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 /**
  * Helper function to compute expected output tensor from randomly generated
@@ -100,9 +99,6 @@ void do_test(uint32_t *input_a_shape, uint32_t *input_b_shape,
   zdnn_ztensor *output_ztensor = alloc_ztensor_with_values(
       output_shape, ZDNN_NHWC, dtype, NO_CONCAT, true, ZERO_ARRAY);
 
-// Test requires AIU
-#ifdef TEST_AIU
-
   // Call public NNPA method
   zdnn_status status = zdnn_batchnorm(input_a_ztensor, input_b_ztensor,
                                       input_c_ztensor, output_ztensor);
@@ -135,7 +131,6 @@ void do_test(uint32_t *input_a_shape, uint32_t *input_b_shape,
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values_adv(output_ztensor, false, expected_values, *tol);
   }
-#endif
 
   // Cleanup test ztensors
   free_ztensor_buffers(4, input_a_ztensor, input_b_ztensor, input_c_ztensor,
@@ -220,9 +215,9 @@ void zdnn_batchnorm_random_values_high_dims() {
 int main() {
 
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(zdnn_batchnorm_small_values);
-  RUN_TEST_ALL_DATATYPES(zdnn_batchnorm_high_values);
-  RUN_TEST_ALL_DATATYPES(zdnn_batchnorm_random_values_low_dims);
-  RUN_TEST_ALL_DATATYPES(zdnn_batchnorm_random_values_high_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_batchnorm_small_values);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_batchnorm_high_values);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_batchnorm_random_values_low_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_batchnorm_random_values_high_dims);
   return UNITY_END();
 }

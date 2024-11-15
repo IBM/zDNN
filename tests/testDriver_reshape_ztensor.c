@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,7 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 
@@ -97,6 +95,11 @@ void test(zdnn_data_layouts src_layout, uint32_t src_dim4, uint32_t src_dim3,
         status == ZDNN_OK, "zdnn_reshape_ztensor() failed, status = %08x",
         status);
 
+    TEST_ASSERT_MESSAGE(dest_ztensor.is_transformed == true,
+                        "zdnn_reshape_ztensor() was successful but "
+                        "did not set is_transformed properly for "
+                        "destination ztensor");
+
     uint64_t raw_offset = 0;
     uint64_t cnt = 0;
     for (uint32_t i = 0; i < dest_dim4; i++) {
@@ -146,6 +149,11 @@ void test(zdnn_data_layouts src_layout, uint32_t src_dim4, uint32_t src_dim3,
     TEST_ASSERT_MESSAGE_FORMATTED(exp_status == status,
                                   "expected status = %08x, got status = %08x",
                                   exp_status, status);
+
+    TEST_ASSERT_MESSAGE(
+        dest_ztensor.is_transformed == false,
+        "zdnn_reshape_ztensor() failed but set is_transformed improperly for "
+        "destination ztensor.");
   }
 
   free(raw_data);
@@ -276,13 +284,13 @@ void test_fail_dest_already_transformed() {
 int main(void) {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(test_4x5x6x7_4x5x6x7);
-  RUN_TEST_ALL_DATATYPES(test_1x2x3x4_6x1x1x4);
-  RUN_TEST_ALL_DATATYPES(test_2x3x4x68_4x1x6x68);
-  RUN_TEST_ALL_DATATYPES(test_4x3x40x70_8x20x3x70);
-  RUN_TEST_ALL_DATATYPES(test_4x4x4x4_1x1x16x16);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_4x5x6x7_4x5x6x7);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_1x2x3x4_6x1x1x4);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_2x3x4x68_4x1x6x68);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_4x3x40x70_8x20x3x70);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_4x4x4x4_1x1x16x16);
 
-  RUN_TEST_ALL_DATATYPES(test_fail_total_elements_mismatch);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_fail_total_elements_mismatch);
   RUN_TEST(test_fail_not_nhwc_nor_hwck);
   RUN_TEST(test_fail_not_same_layout);
   RUN_TEST(test_fail_src_not_transformed);

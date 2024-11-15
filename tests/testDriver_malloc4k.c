@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,7 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-}
+void setUp(void) {}
 
 void tearDown(void) {}
 

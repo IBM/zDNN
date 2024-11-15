@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,10 @@
 #define PATCH_NEWER(x) (x + 0x00000002)
 #define PATCH_OLDER(x) (x - 0x00000002)
 
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
+#ifndef VERSION_C_TEST
+  TEST_IGNORE_MESSAGE("VERSION_C_TEST required for test. Skipping.");
+#endif
   aiu_lib_vernum = AIU_UNKNOWN;
 }
 
@@ -242,7 +245,6 @@ void test_max_ver_hw_patch_newer() {
 
 int main(void) {
   UNITY_BEGIN();
-#ifdef VERSION_C_TEST
 
   RUN_TEST(hw_major_newer_fail);
   RUN_TEST(app_major_newer_fail);
@@ -277,6 +279,5 @@ int main(void) {
   RUN_TEST(test_max_ver_hw_minor_older);
   RUN_TEST(test_max_ver_hw_patch_newer);
 
-#endif
   return UNITY_END();
 }

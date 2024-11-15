@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,11 @@ char msg_warn[] = "WARN";
 char msg_error[] = "ERROR";
 char msg_fatal[] = "FATAL";
 
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
+#ifndef ZDNN_CONFIG_DEBUG
+  TEST_IGNORE_MESSAGE(
+      "ZDNN_CONFIG_DEBUG not set. Unable to test full logger. Skip tests.");
+#endif
 }
 
 void tearDown(void) {}
@@ -208,9 +212,6 @@ void test_not_in_logmodule() {
 int main(void) {
   UNITY_BEGIN();
 
-  // logger in full form only when ZDNN_CONFIG_DEBUG is on
-#ifdef ZDNN_CONFIG_DEBUG
-
   RUN_TEST(test_trace);
   RUN_TEST(test_debug);
   RUN_TEST(test_info);
@@ -222,8 +223,6 @@ int main(void) {
   RUN_TEST(test_in_logmodule);
   RUN_TEST(test_in_logmodule2);
   RUN_TEST(test_not_in_logmodule);
-
-#endif
 
   return UNITY_END();
 }

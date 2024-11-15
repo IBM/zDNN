@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,7 @@
 
 #include "common_elwise.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 /*
@@ -239,7 +237,7 @@ void api_sub_underflow() {
     ]]
   */
 
-  // when overflow/underflow happens, AIU sets range violation flag
+  // when overflow/underflow happens, zAIU sets range violation flag
 
   test_elwise_api_2_inputs_adv(shape, ZDNN_NHWC, FP32, input1_values,
                                input2_values, NNPA_SUB,
@@ -253,12 +251,12 @@ void api_sub_underflow() {
 }
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(api_sub_basic);
-  RUN_TEST_ALL_DATATYPES(api_sub_med_dims);
-  RUN_TEST_ALL_DATATYPES(api_sub_high_dims);
-  RUN_TEST_ALL_DATATYPES(api_sub_3D);
-  RUN_TEST_ALL_DATATYPES(api_sub_2D);
-  RUN_TEST_ALL_DATATYPES(api_sub_1D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_sub_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_sub_med_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_sub_high_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_sub_3D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_sub_2D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_sub_1D);
   RUN_TEST(api_sub_underflow);
 
   return UNITY_END();

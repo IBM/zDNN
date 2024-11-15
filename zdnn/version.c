@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #pragma export(zdnn_get_max_runnable_version)
 #endif
 
-// the latest "AIU hardware version" that this library can identify.
+// the latest "zAIU hardware version" that this library can identify.
 //
 // conceptually, this is latest zDNN library version number that the current hw
 // is capable of driving, based on all hw version/revision information this
@@ -35,7 +35,20 @@ uint32_t aiu_lib_vernum;
 // nnpa signature
 // -----------------------------------------------------------------------------
 
-aiu_hwinfo aiu_hwinfo_nnpa = {
+aiu_hwinfo aiu_hwinfo_telumii = {
+    {0x80, 0x00, 0xfc, 0x00, 0xf0, 0x00, 0x7c, 0x00, 0xf0, 0x00,
+     0xc0, 0x00, 0xc0, 0x00, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00,
+     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+     0xc0, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x82, 0xa0},
+    {0xe0, 0x00, 0x00, 0x01},
+    0x00008000,
+    0x0000000100000000,
+    {0x60, 0x00},
+    "telumii",
+    LIB_VERNUM(1, 1, 0)};
+
+aiu_hwinfo aiu_hwinfo_telumi = {
     {0x80, 0x00, 0xfc, 0x00, 0xc0, 0x00, 0x78, 0x00, 0x80, 0x00,
      0xc0, 0x00, 0xc0, 0x00, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00,
      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -45,13 +58,14 @@ aiu_hwinfo aiu_hwinfo_nnpa = {
     0x00008000,
     0x0000000100000000,
     {0x60, 0x00},
-    "nnpa",
+    "telumi",
     LIB_VERNUM(1, 0, 0)};
 
 // array of all known hw
 // ** put NEWER hw versions first !!! ***
 // ** MUST NULL TERMINATE !!! ***
-aiu_hwinfo *aiu_hwinfo_list[HWINFO_LIST_MAXSIZE] = {&aiu_hwinfo_nnpa, NULL};
+aiu_hwinfo *aiu_hwinfo_list[HWINFO_LIST_MAXSIZE] = {&aiu_hwinfo_telumii,
+                                                    &aiu_hwinfo_telumi, NULL};
 
 /// Check if the bits specified in "bitmask" are all 1s in the memory block
 /// "memblk" of size "size"
@@ -92,7 +106,7 @@ void refresh_aiu_lib_vernum() {
   while (*info && c < HWINFO_LIST_MAXSIZE) {
 
     // each aiu_hwinfo struct contains NNPA-QAF bitmasks and uint values of a
-    // known AIU hw.  so lets say we have x3 (newest), x2 and x1 (oldest)
+    // known zAIU hw.  so lets say we have x3 (newest), x2 and x1 (oldest)
     //
     // basically we look at the current NNPA-QAF result, and see if it:
     // - meets the bitmask requirements (so it can, e.g., do all the NNPA ops hw

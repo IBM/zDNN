@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,9 @@
 
 #include "common_pool.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 #define NON_EXISTENT_FORMAT -1
 #define NON_EXISTENT_DTYPE -1
@@ -51,10 +48,26 @@ void run_verify_pool_avg_max_tensors(
     input_ztensor->transformed_desc->type = NON_EXISTENT_DTYPE;
   }
 
+  func_sp_parm1_pool2d pool2d_parm1;
+  memset(&pool2d_parm1, 0, sizeof(func_sp_parm1_pool2d));
+  pool2d_parm1.pad = padding_type;
+  func_sp_parm2_pool2d pool2d_parm2;
+  memset(&pool2d_parm2, 0, sizeof(func_sp_parm2_pool2d));
+  pool2d_parm2.stride_width = stride_width;
+  func_sp_parm3_pool2d pool2d_parm3;
+  memset(&pool2d_parm3, 0, sizeof(func_sp_parm3_pool2d));
+  pool2d_parm3.stride_height = stride_height;
+  func_sp_parm4_pool2d pool2d_parm4;
+  memset(&pool2d_parm4, 0, sizeof(func_sp_parm4_pool2d));
+  pool2d_parm4.kernel_width = kernel_width;
+  func_sp_parm5_pool2d pool2d_parm5;
+  memset(&pool2d_parm5, 0, sizeof(func_sp_parm5_pool2d));
+  pool2d_parm5.kernel_height = kernel_height;
+
   // Make call to verify with our newly created ztensors and other inputs
   if ((status = verify_pool_avg_max_tensors(
-           input_ztensor, padding_type, kernel_height, kernel_width,
-           stride_height, stride_width, output_ztensor)) != expected_status) {
+           input_ztensor, &pool2d_parm1, &pool2d_parm2, &pool2d_parm3,
+           &pool2d_parm4, &pool2d_parm5, output_ztensor)) != expected_status) {
     TEST_FAIL_MESSAGE_FORMATTED(
         "Call to verify_pool_avg_max_tensors() returned zdnn_status %08x "
         "\"%s\" but we expected %08x \"%s\"",

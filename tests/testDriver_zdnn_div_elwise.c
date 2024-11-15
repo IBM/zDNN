@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,7 @@
 
 #include "common_elwise.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 /*
@@ -60,16 +58,13 @@ void api_div_basic() {
                            NNPA_DIV, ZDNN_OK);
 }
 
-// test to drive input tensors with 280 values in their buffer. All randomly
-// generated numbers in first input tensor will be greater than or equal to
-// those in the second input tensor to avoid negatives in the output tensor
+// test to drive input tensors with 280 values in their buffer
 void api_div_med_dims() {
 
   uint32_t shape[] = {1, 7, 10, 4};
   int num_io_buffer_values = shape[0] * shape[1] * shape[2] * shape[3];
 
   // Values in ZDNN_NHWC order
-
   float input1_values[num_io_buffer_values];
   gen_random_float_array(num_io_buffer_values, input1_values);
 
@@ -88,7 +83,6 @@ void api_div_high_dims() {
   int num_io_buffer_values = shape[0] * shape[1] * shape[2] * shape[3];
 
   // Values in ZDNN_NHWC order
-
   float input1_values[num_io_buffer_values];
   gen_random_float_array(num_io_buffer_values, input1_values);
 
@@ -206,11 +200,11 @@ void api_div_1D() {
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(api_div_basic);
-  RUN_TEST_ALL_DATATYPES(api_div_med_dims);
-  RUN_TEST_ALL_DATATYPES(api_div_high_dims);
-  RUN_TEST_ALL_DATATYPES(api_div_3D);
-  RUN_TEST_ALL_DATATYPES(api_div_2D);
-  RUN_TEST_ALL_DATATYPES(api_div_1D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_div_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_div_med_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_div_high_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_div_3D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_div_2D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_div_1D);
   return UNITY_END();
 }

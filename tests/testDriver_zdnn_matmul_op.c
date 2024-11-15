@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,8 +35,7 @@ void setUp(void) { /* This is run before EACH TEST */
   VERIFY_HW_ENV;
 }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 /**
  * Helper macro that given the indices and sizes of a multidimensional array
@@ -242,7 +241,6 @@ void do_test(uint32_t *input_a_shape, uint32_t *input_b_shape,
     print_matmul_array(s, m, p, "expected_values", expected_values);
   }
 
-#ifdef TEST_AIU
   fp_tolerance *tol = NULL;
 
   switch (output_ztensor->pre_transformed_desc->type) {
@@ -264,7 +262,6 @@ void do_test(uint32_t *input_a_shape, uint32_t *input_b_shape,
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values_adv(output_ztensor, false, expected_values, *tol);
   }
-#endif
 
   // All done--clean up the tensor buffers
   free_ztensor_buffers(4, input_a_ztensor, input_b_ztensor, input_bias_ztensor,
@@ -693,31 +690,42 @@ void zdnn_matmul_bcast_op_3x10x11_by_11x2() {
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_biasadd_3x3_by_3x3);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_biasadd_3x3_by_3x3_bigger_vals);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_biasadd_4x3_by_3x2);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_biasadd_3x10x11_by_3x11x2);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_greater);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_greater_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_not_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_lesser_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_lesser);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_bigger_vals_greater);
-  RUN_TEST_ALL_DATATYPES(
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_biasadd_3x3_by_3x3);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_biasadd_3x3_by_3x3_bigger_vals);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_biasadd_4x3_by_3x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_biasadd_3x10x11_by_3x11x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_greater);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_3x3_by_3x3_greater_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_3x3_by_3x3_not_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_3x3_by_3x3_lesser_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_lesser);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_3x3_by_3x3_bigger_vals_greater);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
       zdnn_matmul_compare_3x3_by_3x3_bigger_vals_greater_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_bigger_vals_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_bigger_vals_not_equal);
-  RUN_TEST_ALL_DATATYPES(
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_3x3_by_3x3_bigger_vals_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_3x3_by_3x3_bigger_vals_not_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
       zdnn_matmul_compare_3x3_by_3x3_bigger_vals_lesser_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_3x3_by_3x3_bigger_vals_lesser);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_greater);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_greater_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_not_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_lesser_equal);
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_lesser);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_3x3_by_3x3_bigger_vals_lesser);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_greater);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_4x3_by_3x2_greater_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_4x3_by_3x2_not_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      zdnn_matmul_compare_4x3_by_3x2_lesser_equal);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_compare_4x3_by_3x2_lesser);
 
-  RUN_TEST_ALL_DATATYPES(zdnn_matmul_bcast_op_3x10x11_by_11x2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_matmul_bcast_op_3x10x11_by_11x2);
   return UNITY_END();
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -207,7 +207,7 @@ zdnn_status verify_tensors(const zdnn_ztensor *input_a,
   return status;
 }
 
-/// Verifies the condition of lstm/gru activation tensors, wrt AIU's
+/// Verifies the condition of lstm/gru activation tensors, wrt zAIU's
 /// LSTM_ACT/GRU_ACT ops
 ///
 /// \param[in] mode             LSTM or GRU
@@ -504,17 +504,50 @@ zdnn_status verify_zdnn_lstm_or_gru_tensors(
 
 /// Verifies the condition of fused matmul bias add (broadcast) tensors.
 ///
-/// The following conditions are checked:
+/// The following conditions are checked against dims:
 ///
 ///  Matmul Op:
 ///  - The dimension-4-index-size of all input tensors and the output
 ///    tensor are not all equal.
 ///
-///  Matmul Bcast Op:
-///  - The dimension-4-index-size of input tensor 1 and output
+///  Matmul Bcast1 Op:
+///  - The dimension-4-index-size of input tensor 2, input tensor 3, and output
 ///    tensor are not equal.
-///  - The dimension-4-index-size of input tensor 2 and input 3 are not
+///  - The dimension-4-index-size of input tensor 1 is not equal to 1.
+///
+///  Matmul Bcast23 Op:
+///  - The dimension-4-index-size of input tensor 1 and output tensor are not
+///    equal.
+///  - The dimension-4-index-size of input tensor 2 and input tensor 3 are not
 ///    equal to 1.
+///
+/// The following conditions are checked against type and format:
+///
+///  Matmul Op:
+///  - The data type of the input tensors differs from the data type of
+///    the output tensor.
+///
+///  Quantized Matmul Op:
+///  - The format of the input tensor 1 is not ZDNN_FORMAT_4DFEATURE.
+///  - The data type of the input tensor 1 is not ZDNN_BINARY_INT8.
+///  - The format of the input tensor 2 is not ZDNN_FORMAT_4DWEIGHTS.
+///  - The data type of the input tensor 2 is not ZDNN_BINARY_INT8.
+///  - The data type of the input tensor 3 differs from the data type of
+///    the output tensor.
+///  - The format of the input tensor 3 differs from the format of the output
+///    tensor.
+///  - The data type of the input tensor 3 differs from the data type of
+///    the output tensor.
+///
+///  Quantized Matmul Op (on-the-fly):
+///  - The format of the input tensor 2 is not ZDNN_FORMAT_4DWEIGHTS.
+///  - The data type of the input tensor 2 is not ZDNN_BINARY_INT8.
+///  - The data type of the input tensor 3 differs from the data type of
+///    the output tensor.
+///  - The format of the input tensor 1 differs from the format of input tensor
+///    3 or the output tensor.
+///  - The data type of the input tensor 1 differs from the data type of input
+///    tensor 3 or the output tensor.
 ///
 ///  Common:
 ///  - The dimension-3-index-size of all input tensors and the output
@@ -532,25 +565,37 @@ zdnn_status verify_zdnn_lstm_or_gru_tensors(
 ///    the output tensor.
 ///
 /// \param[in] uint8_t function_code,
-///                   NNPA_MATMUL_OP or NNPA_MATMUL_OP_BCAST23
+///                    NNPA_MATMUL_OP, NNPA_MATMUL_OP_BCAST1, or
+///                    NNPA_MATMUL_OP_BCAST23
 /// \param[in] input_a The first input tensor
 /// \param[in] input_b The second input tensor
 /// \param[in] input_c The third input tensor
+/// \param[in] transpose_control Transpose control for first and second inputs
+/// \param[in] a_offset Offset for input_a
+/// \param[in] clip_min Clip min value
+/// \param[in] clip_max Clip max value
 /// \param[in] output output tensor
 ///
 /// \return ZDNN_OK
 ///         ZDNN_INVALID_SHAPE
 ///         ZDNN_INVALID_TYPE
 ///         ZDNN_INVALID_FORMAT
+///         ZDNN_INVALID_SCALE
+///         ZDNN_INVALID_OFFSET
+///         ZDNN_INVALID_CLIPPING_VALUE
 ///
-static zdnn_status verify_matmul_op_common(uint8_t function_code,
-                                           const zdnn_ztensor *input_a,
-                                           const zdnn_ztensor *input_b,
-                                           const zdnn_ztensor *input_c,
-                                           const zdnn_ztensor *output) {
+zdnn_status verify_matmul_op_common(
+    uint8_t function_code, const zdnn_ztensor *input_a,
+    const zdnn_ztensor *input_b, const zdnn_ztensor *input_c,
+    const void *transpose_control, const void *a_scale, const void *a_offset,
+    const void *clip_min, const void *clip_max, const zdnn_ztensor *output) {
 
   zdnn_status status;
   zdnn_tensor_desc *input_a_tfrmd_desc = input_a->transformed_desc;
+  zdnn_tensor_desc *input_b_tfrmd_desc = input_b->transformed_desc;
+
+  func_sp_parm2_matmul *matmul_parm2 =
+      (func_sp_parm2_matmul *)transpose_control;
 
   // check shapes first
   // For matmul_op, all tensors must have the same number of stacks (dim4)
@@ -562,11 +607,22 @@ static zdnn_status verify_matmul_op_common(uint8_t function_code,
     // For matmul_bcast_op, input_a and output tensors must have the same
     // number of stacks (dim4) but input_b and input_c tensors must have a stack
     // dimension of 1 as they are broadcasted over each stack of the input.
-  } else {
+  } else if (function_code == NNPA_MATMUL_OP_BCAST23) {
     if ((status = VERIFY_DIM4(input_a_tfrmd_desc->dim4, output)) != ZDNN_OK) {
       return status;
     }
     if ((status = VERIFY_DIM4(1, input_b, input_c)) != ZDNN_OK) {
+      return status;
+    }
+    // For matmul_bcast1_op, input_b, input_c, and output tensors must have the
+    // same number of stacks (dim4) but input_a tensor must have a stack
+    // dimension of 1 as it is broadcasted over each stack of the input.
+  } else {
+    if ((status = VERIFY_DIM4(1, input_a)) != ZDNN_OK) {
+      return status;
+    }
+    if ((status = VERIFY_DIM4(input_b->transformed_desc->dim4, input_c,
+                              output)) != ZDNN_OK) {
       return status;
     }
   }
@@ -579,44 +635,134 @@ static zdnn_status verify_matmul_op_common(uint8_t function_code,
     return status;
   }
 
-  if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim2, output)) != ZDNN_OK) {
-    return status;
+  if (matmul_parm2->transpose_a) {
+    if (matmul_parm2->transpose_b) {
+      // transpose_a and transpose_b [n, m] * [p, n] + [p] = [m, p]
+      if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim1, output)) != ZDNN_OK) {
+        return status;
+      }
+
+      if ((status = VERIFY_DIM1(input_a_tfrmd_desc->dim2, input_b)) !=
+          ZDNN_OK) {
+        return status;
+      }
+
+      if ((status = VERIFY_DIM1(input_b_tfrmd_desc->dim2, input_c, output)) !=
+          ZDNN_OK) {
+        return status;
+      }
+    } else {
+      // transpose_a [n, m] * [n, p] + [p] = [m, p]
+      if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim1, output)) != ZDNN_OK) {
+        return status;
+      }
+
+      if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim2, input_b)) !=
+          ZDNN_OK) {
+        return status;
+      }
+
+      if ((status = VERIFY_DIM1(input_b_tfrmd_desc->dim1, input_c, output)) !=
+          ZDNN_OK) {
+        return status;
+      }
+    }
+  } else if (matmul_parm2->transpose_b) {
+    // transpose_b [m, n] * [p, n] + [p] = [m, p]
+    if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim2, output)) != ZDNN_OK) {
+      return status;
+    }
+
+    if ((status = VERIFY_DIM1(input_a_tfrmd_desc->dim1, input_b)) != ZDNN_OK) {
+      return status;
+    }
+
+    if ((status = VERIFY_DIM1(input_b_tfrmd_desc->dim2, input_c, output)) !=
+        ZDNN_OK) {
+      return status;
+    }
+  } else {
+    // no transpose [m, n] * [n, p] + [p] = [m, p]
+    if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim2, output)) != ZDNN_OK) {
+      return status;
+    }
+
+    if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim1, input_b)) != ZDNN_OK) {
+      return status;
+    }
+
+    if ((status = VERIFY_DIM1(input_b_tfrmd_desc->dim1, input_c, output)) !=
+        ZDNN_OK) {
+      return status;
+    }
   }
 
-  if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim1, input_b)) != ZDNN_OK) {
-    return status;
-  }
+  if (input_a_tfrmd_desc->type == ZDNN_DLFLOAT16 &&
+      input_b_tfrmd_desc->type == ZDNN_BINARY_INT8) {
 
-  if ((status = VERIFY_DIM1(input_b->transformed_desc->dim1, input_c,
-                            output)) != ZDNN_OK) {
-    return status;
+    func_sp_parm3_matmul *matmul_parm3 = (func_sp_parm3_matmul *)a_scale;
+
+    if ((matmul_parm3->rec_scale == 0) || (matmul_parm3->rec_scale == 0xFFFF) ||
+        (matmul_parm3->rec_scale == 0x7FFF)) {
+      return ZDNN_STATUS(ZDNN_INVALID_SCALE,
+                         "a_scale value must be a numeric non-zero value.",
+                         NO_ARG);
+    }
+
+    func_sp_parm4_matmul *matmul_parm4 = (func_sp_parm4_matmul *)a_offset;
+
+    if ((matmul_parm4->offset == 0xFFFF) || (matmul_parm4->offset == 0x7FFF)) {
+      return ZDNN_STATUS(ZDNN_INVALID_OFFSET,
+                         "a_offset value must be a numeric value.", NO_ARG);
+    }
+
+    func_sp_parm9_matmul *matmul_parm9 = (func_sp_parm9_matmul *)clip_min;
+    func_sp_parm10_matmul *matmul_parm10 = (func_sp_parm10_matmul *)clip_max;
+
+    if ((int8_t)matmul_parm9->clip_min >= (int8_t)matmul_parm10->clip_max) {
+      return ZDNN_STATUS(ZDNN_INVALID_CLIPPING_VALUE,
+                         "The minimum-clip value (%d) not less than the "
+                         "maximum-clip value (%d).",
+                         (int8_t)matmul_parm9->clip_min,
+                         (int8_t)matmul_parm10->clip_max);
+    }
   }
 
   // then check type and format
 
-  if ((status =
-           VERIFY_FIELDS(input_a_tfrmd_desc->type, input_a_tfrmd_desc->format,
-                         input_b, input_c, output)) != ZDNN_OK) {
-    return status;
+  // When input_b type is ZDNN_DLFLOAT16 the operation is a normal matmul,
+  // otherwise it is a quantized matmul.
+  if (input_b_tfrmd_desc->type == ZDNN_DLFLOAT16) {
+    if ((status =
+             VERIFY_FIELDS(input_a_tfrmd_desc->type, input_a_tfrmd_desc->format,
+                           input_b, input_c, output)) != ZDNN_OK) {
+      return status;
+    }
+  } else {
+    if (input_a_tfrmd_desc->type == ZDNN_DLFLOAT16) {
+      if ((status = VERIFY_FIELDS(ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE,
+                                  input_a)) != ZDNN_OK) {
+        return status;
+      }
+    } else {
+      if ((status = VERIFY_FIELDS(ZDNN_BINARY_INT8, ZDNN_FORMAT_4DFEATURE,
+                                  input_a)) != ZDNN_OK) {
+        return status;
+      }
+    }
+
+    if ((status = VERIFY_FIELDS(ZDNN_BINARY_INT8, ZDNN_FORMAT_4DWEIGHTS,
+                                input_b)) != ZDNN_OK) {
+      return status;
+    }
+
+    if ((status = VERIFY_FIELDS(ZDNN_DLFLOAT16, ZDNN_FORMAT_4DFEATURE, input_c,
+                                output)) != ZDNN_OK) {
+      return status;
+    }
   }
 
   return status;
-}
-
-zdnn_status verify_matmul_op_tensors(const zdnn_ztensor *input_a,
-                                     const zdnn_ztensor *input_b,
-                                     const zdnn_ztensor *input_c,
-                                     const zdnn_ztensor *output) {
-  return verify_matmul_op_common(NNPA_MATMUL_OP, input_a, input_b, input_c,
-                                 output);
-}
-
-zdnn_status verify_matmul_bcast_op_tensors(const zdnn_ztensor *input_a,
-                                           const zdnn_ztensor *input_b,
-                                           const zdnn_ztensor *input_c,
-                                           const zdnn_ztensor *output) {
-  return verify_matmul_op_common(NNPA_MATMUL_OP_BCAST23, input_a, input_b,
-                                 input_c, output);
 }
 
 /// Verifies the condition of input and output tensors for batchnorm operation.
@@ -679,15 +825,253 @@ zdnn_status verify_batchnorm_tensors(const zdnn_ztensor *input_a,
   return status;
 }
 
+/// Verifies the condition of input and output tensors for norm operation.
+///
+/// The following conditions are checked:
+///
+//   -  The 4th dimension is the same for all specified ztensors
+///  -  The 3rd dimension is 1 for all input/output ztensors
+///  -  The 2nd dimension is the same for all specified ztensors
+///  -  The 1st dimension is the same for both input ztensors
+//   -  The 1st dimension is 1 for the output ztensor
+///
+/// \param[in] input_a The first input tensor
+/// \param[in] input_b The second input tensor
+/// \param[in] output output tensor
+///
+/// \return ZDNN_OK
+///         ZDNN_INVALID_SHAPE
+///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_FORMAT
+///
+zdnn_status verify_norm_tensors(const zdnn_ztensor *input_a,
+                                const zdnn_ztensor *input_b,
+                                const zdnn_ztensor *output) {
+
+  zdnn_status status;
+  zdnn_tensor_desc *input_tfrmd_desc = input_a->transformed_desc;
+
+  // Ensure the dim-4 index size of all specified tensors are the same.
+  if ((status = VERIFY_DIM4(input_tfrmd_desc->dim4, input_b, output)) !=
+      ZDNN_OK) {
+    return status;
+  }
+
+  // Ensure 3rd dimension is 1 for all input/output ztensors
+  if ((status = VERIFY_DIM3(1, input_a, input_b, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  // Ensure the dim-2 index size of all specified tensors are the same.
+  if ((status = VERIFY_DIM2(input_tfrmd_desc->dim2, input_b, output)) !=
+      ZDNN_OK) {
+    return status;
+  }
+
+  // Ensure 1st dimension is the same for both input ztensors
+  if ((status = VERIFY_DIM1(input_tfrmd_desc->dim1, input_b)) != ZDNN_OK) {
+    return status;
+  }
+
+  // Ensures 1st dimension is 1 for output ztensor
+  if ((status = VERIFY_DIM1(1, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  // data type/format of inputb and output should match input1's
+  if ((status = VERIFY_FIELDS(input_tfrmd_desc->type, input_tfrmd_desc->format,
+                              input_b, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  return status;
+}
+
+zdnn_status verify_moments_tensors(const zdnn_ztensor *input_a,
+                                   const void *bessel_correction_type,
+                                   zdnn_ztensor *output_a,
+                                   zdnn_ztensor *output_b) {
+
+  zdnn_status status;
+
+  func_sp_parm1_moments *moments_parm1 =
+      (func_sp_parm1_moments *)bessel_correction_type;
+
+  // The data-layout format and data type of all specified tensors
+  // must be the same.
+  zdnn_tensor_desc *input_a_tfrmd_desc = input_a->transformed_desc;
+  if ((status =
+           VERIFY_FIELDS(input_a_tfrmd_desc->type, input_a_tfrmd_desc->format,
+                         output_a, output_b)) != ZDNN_OK) {
+    return status;
+  }
+
+  // The value of FSP 1 must be either zero or one
+  if ((moments_parm1->bessel_correction > 1)) {
+    return ZDNN_INVALID_BESSEL_CORRECTION;
+  }
+
+  // If value of FSP 1 is one, then the total number of elements of input 1 must
+  // be greater than one.
+  if (moments_parm1->bessel_correction == MOMENTS_BESSEL_SAMPLE) {
+    if ((input_a_tfrmd_desc->dim3 == 1) && (input_a_tfrmd_desc->dim2 == 1) &&
+        (input_a_tfrmd_desc->dim1 == 1)) {
+      return ZDNN_INVALID_BESSEL_CORRECTION;
+    }
+  }
+
+  // Dimension-3 index size of output tensor 1 and 2 must be one
+  if ((status = VERIFY_DIM3(1, output_a, output_b)) != ZDNN_OK) {
+    return status;
+  }
+
+  // Dimension-2 index size of output tensor 1 and 2 must be one
+  if ((status = VERIFY_DIM2(1, output_a, output_b)) != ZDNN_OK) {
+    return status;
+  }
+
+  // Dimension-1 index size of output tensor 1 and 2 must be one
+  if ((status = VERIFY_DIM1(1, output_a, output_b)) != ZDNN_OK) {
+    return status;
+  }
+
+  // Dimension-4 index size of all specified tensors must be
+  // the same.
+  if ((status = VERIFY_DIM4(input_a_tfrmd_desc->dim4, output_a, output_b)) !=
+      ZDNN_OK) {
+    return status;
+  }
+
+  return status;
+}
+
+/// Verifies the condition of input and output tensors for layernorm
+/// operation.
+///
+/// The following conditions are checked:
+///
+/// - Ensure the dim-4 index size of all specified tensors are the same.
+/// - The dimension-1-index size of input tensor 1 must be the same as the
+///   corresponding i index size in output tensor 1.
+/// - The dimension-2-index size of input tensor 1 must be the same as the
+///   corresponding 2 index size in output tensor 1.
+/// - The dimension-3-index size of input tensor 1 must be the same as the
+///   corresponding 3 index size in output tensor 1.
+///
+/// - The dimension-1-index size of input tensor 2 must be the same as the
+///   corresponding i index size in input tensor 3.
+/// - The dimension-2-index size of input tensor 2 must be the same as the
+///   corresponding 2 index size in input tensor 3.
+/// - The dimension-3-index size of input tensor 2 must be the same as the
+///   corresponding 3 index size in input tensor 3.
+
+/// \param[in] input_a The first input tensor
+/// \param[in] input_b The second input tensor
+/// \param[in] input_c The third input tensor
+/// \param[in] beta The beta value
+/// \param[in] gamma The gamma value
+/// \param[in] epsilon The epsilon value
+/// \param[in] output output tensor
+///
+/// \return ZDNN_OK
+///         ZDNN_INVALID_SHAPE
+///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_FORMAT
+///
+zdnn_status verify_layernorm_tensors(const zdnn_ztensor *input_a,
+                                     const zdnn_ztensor *input_b,
+                                     const zdnn_ztensor *input_c,
+                                     const void *beta, const void *gamma,
+                                     const void *epsilon,
+                                     const zdnn_ztensor *output) {
+
+  func_sp_parm1_layernorm *layernorm_parm1 = (func_sp_parm1_layernorm *)beta;
+  func_sp_parm2_layernorm *layernorm_parm2 = (func_sp_parm2_layernorm *)gamma;
+  func_sp_parm3_layernorm *layernorm_parm3 = (func_sp_parm3_layernorm *)epsilon;
+
+  if ((layernorm_parm1->beta == 0xFFFF) || (layernorm_parm1->beta == 0x7FFF)) {
+    return ZDNN_STATUS(ZDNN_INVALID_BETA, "Beta value must be a numeric value.",
+                       NO_ARG);
+  }
+
+  if ((layernorm_parm2->gamma == 0xFFFF) ||
+      (layernorm_parm2->gamma == 0x7FFF)) {
+    return ZDNN_STATUS(ZDNN_INVALID_GAMMA,
+                       "Gamma value must be a numeric value.", NO_ARG);
+  }
+
+  if ((layernorm_parm3->epsilon == 0xFFFF) ||
+      (layernorm_parm3->epsilon == 0x7FFF)) {
+    return ZDNN_STATUS(ZDNN_INVALID_EPSILON,
+                       "Epsilon value must be a numeric value.", NO_ARG);
+  }
+
+  zdnn_status status;
+  zdnn_tensor_desc *input_a_tfrmd_desc = input_a->transformed_desc;
+
+  // Ensure the dim-4 index size of all specified tensors are the same.
+  if ((status = VERIFY_DIM4(input_a_tfrmd_desc->dim4, input_b, input_c,
+                            output)) != ZDNN_OK) {
+    return status;
+  }
+
+  // The dimension-1-index size of input tensor 1 must be the same as the
+  // corresponding i index size in output tensor 1.
+  if ((status = VERIFY_DIM1(input_a_tfrmd_desc->dim1, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  // The dimension-2-index size of input tensor 1 must be the same as the
+  // corresponding 2 index size in output tensor 1.
+  if ((status = VERIFY_DIM2(input_a_tfrmd_desc->dim2, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  // The dimension-3-index size of input tensor 1 must be the same as the
+  // corresponding 3 index size in output tensor 1.
+  if ((status = VERIFY_DIM3(input_a_tfrmd_desc->dim3, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  zdnn_tensor_desc *input_b_tfrmd_desc = input_b->transformed_desc;
+
+  // The dimension-1-index size of input tensor 2 must be the same as the
+  // corresponding i index size in input tensor 3.
+  if ((status = VERIFY_DIM1(input_b_tfrmd_desc->dim1, input_c)) != ZDNN_OK) {
+    return status;
+  }
+
+  // The dimension-2-index size of input tensor 2 must be the same as the
+  // corresponding 2 index size in input tensor 3.
+  if ((status = VERIFY_DIM2(input_b_tfrmd_desc->dim2, input_c)) != ZDNN_OK) {
+    return status;
+  }
+
+  // The dimension-3-index size of input tensor 2 must be the same as the
+  // corresponding 3 index size in input tensor 3.
+  if ((status = VERIFY_DIM3(input_b_tfrmd_desc->dim3, input_c)) != ZDNN_OK) {
+    return status;
+  }
+
+  // data type/format of input3 and output should match input1's
+  if ((status =
+           VERIFY_FIELDS(input_a_tfrmd_desc->type, input_a_tfrmd_desc->format,
+                         input_b, input_c, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  return status;
+}
+
 /// Verifies the condition of input and output tensors for average pool
 /// operation.
 ///
 /// \param[in] input input tensor
 /// \param[in] padding_type
-/// \param[in] kernel_height
-/// \param[in] kernel_width
-/// \param[in] stride_height
 /// \param[in] stride_width
+/// \param[in] stride_height
+/// \param[in] kernel_width
+/// \param[in] kernel_height
 /// \param[in] output output tensor
 ///
 /// \return ZDNN_OK
@@ -697,10 +1081,11 @@ zdnn_status verify_batchnorm_tensors(const zdnn_ztensor *input_a,
 ///         ZDNN_INVALID_STRIDE_PADDING
 ///         ZDNN_INVALID_STRIDES
 ///
-zdnn_status verify_pool_avg_max_tensors(
-    const zdnn_ztensor *input, zdnn_pool_padding padding_type,
-    uint32_t kernel_height, uint32_t kernel_width, uint32_t stride_height,
-    uint32_t stride_width, const zdnn_ztensor *output) {
+zdnn_status
+verify_pool_avg_max_tensors(const zdnn_ztensor *input, const void *padding_type,
+                            const void *stride_width, const void *stride_height,
+                            const void *kernel_width, const void *kernel_height,
+                            const zdnn_ztensor *output) {
 
   // Convenience variables used later
   zdnn_status status;
@@ -715,15 +1100,22 @@ zdnn_status verify_pool_avg_max_tensors(
 
   uint32_t expected_output_w_size, expected_output_h_size;
 
+  func_sp_parm1_pool2d *pool2d_parm1 = (func_sp_parm1_pool2d *)padding_type;
+  func_sp_parm2_pool2d *pool2d_parm2 = (func_sp_parm2_pool2d *)stride_width;
+  func_sp_parm3_pool2d *pool2d_parm3 = (func_sp_parm3_pool2d *)stride_height;
+  func_sp_parm4_pool2d *pool2d_parm4 = (func_sp_parm4_pool2d *)kernel_width;
+  func_sp_parm5_pool2d *pool2d_parm5 = (func_sp_parm5_pool2d *)kernel_height;
+
   LOG_DEBUG(
       "%s() - padding_type: %d, input_ztensor->transformed_desc shape: (%d, "
       "%d, %d, %d) (NHWC order), kernel_height: %d, kernel_width: %d, "
       "stride_height: %d, stride_width %d, output_ztensor->transformed_desc "
       "shape: (%d, %d, %d, %d) (NHWC order)",
-      __func__, padding_type, input->transformed_desc->dim4, input_h_size,
-      input_w_size, input->transformed_desc->dim1, kernel_height, kernel_width,
-      stride_height, stride_width, output->transformed_desc->dim4,
-      output_h_size, output_w_size, output->transformed_desc->dim1);
+      __func__, pool2d_parm1->pad, input->transformed_desc->dim4, input_h_size,
+      input_w_size, input->transformed_desc->dim1, pool2d_parm5->kernel_height,
+      pool2d_parm4->kernel_width, pool2d_parm3->stride_height,
+      pool2d_parm2->stride_width, output->transformed_desc->dim4, output_h_size,
+      output_w_size, output->transformed_desc->dim1);
 
   // check tensor shapes first
   if ((status = (VERIFY_DIM4(input_n_size, output) |
@@ -732,7 +1124,7 @@ zdnn_status verify_pool_avg_max_tensors(
   }
 
   // Check that input and output have the same type and format
-  // Note: If the output data type is invalid, the AIU may raise a
+  // Note: If the output data type is invalid, the zAIU may raise a
   // condition code before we'd reach this exception condition.
   if ((status = VERIFY_FIELDS(input->transformed_desc->type,
                               input->transformed_desc->format, output)) !=
@@ -741,18 +1133,18 @@ zdnn_status verify_pool_avg_max_tensors(
   }
 
   // Checks for when strides are 0
-  if (stride_width == 0 && stride_height == 0) {
-    if (input_w_size != kernel_width) {
+  if (pool2d_parm2->stride_width == 0 && pool2d_parm3->stride_height == 0) {
+    if (input_w_size != pool2d_parm4->kernel_width) {
       return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
                          "When strides are 0, the input tensor's width "
                          "(%d) and kernel_width (%d) must be equal.",
-                         input_w_size, kernel_width);
+                         input_w_size, pool2d_parm4->kernel_width);
     }
-    if (input_h_size != kernel_height) {
+    if (input_h_size != pool2d_parm5->kernel_height) {
       return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
                          "When strides are 0, the input tensor's height "
                          "(%d) and kernel_height (%d) must be equal.",
-                         input_h_size, kernel_height);
+                         input_h_size, pool2d_parm5->kernel_height);
     }
     if (output_w_size != 1 || output_h_size != 1) {
       return ZDNN_STATUS(ZDNN_INVALID_SHAPE,
@@ -760,7 +1152,7 @@ zdnn_status verify_pool_avg_max_tensors(
                          "(%d) and width (%d) must both be 1",
                          output_h_size, output_w_size);
     }
-    if (padding_type != VALID_PADDING) {
+    if (pool2d_parm1->pad != VALID_PADDING) {
       return ZDNN_STATUS(
           ZDNN_INVALID_STRIDE_PADDING,
           "When strides are 0, the padding_type must be VALID_PADDING", NO_ARG);
@@ -769,7 +1161,7 @@ zdnn_status verify_pool_avg_max_tensors(
     // We're following order as described in doc to make future comparing easier
     // so we can't just make this the final "else" condition. This boolean is an
     // XOR and will only be true if one (and only one) of these are nonzero.
-  } else if (!stride_width != !stride_height) {
+  } else if (!pool2d_parm2->stride_width != !pool2d_parm3->stride_height) {
     return ZDNN_STATUS(ZDNN_INVALID_STRIDES,
                        "When either stride is non-zero, then both strides "
                        "must be non-zero. Stride width (%d), Stride height "
@@ -778,32 +1170,34 @@ zdnn_status verify_pool_avg_max_tensors(
     // Checks for when strides are both nonzero
   } else {
     bool check_output_size = true;
-    switch (padding_type) {
+    switch (pool2d_parm1->pad) {
 
     case VALID_PADDING:
-      if (kernel_width > input_w_size) {
+      if (pool2d_parm4->kernel_width > input_w_size) {
         return ZDNN_STATUS(
             ZDNN_INVALID_SHAPE,
             "When VALID_PADDING is used, the the kernel_width (%d) "
             "must not be larger than the input tensor's width (%d) ",
-            kernel_width, input_w_size);
+            pool2d_parm4->kernel_width, input_w_size);
       }
-      if (kernel_height > input_h_size) {
+      if (pool2d_parm5->kernel_height > input_h_size) {
         return ZDNN_STATUS(
             ZDNN_INVALID_SHAPE,
             "When VALID_PADDING is used, the the kernel_height (%d) "
             "must not be larger than the input tensor's height (%d) ",
-            kernel_height, input_h_size);
+            pool2d_parm5->kernel_height, input_h_size);
       }
       expected_output_w_size =
-          CEIL(input_w_size - kernel_width + 1, stride_width);
+          CEIL(input_w_size - pool2d_parm4->kernel_width + 1,
+               pool2d_parm2->stride_width);
       expected_output_h_size =
-          CEIL(input_h_size - kernel_height + 1, stride_height);
+          CEIL(input_h_size - pool2d_parm5->kernel_height + 1,
+               pool2d_parm3->stride_height);
       break;
 
     case SAME_PADDING:
-      expected_output_w_size = CEIL(input_w_size, stride_width);
-      expected_output_h_size = CEIL(input_h_size, stride_height);
+      expected_output_w_size = CEIL(input_w_size, pool2d_parm2->stride_width);
+      expected_output_h_size = CEIL(input_h_size, pool2d_parm3->stride_height);
       break;
 
     default:
@@ -811,7 +1205,7 @@ zdnn_status verify_pool_avg_max_tensors(
       // so it isn't something we need to raise an error for here. However
       // without a type we can't know what to expect for the later output size
       // check. Instead we log a warning and will skip that check.
-      LOG_WARN("Not valid padding type (%d)", padding_type);
+      LOG_WARN("Not valid padding type (%d)", pool2d_parm1->pad);
       check_output_size = false;
       break;
     }
@@ -837,10 +1231,10 @@ zdnn_status verify_pool_avg_max_tensors(
 /// \param[in] input input tensor
 /// \param[in] kernel input kernel tensor
 /// \param[in] bias input bias tensor
-/// \param[in] pad_n_act padding type and act function in AIU's
+/// \param[in] pad_n_act padding type and act function in zAIU's
 ///                      function-specific-parameter-1 format
-/// \param[in] stride_height
 /// \param[in] stride_width
+/// \param[in] stride_height
 /// \param[in] output output tensor
 ///
 /// \return ZDNN_OK
@@ -850,12 +1244,12 @@ zdnn_status verify_pool_avg_max_tensors(
 ///         ZDNN_INVALID_STRIDE_PADDING
 ///         ZDNN_INVALID_STRIDES
 ///
-zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
-                                  const zdnn_ztensor *kernel,
-                                  const zdnn_ztensor *bias, uint32_t pad_n_act,
-                                  uint32_t stride_height, uint32_t stride_width,
-                                  uint32_t reserved_n_clipping,
-                                  const zdnn_ztensor *output) {
+zdnn_status
+verify_conv2d_tensors(const zdnn_ztensor *input, const zdnn_ztensor *kernel,
+                      const zdnn_ztensor *bias, const void *pad_n_act,
+                      const void *stride_width, const void *stride_height,
+                      const void *reserved_n_clipping,
+                      const zdnn_ztensor *output) {
 
   zdnn_status status;
 
@@ -865,8 +1259,11 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
                    *input_kernel_desc = kernel->transformed_desc,
                    *output_desc = output->transformed_desc;
 
-  func_sp_parm1_conv2d conv2d_parm1;
-  conv2d_parm1.val = pad_n_act;
+  func_sp_parm1_conv2d *conv2d_parm1 = (func_sp_parm1_conv2d *)pad_n_act;
+  func_sp_parm2_conv2d *conv2d_parm2 = (func_sp_parm2_conv2d *)stride_width;
+  func_sp_parm3_conv2d *conv2d_parm3 = (func_sp_parm3_conv2d *)stride_height;
+  func_sp_parm4_conv2d *conv2d_parm4 =
+      (func_sp_parm4_conv2d *)reserved_n_clipping;
 
   // The dimension-2, dimension-3, and dimension-4 index sizes of the input3
   // must be 1.
@@ -892,7 +1289,8 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
     return status;
   }
 
-  if (!stride_height && !stride_width) { // both zero
+  if (!conv2d_parm3->stride_height &&
+      !conv2d_parm2->stride_width) { // both zero
 
     // The input1 dimension-2-index-size must be equal to the
     // dimension-3-index-size of input2.
@@ -933,16 +1331,18 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
     }
 
     // The specified padding must be VALID
-    if (conv2d_parm1.bits.pad != VALID_PADDING) {
+    if (conv2d_parm1->pad != VALID_PADDING) {
       return ZDNN_STATUS(ZDNN_INVALID_STRIDE_PADDING,
                          "padding must be VALID_PADDING when both "
                          "stride_height (%d) and stride_width (%d) are zero",
-                         stride_height, stride_width);
+                         conv2d_parm3->stride_height,
+                         conv2d_parm2->stride_width);
     }
 
-  } else if (stride_height && stride_width) { // both > 0
+  } else if (conv2d_parm3->stride_height &&
+             conv2d_parm2->stride_width) { // both > 0
 
-    switch (conv2d_parm1.bits.pad) {
+    switch (conv2d_parm1->pad) {
     case VALID_PADDING:
       // the dimension-2-index-size of the input1 must be greater than or equal
       // to the dimension-3-index-size of input2.
@@ -968,26 +1368,28 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
 
       if ((status =
                VERIFY_DIM2(CEIL(input_desc->dim2 - input_kernel_desc->dim3 + 1,
-                                stride_width),
+                                conv2d_parm2->stride_width),
                            output) |
                VERIFY_DIM3(CEIL(input_desc->dim3 - input_kernel_desc->dim4 + 1,
-                                stride_height),
+                                conv2d_parm3->stride_height),
                            output)) != ZDNN_OK) {
 
         return status;
       }
       break;
     case SAME_PADDING:
-      if ((status = VERIFY_DIM2(CEIL(input_desc->dim2, stride_width), output) |
-                    VERIFY_DIM3(CEIL(input_desc->dim3, stride_height),
-                                output)) != ZDNN_OK) {
+      if ((status =
+               VERIFY_DIM2(CEIL(input_desc->dim2, conv2d_parm2->stride_width),
+                           output) |
+               VERIFY_DIM3(CEIL(input_desc->dim3, conv2d_parm3->stride_height),
+                           output)) != ZDNN_OK) {
         return status;
       }
       break;
     default:
       // keep going to the next check, the hardware will handle it with function
       // specific RC later
-      LOG_WARN("Not valid padding type (%d)", conv2d_parm1.bits.pad);
+      LOG_WARN("Not valid padding type (%d)", conv2d_parm1->pad);
       break;
     }
 
@@ -995,7 +1397,7 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
     return ZDNN_STATUS(ZDNN_INVALID_STRIDES,
                        "either both stride_height (%d) and stride_width (%d) "
                        "must be non-zero or both be must be zero\n",
-                       stride_height, stride_width);
+                       conv2d_parm3->stride_height, conv2d_parm2->stride_width);
   }
 
   // data type/format of input3 and output should match input1's
@@ -1013,16 +1415,14 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
   }
 
   // If activation is set to RELU, check clipping value.
-  if (conv2d_parm1.bits.act == CONV2D_ACT_RELU) {
-    func_sp_parm4_conv2d conv2d_parm4;
-    conv2d_parm4.val = reserved_n_clipping;
+  if (conv2d_parm1->act == CONV2D_ACT_RELU) {
     // Clipping value cannot be negative.
-    if (conv2d_parm4.bits.clipping_value & 0x8000) {
+    if (conv2d_parm4->clipping_value & 0x8000) {
       return ZDNN_STATUS(ZDNN_INVALID_CLIPPING_VALUE,
                          "Clipping value cannot be negative.", NO_ARG);
     }
     // Clipping value cannot be NINF+
-    if (conv2d_parm4.bits.clipping_value == 0x7FFF) {
+    if (conv2d_parm4->clipping_value == 0x7FFF) {
       return ZDNN_STATUS(ZDNN_INVALID_CLIPPING_VALUE,
                          "Conversion of clipping value unsuccessful.", NO_ARG);
     }
@@ -1034,8 +1434,10 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
 /// Verifies the condition of input and output tensors for relu operation.
 ///
 /// \param[in] input input tensor
-/// \param[in] reserved_n_clipping reserved and clipping value in AIU's
+/// \param[in] reserved_n_clipping reserved and clipping value in zAIU's
 ///                                function-specific-parameter-1 format
+/// \param[in] reserved_n_adjustment reserved and adjustment factor in zAIU's
+///                                  function-specific-parameter-2 format
 /// \param[in] output output tensor
 ///
 /// \return ZDNN_OK
@@ -1043,9 +1445,11 @@ zdnn_status verify_conv2d_tensors(const zdnn_ztensor *input,
 ///         ZDNN_INVALID_TYPE
 ///         ZDNN_INVALID_FORMAT
 ///         ZDNN_INVALID_CLIPPING_VALUE
+///         ZDNN_INVALID_ADJUSTMENT_FACTOR
 ///
 zdnn_status verify_relu_tensors(const zdnn_ztensor *input,
-                                uint32_t reserved_n_clipping,
+                                const void *reserved_n_clipping,
+                                const void *reserved_n_adjustment,
                                 const zdnn_ztensor *output) {
 
   zdnn_status status;
@@ -1054,17 +1458,160 @@ zdnn_status verify_relu_tensors(const zdnn_ztensor *input,
     return status;
   }
 
-  func_sp_parm1_relu relu_parm1;
-  relu_parm1.val = reserved_n_clipping;
+  func_sp_parm1_relu *relu_parm1 = (func_sp_parm1_relu *)reserved_n_clipping;
   // Clipping value cannot be negative.
-  if (relu_parm1.bits.clipping_value & 0x8000) {
+  if (relu_parm1->clipping_value & 0x8000) {
     return ZDNN_STATUS(ZDNN_INVALID_CLIPPING_VALUE,
                        "Clipping value cannot be negative.", NO_ARG);
   }
   // Clipping value cannot be NINF+
-  if (relu_parm1.bits.clipping_value == 0x7FFF) {
+  if (relu_parm1->clipping_value == 0x7FFF) {
     return ZDNN_STATUS(ZDNN_INVALID_CLIPPING_VALUE,
                        "Conversion of clipping value unsuccessful.", NO_ARG);
+  }
+
+  func_sp_parm2_relu *relu_parm2 = (func_sp_parm2_relu *)reserved_n_adjustment;
+  // Adjustment factor cannot be negative.
+  if (relu_parm2->adjustment_factor & 0x8000) {
+    return ZDNN_STATUS(ZDNN_INVALID_ADJUSTMENT_FACTOR,
+                       "Adjustment factor cannot be negative.", NO_ARG);
+  }
+  // Adjustment factor cannot be NINF+
+  if (relu_parm2->adjustment_factor == 0x7FFF) {
+    return ZDNN_STATUS(ZDNN_INVALID_ADJUSTMENT_FACTOR,
+                       "Conversion of adjustment factor unsuccessful.", NO_ARG);
+  }
+  // Adjustment factor cannot be greater than 1.
+  if (relu_parm2->adjustment_factor > 0x3E00) {
+    return ZDNN_STATUS(ZDNN_INVALID_ADJUSTMENT_FACTOR,
+                       "Adjustment factor cannot be greater than 1.", NO_ARG);
+  }
+
+  return ZDNN_STATUS_OK;
+}
+
+/// Verifies the condition of input and output tensors for invsqrt operation.
+///
+/// \param[in] input input tensor
+/// \param[in] reserved_n_epsilon reserved and epsilon value in zAIU's
+///                               function-specific-parameter-1 format
+/// \param[in] output output tensor
+///
+/// \return ZDNN_OK
+///         ZDNN_INVALID_SHAPE
+///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_FORMAT
+///         ZDNN_INVALID_EPSILON
+///
+zdnn_status verify_invsqrt_tensors(const zdnn_ztensor *input,
+                                   const void *reserved_n_epsilon,
+                                   const zdnn_ztensor *output) {
+
+  zdnn_status status;
+
+  // The data-layout format and data type of all specified tensors
+  // must be the same.
+  zdnn_tensor_desc *input_tfrmd_desc = input->transformed_desc;
+  if ((status = VERIFY_FIELDS(input_tfrmd_desc->type, input_tfrmd_desc->format,
+                              output)) != ZDNN_OK) {
+    return status;
+  }
+
+  // Verify input and output dims are the same.
+  if ((status = verify_tensors(input, NULL, NULL, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  // Epsilon cannot be NINF- or NINF+
+  func_sp_parm1_invsqrt *invsqrt_parm1 =
+      (func_sp_parm1_invsqrt *)reserved_n_epsilon;
+  if ((invsqrt_parm1->epsilon == 0xFFFF) ||
+      (invsqrt_parm1->epsilon == 0x7FFF)) {
+    return ZDNN_STATUS(ZDNN_INVALID_EPSILON,
+                       "Conversion of epsilon unsuccessful.", NO_ARG);
+  }
+
+  return ZDNN_STATUS_OK;
+}
+
+zdnn_status verify_transform_tensors(const zdnn_ztensor *input,
+                                     const zdnn_ztensor *output,
+                                     const void *toc, const void *min_clipping,
+                                     const void *max_clipping) {
+  zdnn_status status;
+  if ((status = VERIFY_ALL_DIMS(
+           input->transformed_desc->dim4, input->transformed_desc->dim3,
+           input->transformed_desc->dim2, input->transformed_desc->dim1,
+           output)) != ZDNN_OK) {
+    return status;
+  }
+
+  func_sp_parm1_transform *transform_parm1 = (func_sp_parm1_transform *)toc;
+  func_sp_parm4_transform *transform_parm4 =
+      (func_sp_parm4_transform *)min_clipping;
+  func_sp_parm5_transform *transform_parm5 =
+      (func_sp_parm5_transform *)max_clipping;
+
+  if (transform_parm1->toc == NNPA_TOC_STICK_INT8) {
+    if ((int8_t)transform_parm4->clip_min >=
+        (int8_t)transform_parm5->clip_max) {
+      return ZDNN_STATUS(ZDNN_INVALID_CLIPPING_VALUE,
+                         "The minimum-clip value (%d) not less than the "
+                         "maximum-clip value (%d).",
+                         (int8_t)transform_parm4->clip_min,
+                         (int8_t)transform_parm5->clip_max);
+    }
+  }
+
+  return ZDNN_STATUS_OK;
+}
+
+zdnn_status verify_reduce_tensors(const zdnn_ztensor *input,
+                                  const zdnn_ztensor *output) {
+  zdnn_status status;
+  if ((status = VERIFY_DIM4(input->transformed_desc->dim4, output)) !=
+      ZDNN_OK) {
+    return status;
+  }
+  if ((status = VERIFY_DIM3(input->transformed_desc->dim3, output)) !=
+      ZDNN_OK) {
+    return status;
+  }
+  if ((status = VERIFY_DIM2(input->transformed_desc->dim2, output)) !=
+      ZDNN_OK) {
+    return status;
+  }
+  if ((status = VERIFY_DIM1(1, output)) != ZDNN_OK) {
+    return status;
+  }
+
+  if (input->transformed_desc->format != output->transformed_desc->format) {
+    return ZDNN_STATUS(
+        ZDNN_INVALID_FORMAT,
+        "Output tensor format is invalid (found %s (%d), expects %s (%d))",
+        get_data_format_str(input->transformed_desc->format),
+        input->transformed_desc->format,
+        get_data_format_str(ZDNN_FORMAT_4DFEATURE), ZDNN_FORMAT_4DFEATURE);
+  }
+
+  if (input->transformed_desc->type != ZDNN_DLFLOAT16) {
+    return ZDNN_STATUS(
+        ZDNN_INVALID_TYPE,
+        "Input tensor type is invalid (found %s (%d), expects %s (%d))",
+        get_data_type_str(input->transformed_desc->type),
+        input->transformed_desc->type, get_data_type_str(ZDNN_DLFLOAT16),
+        ZDNN_DLFLOAT16);
+  }
+
+  if (output->transformed_desc->type != ZDNN_DLFLOAT16 &&
+      output->transformed_desc->type != ZDNN_BINARY_INT32) {
+    return ZDNN_STATUS(ZDNN_INVALID_TYPE,
+                       "Output tensor type is invalid (found %s (%d), expects "
+                       "%s (%d) or %s (%d))",
+                       get_data_type_str(output->transformed_desc->type),
+                       output->transformed_desc->type,
+                       get_data_type_str(ZDNN_DLFLOAT16), ZDNN_DLFLOAT16,
+                       get_data_type_str(ZDNN_BINARY_INT32), ZDNN_BINARY_INT32);
   }
 
   return ZDNN_STATUS_OK;

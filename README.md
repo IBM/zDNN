@@ -2,31 +2,34 @@
 
 ## Contacts
 
-- Nicholas Marion (nmarion@us.ibm.com)
-- Andreas Krebbel (krebbel@linux.ibm.com)
+- Nicholas Marion (<nmarion@us.ibm.com>)
+- Andreas Krebbel (<krebbel@linux.ibm.com>)
+- Steven Jones (<sbj@us.ibm.com>)
 
 ## Version
-
-1.1.0
 
 ## Table of Contents <a id="TOC"></a>
 
 1. [Overview](#overview)
 2. [Environment](#environment)
-3. [Common Data Types and Structs](#common-types-and-structs)
+3. [Building zDNN](#building-and-installing-zdnn)
+4. [Common Data Types and Structs](#common-types-and-structs)
 
    - [Version Information](#common-version-info)
    - [zDNN zTensor](#common-ztensor)
      - [General zTensor Requirements](#gen-zten-reqs)
      - [Concatenated zTensor Requirements](#concat-zten-reqs)
+     - [Quantized zTensor Requirements](#quan-zten-reqs)
    - [zDNN Tensor Descriptors](#common-descriptors)
    - [zDNN Data Layouts](#common-layouts)
    - [zDNN Data Formats](#common-formats)
    - [zDNN Data Types](#common-types)
+   - [zDNN Quantized Transform Types](#quantized-transform-types)
    - [zDNN Statuses](#common-statuses)
 
-4. [Runtime Environment Variables](#env-vars)
-5. [API Reference](#api-reference)
+5. [Runtime Environment Variables](#env-vars)
+6. [Validating the Runtime Environment](#runtime-val)
+7. [API Reference](#api-reference)
 
    - [Support Functions](#support-functions)
    - [Data Transformation](#data-transformation)
@@ -37,6 +40,8 @@
      - [Normalization](#norm-ops)
      - [Matmul with Operation](#zdnn_matmul_op)
      - [Matmul Broadcast with Operation](#zdnn_matmul_bcast_op)
+     - [Matmul Transpose with Operation](#zdnn_matmul_transpose_op)
+     - [Quantized Matmul Operation](#zdnn_quantized_matmul_op)
      - [LSTM](#zdnn_lstm)
      - [GRU](#zdnn_gru)
      - [Average Pool 2D](#zdnn_avgpool2d)
@@ -45,7 +50,7 @@
 
    - [Convenience Functions](#convenience-functions)
 
-6. [Usage Examples](#usage-examples)
+8. [Usage Examples](#usage-examples)
 
 ## Overview
 
@@ -63,15 +68,16 @@ enablement technology provided by IBM to meet the following requirements:
   tensor to enhance the performance characteristics of the operations. zDNN will
   format the tensor appropriately on behalf of the caller, and it will do so
   using an optimized approach.
-- For deep learning operations, zAIU requires the use of an internal data type
-  (DLFLOAT16). This is a 2-byte data type, similar in concept to Brain float
-  (BFLOAT); that is, it is an AI optimized format that is used to speed up
-  training and inference (from 4-byte formats) while minimizing the loss of
-  accuracy at inference time.
+- For deep learning operations, zAIU requires the use of internal data types:
+  - DLFLOAT16, a 2-byte data type supported in Telum I, which optimizes training
+    and inference while minimizing the loss of accuracy at inference time
+    (versus standard 4-byte formats),
+  - INT8, a 1-byte data type supported with Telum II, which allows tensor
+    quantization features.
 
-The zDNN library will provide a set of APIs that an exploiter will utilize to
-drive the desired request. zDNN will be available on both z/OS and Linux on Z;
-the inclusion of Linux on Z provides particular benefit, as it will allow us to
+The zDNN library provides a set of APIs that an exploiter will utilize to drive
+the desired request. zDNN will be available on both z/OS and Linux on Z; the
+inclusion of Linux on Z provides particular benefit, as it will allow us to
 enable acceleration in frameworks for z/OS via z/OS Container Extensions (zCX).
 
 ---
@@ -86,14 +92,14 @@ z/OS:
 
 ### Alignment requirements
 
-#### AIU Op Limits
+#### zAIU Op Limits
 
 _This implies a zDNN limitation as well at this point._
 
 - For all ops:
 
   - Number of elements in any dimension must not exceed the value returned by
-    `zdnn_get_nnpa_max_dim_idx_size()`
+    `zdnn_get_max_for_dim(uint8_t dimension)`
   - Total number of bytes required for storing a transformed tensor must not
     exceed the value returned by `zdnn_get_nnpa_max_tensor_size()`
 
@@ -103,7 +109,7 @@ _This implies a zDNN limitation as well at this point._
 
 The zDNN deep learning library provides the standard IBM Z software interface to
 the zAIU. This IBM-provided C library provides a set of functions that handle
-the data transformation requirements of the AIU and provide wrapper functions
+the data transformation requirements of the zAIU and provide wrapper functions
 for the NNPA instruction primitives.
 
 The zDNN functions use the following criteria to determine if zAIU can be used
@@ -152,6 +158,119 @@ method chosen.
 
 ---
 
+## Building and Installing zDNN
+
+### Clone the Repository and Submodules
+
+```
+git clone --recurse-submodules git@github.com:IBM/zDNN.git
+```
+
+### Create configure script
+
+To create configure script
+
+```
+autoreconf .
+```
+
+### Configure Build
+
+Prepare the build and install environment and check for necessary dependencies
+using `./configure` script.
+
+```
+./configure [OPTION]... [VAR=VALUE]...
+```
+
+#### Installation Options
+
+- `--prefix=PREFIX`
+  - Install architecture-independent files in PREFIX. Default location is
+    `/usr/local`
+- `--exec-prefix=EPREFIX`
+  - Install architecture-independent files in EPREFIX. Default location is
+    `PREFIX`
+
+_To explore all available configuration options and features, use `-h`_
+
+### Build Library
+
+Compile zDNN library using:
+
+```
+make build
+```
+
+### Run Tests
+
+To run tests:
+
+```
+make test
+```
+
+#### Unity Requirement
+
+_Please note that the Unity test framework source code is required to run unit
+tests. If you did not clone submodules along with initial zDNN clone, please
+perform the following steps to setup Unity prior to issuing `make tests`:_
+
+1. Clone the source code from the
+   [Throw The Switch - Unity](https://github.com/ThrowTheSwitch/Unity)
+   repository.
+2. Set the `UNITY_ROOT` environment variable to the folder containing the Unity
+   source code.
+
+#### Python Package Requirements
+
+_Please note that `junit_xml` and `pyparsing` are required python packages in
+order to properly parse and format Unity test results. Follow standard python
+package installation practices to meet requirements._
+
+### Install
+
+Install zDNN library:
+
+```
+sudo make install
+```
+
+### Reference Commands
+
+Configure help:
+
+```
+./configure -h
+```
+
+Make help:
+
+```
+make help
+```
+
+### Prerequisite Tools
+
+Compilers:
+
+- `GCC: GNU Compiler Collection (gcc)`
+
+or
+
+- `IBM XL C/C++: (xlc)`
+
+Build Tools and Dependencies:
+
+- `Autoconf`
+- `Make`
+- `Unity`
+- `Python Packages` _For formatting test results_
+  - junit_xml
+  - pyparsing
+
+---
+
 ## Common Types and Structs
 
 Include Files: `zdnn.h`
@@ -160,7 +279,7 @@ Include Files: `zdnn.h`
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 #define ZDNN_VERSION "1.1.0"
 #define ZDNN_VERNUM 0x010100 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
@@ -187,7 +306,7 @@ provided and described in the [Support Functions](#support-functions) section.
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 typedef struct zdnn_ztensor {
   zdnn_tensor_desc
       *pre_transformed_desc; // tensor's shape information before transformation
@@ -195,7 +314,10 @@ typedef struct zdnn_ztensor {
   uint64_t buffer_size;               // tensor size in bytes
   void *buffer;                       // pointer to the tensor in memory
   bool is_transformed; // indicator if data in buffer has been transformed
-  char reserved[31];   // not currently used, should contain zeros.
+  char reserved[3];    // not currently used, should contain zeros.
+  float rec_scale;    // the scale factor for quantization, stored as reciprocal
+  float offset;       // the offset for quantization
+  char reserved2[20]; // not currently used, should contain zeros.
 } zdnn_ztensor;
 ```
 
@@ -233,11 +355,27 @@ typedef struct zdnn_ztensor {
   normal
 - Must follow [general tensor requirements](#gen-zten-reqs)
 
+#### Quantized zTensor Requirements <a id="quan-zten-reqs"></a>
+
+[Back to Table of Contents](#TOC)
+
+- Supported `transform_desc` and `pre_transformed_desc` types for
+  [zdnn_transform_quantized_ztensor](#zdnn_transform_quantized_ztensor) and
+  [zdnn_generate_quantized_transformed_desc](#zdnn_generate_quantized_transformed_desc):
+  - `ZDNN_FORMAT_4DFEATURE` format:
+    - ZDNN_DLFLOAT16
+      - FP16, FP32, BFLOAT
+    - ZDNN_BINARY_INT8
+      - INT8, FP16, FP32, BFLOAT
+  - `ZDNN_FORMAT_4DWEIGHTS` format:
+    - ZDNN_BINARY_INT8
+      - INT8
+
 ### zDNN Tensor Descriptors <a id="common-descriptors"></a>
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 typedef struct zdnn_tensor_desc {
   zdnn_data_layouts layout; // data layout
   zdnn_data_formats format; // internal use only
@@ -262,9 +400,11 @@ typedef struct zdnn_tensor_desc {
     - In the [pre_transformed_desc](#common-ztensor) are ignored. For example a
       [ZDNN_3D](#common-layouts) expects values in dim4, dim3, and dim2.
     - In the [transformed_desc](#common-ztensor) "unused" dims must be 1.
-  - A [ZDNN_NCHW](#common-layouts) expects dims such that dim4 = N, dim3 = H,
+  - A [ZDNN_NHWC](#common-layouts) expects dims such that dim4 = N, dim3 = H,
     dim2 = W, dim1 = C
-  - A [ZDNN_HWCK](#common-layouts) expects dims such that dim4 = W, dim3 = W,
+  - A [ZDNN_NCHW](#common-layouts) expects dims such that dim4 = N, dim3 = C,
+    dim2 = H, dim1 = W
+  - A [ZDNN_HWCK](#common-layouts) expects dims such that dim4 = H, dim3 = W,
     dim2 = C, dim1 = K
 - The [format](#common-formats) changes the expected dims order for
   [ZDNN_4D](#common-layouts) tensors layouts
@@ -280,7 +420,7 @@ typedef struct zdnn_tensor_desc {
 The following are layouts for zDNN ztensor descriptors. These indicate the
 number and order of dimensions to expect for the ztensor data.
 
-```
+```C
 typedef enum zdnn_data_layouts {
   ZDNN_1D,          // 1d tensor
   ZDNN_2D,          // 2d tensor
@@ -296,7 +436,7 @@ typedef enum zdnn_data_layouts {
   ZDNN_FICO,        // represents (forget, input, cell, output) used by LSTM
   ZDNN_HWCK,        // 4d kernel CNN tensor
   ZDNN_BIDIR_ZRH,   // ZRH variant to work with bidirectional LSTM/GRU output
-  ZDNN_BIDIR_FICO  // FICO variant to work with bidirectional LSTM/GRU output
+  ZDNN_BIDIR_FICO   // FICO variant to work with bidirectional LSTM/GRU output
 } zdnn_data_layouts;
 ```
 
@@ -326,10 +466,12 @@ calling `zdnn_generate_transformed_desc_concatenated()`:
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 typedef enum zdnn_data_formats {
-  ZDNN_FORMAT_4DFEATURE, // tensor in AIU data layout format 0
-  ZDNN_FORMAT_4DKERNEL, // tensor in AIU data layout format 1
+  ZDNN_FORMAT_4DFEATURE, // tensor in zAIU data layout format 0
+  ZDNN_FORMAT_4DKERNEL,  // tensor in zAIU data layout format 1
+  ZDNN_FORMAT_4DWEIGHTS, // tensor in zAIU data layout format 2
+  ZDNN_FORMAT_4DGENERIC, // tensor in zAIU data layout format 31
 } zdnn_data_formats;
 ```
 
@@ -337,13 +479,30 @@ typedef enum zdnn_data_formats {
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 typedef enum zdnn_data_types {
-  ZDNN_DLFLOAT16, // 16-bit deep learning format
+  ZDNN_DLFLOAT16,    // 16-bit deep learning format
+  ZDNN_BINARY_FP32,  // 32-bit binary-floating-point format
+  ZDNN_BINARY_INT8,  // 8-bit signed or unsighed binary integer
+  ZDNN_BINARY_INT32, // 32-bit signed or unsigned binary integer
+  INT8,   // 8-bit signed or unsigned binary integer format
+  INT32,  // 32-bit signed or unsigned binary integer format
   BFLOAT, // Brain floating point format
-  FP16, // 16-bit IEEE-754 floating point format
-  FP32, // 32-bit IEEE-754 floating point format
+  FP16,   // 16-bit IEEE-754 floating point format
+  FP32,   // 32-bit IEEE-754 floating point format
 } zdnn_data_types;
+```
+
+### zDNN Quantized Transform Types <a id="quantized-transform-types"></a>
+
+[Back to Table of Contents](#TOC)
+
+```C
+typedef enum zdnn_quantized_transform_types {
+  QUANTIZED_DLFLOAT16 = 0,   // quantized dlfloat16
+  QUANTIZED_INT8 = 1,        // quantized int8
+  QUANTIZED_WEIGHTS_INT8 = 2 // quantized weights
+} zdnn_quantized_transform_types;
 ```
 
 ### zDNN Statuses <a id="common-statuses"></a>
@@ -360,11 +519,11 @@ typedef enum zdnn_data_types {
 <!-- prettier-ignore -->
 | Mnemonic Constant                | Value      | Meaning                        |
 | -------------------------------- | ---------- | ------------------------------ |
-| ZDNN_ELEMENT_RANGE_VIOLATION     | 0x00020001 | AIU operation resulted in data that was out of the normal range. |
+| ZDNN_ELEMENT_RANGE_VIOLATION     | 0x00020001 | zAIU operation resulted in data that was out of the normal range. |
 
 _Note: ZDNN_ELEMENT_RANGE_VIOLATION indicates a **range violation** occurred for
-the AIU operation based on the data in the tensors. This usually indicates an
-overflow of the NNPA internal data type, but can also be associated with
+the zAIU operation based on the data in the tensors. This usually indicates an
+overflow of an NNPA internal data type, but can also be associated with
 operation specific errors, such as "divide by zero". See the "z/Architecture
 Principles of Operation" for information about range violation on the operation
 that encountered the violation._
@@ -384,11 +543,19 @@ that encountered the violation._
 | ZDNN_INVALID_STRIDES\*           | 0x00040008 | Invalid stride height or width parameter.                                      |
 | ZDNN_MISALIGNED_PARMBLOCK\*      | 0x00040009 | NNPA parameter block is not on double word boundary.                           |
 | ZDNN_INVALID_CLIPPING_VALUE      | 0x0004000A | Invalid clipping for the specified operation.                                  |
+| ZDNN_INVALID_ADJUSTMENT_FACTOR   | 0x0004000B | Invalid adjustment for the specified operation.                                |
+| ZDNN_INVALID_EPSILON             | 0x0004000C | Invalid epsilon for the specified operation.                                   |
+| ZDNN_INVALID_TRANSFORM_TYPE      | 0x0004000D | Invalid transformation type.                                                   |
+| ZDNN_INVALID_BETA                | 0x0004000E | Invalid beta value for the specified operation.                                |
+| ZDNN_INVALID_GAMMA               | 0x0004000F | Invalid gamma value for the specified operation.                               |
+| ZDNN_INVALID_BESSEL_CORRECTION   | 0x00040010 | Invalid bessel correction value for the specified operation.                   |
+| ZDNN_INVALID_SCALE               | 0x00040011 | Invalid scale value for the specified operation.                               |
+| ZDNN_INVALID_OFFSET              | 0x00040012 | Invalid offset value for the specified operation.                              |
 | ZDNN_ALLOCATION_FAILURE          | 0x00100001 | Can not allocate storage.                                                      |
 | ZDNN_INVALID_BUFFER              | 0x00100002 | Buffer address is NULL or not on 4K-byte boundary or insufficient buffer size. |
 | ZDNN_CONVERT_FAILURE             | 0x00100003 | Floating point data conversion failure.                                        |
 | ZDNN_INVALID_STATE               | 0x00100004 | Invalid zTensor state.                                                         |
-| ZDNN_UNSUPPORTED_AIU_EXCEPTION   | 0x00100005 | AIU operation returned an unexpected exception.                                |
+| ZDNN_UNSUPPORTED_AIU_EXCEPTION   | 0x00100005 | zAIU operation returned an unexpected exception.                               |
 
 _Note: \*In certain scenarios, these statuses are returned only if
 [ZDNN_ENABLE_PRECHECK](#env-vars) is enabled. When not enabled, these scenarios
@@ -460,6 +627,85 @@ _The following are only available when the zDNN library was built with
 - To change environment variable settings afterward, [zdnn_init](#zdnn_init)
   must be called again manually.
 
+## Validating the environment at runtime <a id="runtime-val"></a>
+
+### Programming Notes
+
+- Most API calls require a minimum zDNN library and hardware for the API to
+  function. There are three zDNN APIs for validation of the zDNN runtime
+  environment:
+  - Validating the zDNN Library version:
+    - This is the version of the libzdnn package installed on the host or
+      embedded in the runtime application.
+    - The zDNN library version is independent of the hardware available on the
+      current system.
+    - zDNN APIs introduced in newer versions of the zDNN library will not exist
+      in older versions of the library. Attempting to call them will result in
+      application crashes.
+    - The zDNN library version is returned by
+      [zdnn_get_library_version](#zdnn_get_library_version).
+  - Validating the zDNN API version:
+    - This is the version of zDNN APIs that are compatible on the current system
+      and is separate of the zDNN library version.
+    - Calling zDNN APIs while running on a system which does not support that
+      zDNN API version will return a [hardware status](#hw-statuses) instead of
+      [ZDNN_OK](#common-statuses).
+    - The zDNN API version available is returned by
+      [zdnn_get_max_runnable_version](#zdnn_get_max_runnable_version) and is
+      reflected in the return value of
+      [zdnn_is_version_runnable](#zdnn_is_version_runnable).
+    - zDNN API 1.0.x indicates the API requires Telum I or greater.
+    - zDNN API 1.1.x indicates the API requires Telum II or greater.
+  - Validating NNPA availability:
+    - This indicates if the current system has zAIU hardware present and
+      enabled.
+    - It is possible to be on a system with zAIU hardware but the feature is
+      unavailable, such as z/VM when there is a mix of hardware levels.
+    - This is returned by [zdnn_is_nnpa_installed](#zdnn_is_nnpa_installed)
+- Examples:
+  - Given a Telum I system with zDNN 1.1.0 installed:
+    - [zdnn_get_library_version](#zdnn_get_library_version) will return
+      `0x00010100` indicating zDNN library 1.1.0 is installed.
+    - [zdnn_is_nnpa_installed](#zdnn_is_nnpa_installed) will return `true`
+      (unless the zAIU feature is disabled for the system).
+    - [zdnn_get_max_runnable_version](#zdnn_get_max_runnable_version) will
+      return `0x000100FF` indicating zDNN APIs 1.0.x and below are available for
+      use on the system.
+    - Checking [zdnn_is_version_runnable(0x00010100)](#zdnn_is_version_runnable)
+      (1.1.0) will return `false` as only zDNN APIs 1.0.x and below are
+      available for use on the system.
+    - Checking [zdnn_is_version_runnable(0x00010100)](#zdnn_is_version_runnable)
+      (1.0.0) will return `true` as zDNN APIs 1.0.x and below are available for
+      use on the system.
+  - Given a Telum II system with zDNN 1.1.0 installed:
+    - [zdnn_get_library_version](#zdnn_get_library_version) will return
+      `0x00010100` indicating zDNN library 1.1.0 is installed.
+    - [zdnn_is_nnpa_installed](#zdnn_is_nnpa_installed) will return `true`
+      (unless the zAIU feature is disabled for the system).
+    - [zdnn_get_max_runnable_version](#zdnn_get_max_runnable_version) will
+      return `0x000101FF` indicating zDNN APIs 1.1.x and below are available for
+      use on the system.
+    - Checking [zdnn_is_version_runnable(0x00010100)](#zdnn_is_version_runnable)
+      (1.1.0) will return `true` as zDNN APIs 1.1.x and below are available for
+      use on the system.
+    - Checking [zdnn_is_version_runnable(0x00010100)](#zdnn_is_version_runnable)
+      (1.0.0) will return `true` as zDNN APIs 1.1.x and below are available for
+      use on the system.
+  - Given a Telum II system with zDNN 1.0.0 installed:
+    - [zdnn_get_library_version](#zdnn_get_library_version) will return
+      `0x00010000` indicating zDNN library 1.0.0 is installed.
+    - [zdnn_is_nnpa_installed](#zdnn_is_nnpa_installed) will return `true`
+      (unless the zAIU feature is disabled for the system).
+    - [zdnn_get_max_runnable_version](#zdnn_get_max_runnable_version) will
+      return `0x000100FF` indicating zDNN APIs 1.0.x and below are available for
+      use on the system.
+    - Checking [zdnn_is_version_runnable(0x00010100)](#zdnn_is_version_runnable)
+      (1.1.0) will return `false` as only zDNN APIs 1.0.x and below are
+      available for use on the system.
+    - Checking [zdnn_is_version_runnable(0x00010100)](#zdnn_is_version_runnable)
+      (1.0.0) will return `true` as zDNN APIs 1.1.x and below are available for
+      use on the system.
+
 ---
 
 ## API Reference
@@ -478,13 +724,20 @@ _The following are only available when the zDNN library was built with
 [Back to Table of Contents](#TOC)
 
 - [Initialization](#zdnn_init)
-- [Query](#zdnn_get_nnpa_max_dim_idx_size)
+- [Get smallest of the max index size value from across all dimensions](#zdnn_get_nnpa_max_dim_idx_size)
+- [Get max index for a given dimension](#zdnn_get_max_for_dim)
 - [Get Size](#zdnn_getsize_ztensor)
+- [Get Range](#zdnn_getrange_ztensor)
+- [Get maximum limit for a given data type](#zdnn_get_max_limit)
+- [Get minimum limit for a given data type](#zdnn_get_min_limit)
 - [Initialize pre-transformed tensor descriptor](#zdnn_init_pre_transformed_desc)
 - [Generate transformed tensor descriptor](#zdnn_generate_transformed_desc)
+- [Generate quantized transformed tensor descriptor](#zdnn_generate_quantized_transformed_desc)
 - [Generate concatenated transformed tensor descriptor](#zdnn_generate_transformed_desc_concatenated)
 - [Initialize zTensor](#zdnn_init_ztensor)
 - [Initialize zTensor with memory allocate](#zdnn_init_ztensor_with_malloc)
+- [Initialize quantized zTensor](#zdnn_init_quantized_ztensor)
+- [Initialize quantized zTensor with memory allocate](#zdnn_init_quantized_ztensor_with_malloc)
 - [Reset zTensor](#zdnn_reset_ztensor)
 - [Allocate memory for zTensor](#zdnn_allochelper_ztensor)
 - [De-allocate memory for zTensor](#zdnn_free_ztensor_buffer)
@@ -507,7 +760,7 @@ is automatically invoked if zDNN library is dynamically loaded.
 
 #### Format
 
-```
+```C
 void zdnn_init();
 ```
 
@@ -519,18 +772,31 @@ None
 
 None
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_get_nnpa_max_dim_idx_size
 
 #### Description
 
-Retrieve the maximum dimension index size value currently supported by the AIU
-from zDNN's internal memory.
+Retrieve the smallest of the maximum dimension index size values across all
+dimensions currently supported by the zAIU from zDNN's internal memory.
 
 #### Format
 
-```
+```C
 uint32_t zdnn_get_nnpa_max_dim_idx_size();
 ```
 
@@ -540,7 +806,61 @@ None
 
 #### Returns
 
-Maximum dimension index size supported by the AIU
+Maximum dimension index size supported by the zAIU across all dimensions
+
+#### Since
+
+Introduced in zDNN 1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_get_max_for_dim
+
+#### Description
+
+Retrieve the maximum dimension index size value currently supported by the zAIU
+for a given dimension from zDNN's internal memory. These limits relate to
+ztensor's transformed descriptor values. Special care is required when using
+layouts with special re-arrangements of data. See
+[zDNN Data Layouts](#zdnn_data_layouts) for more details.
+
+#### Format
+
+```C
+uint32_t zdnn_get_max_for_dim(uint8_t dimension);
+```
+
+#### Parameters
+
+- `int dimension`
+
+  - dimension to get maximum index size for
+
+#### Returns
+
+Maximum dimension index size supported by the zAIU for a given dimension
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -549,11 +869,11 @@ Maximum dimension index size supported by the AIU
 #### Description
 
 Retrieve the maximum tensor size value (number of bytes required for storing a
-transformed tensor) currently supported by the AIU from zDNN's internal memory.
+transformed tensor) currently supported by the zAIU from zDNN's internal memory.
 
 #### Format
 
-```
+```C
 uint64_t zdnn_get_nnpa_max_tensor_size();
 ```
 
@@ -563,23 +883,36 @@ None
 
 #### Returns
 
-Maximum tensor size supported by the AIU
+Maximum tensor size supported by the zAIU
 
 ---
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ### zdnn_is_nnpa_installed
 
 #### Description
 
-Interrogates the hardware to determine if the NNPA and NNP-internal data type
-(DLFLOAT16) conversion instructions are installed.
+Interrogates the hardware to determine if the NNPA and associated instructions
+are installed.
 
-Use this function during application initialization to determine whether the AIU
-hardware is available.
+Use this function during application initialization to determine whether the
+zAIU hardware is available.
 
 #### Format
 
-```
+```C
 bool zdnn_is_nnpa_installed();
 ```
 
@@ -589,8 +922,20 @@ bool zdnn_is_nnpa_installed();
 
 #### Returns
 
-`true` if NNPA and zdnn conversion instructions are installed, `false`
-otherwise.
+`true` if NNPA and associated instructions are installed, `false` otherwise.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -602,7 +947,7 @@ Query, from zDNN internal memory, if requested NNPA functions are available.
 
 #### Format
 
-```
+```C
 bool zdnn_is_nnpa_function_installed(int count, ...);
 ```
 
@@ -638,12 +983,27 @@ NNPA_GRUACT
 NNPA_CONVOLUTION
 NNPA_MATMUL_OP
 NNPA_MATMUL_OP_BCAST23
+NNPA_MATMUL_OP_BCAST1
+NNPA_TRANSFORM
 ```
 
 #### Returns
 
 `true` if all queried formats are installed or if `count` is zero, `false`
 otherwise.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -656,7 +1016,7 @@ installed.
 
 #### Format
 
-```
+```C
 bool zdnn_is_nnpa_parmblk_fmt_installed(int count, ...);
 ```
 
@@ -672,12 +1032,26 @@ bool zdnn_is_nnpa_parmblk_fmt_installed(int count, ...);
 
 ```
 NNPA_PARMBLKFORMAT_0
+NNPA_PARMBLKFORMAT_1
 ```
 
 #### Returns
 
 `true` if all queried formats are installed or if `count` is zero, `false`
 otherwise.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -689,7 +1063,7 @@ Query, from zDNN internal memory, if requested NNPA data type are installed.
 
 #### Format
 
-```
+```C
 bool zdnn_is_nnpa_datatype_installed(uint16_t types_bitmask);
 ```
 
@@ -701,11 +1075,27 @@ bool zdnn_is_nnpa_datatype_installed(uint16_t types_bitmask);
 
 ```
 QUERY_DATATYPE_INTERNAL1
+QUERY_DATATYPE_BINARY_FP32
+QUERY_DATATYPE_BINARY_INT8
+QUERY_DATATYPE_BINARY_INT32
 ```
 
 #### Returns
 
 `true` if all queried data types are installed, `false` otherwise.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -718,7 +1108,7 @@ installed.
 
 #### Format
 
-```
+```C
 bool zdnn_is_nnpa_layout_fmt_installed(uint32_t layout_bitmask);
 ```
 
@@ -731,11 +1121,26 @@ bool zdnn_is_nnpa_layout_fmt_installed(uint32_t layout_bitmask);
 ```
 QUERY_LAYOUTFMT_4DFEATURE
 QUERY_LAYOUTFMT_4DKERNEL
+QUERY_LAYOUTFMT_4DWEIGHTS
+QUERY_LAYOUTFMT_4DGENERIC
 ```
 
 #### Returns
 
 `true` if all queried data layouts are installed, `false` otherwise.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -748,7 +1153,7 @@ conversions are installed.
 
 #### Format
 
-```
+```C
 bool zdnn_is_nnpa_conversion_installed(nnpa_data_type type,
                                        uint16_t format_bitmask);
 ```
@@ -776,14 +1181,37 @@ QUERY_BFPFMT_SHORT (FP32/BFLOAT)
 
 `true` if all queried conversions are installed, `false` otherwise.
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_get_library_version
 
 #### Description
 
-Retrieve library version number as a 32-bit hex value
-(`0x00[major][minor][patch]`).
+Retrieve library version number as a 32-bit hex value in the form
+`0x00[major][minor][patch]` where each segment is 1 byte. For example zDNN 1.2.3
+would return `0x00010203`.
+
+This is the version of the libzdnn package installed on the system or zDNN
+embeded in a runtime application. The zDNN library version is independant of the
+system that zDNN is running on.
+
+The library version indicates what zDNN APIs exist in that version of the zDNN
+library. It does **NOT** indicate whether those APIs are available for use. To
+check API availablity at runtime, see
+[Validating the environment at runtime](#runtime-val).
 
 #### Format
 
@@ -795,6 +1223,16 @@ uint32_t zdnn_get_library_version();
 
 Library version number in `0x00[major][minor][patch]` format.
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_get_library_version_str
@@ -805,13 +1243,23 @@ Retrieve the library version number and build information as a string.
 
 #### Format
 
-```
+```C
 char *zdnn_get_library_version_str();
 ```
 
 #### Returns
 
 Library version number and build information as a string.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -823,7 +1271,7 @@ Refresh zDNN in-memory query result from zAIU.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_refresh_nnpa_query_result();
 ```
 
@@ -842,6 +1290,16 @@ called directly. Manually refreshing query results before making other
 - `ZDNN_OK`
 - `ZDNN_UNAVAILABLE_FUNCTION`
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_getsize_ztensor
@@ -854,7 +1312,7 @@ concatenated) in zDNN transformed format. Requires tensor descriptor
 
 #### Format
 
-```
+```C
 uint64_t zdnn_getsize_ztensor(const zdnn_tensor_desc *tfrmd_desc);
 ```
 
@@ -868,6 +1326,184 @@ uint64_t zdnn_getsize_ztensor(const zdnn_tensor_desc *tfrmd_desc);
 
 - required buffer size in bytes
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_getrange_ztensor
+
+#### Description
+
+Used to determine the minimum negative value and maximum positive value of the
+passed zdnn_ztensor, storing the results in min and max.
+
+#### Format
+
+```C
+void zdnn_getrange_ztensor(const zdnn_ztensor *ztensor, float *min, float *max);
+```
+
+#### Parameters
+
+- `const zdnn_ztensor *ztensor`
+
+  - The zdnn_ztensor to return the min and max value of.
+
+- `float *min`
+
+  - Pointer to a float used to store minimum negative value.
+    - If all values are positive, -0.0 will be used instead.
+
+- `float *max`
+
+  - Pointer to a float used to store maximum positive value.
+    - If all values are negative, 0.0 will be used instead.
+
+#### Returns
+
+- None
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_get_max_limit
+
+#### Description
+
+Returns the maximum representable value between a transformed and
+pre-transformed zdnn_data_type.
+
+#### Format
+
+```C
+zdnn_status zdnn_get_max_limit(zdnn_data_types transformed_type,
+                           zdnn_data_types pre_transformed_type, void *limit);
+```
+
+#### Parameters
+
+- `zdnn_data_types transformed_type`
+
+  - input zdnn transformed data type.
+  - Restricted to the following transformed data types:
+    - ZDNN_DLFLOAT16
+    - ZDNN_BINARY_INT8
+    - ZDNN_BINARY_INT32
+
+- `zdnn_data_types pre_transformed_type`
+
+  - input zdnn pre-transformed data type.
+  - Restricted to the following transformed data types:
+    - INT32
+    - INT8
+    - FP32
+    - FP16
+    - BFLOAT
+
+- `void *limit`
+
+  - pointer to max value between transformed_type and pre_transformed_type in
+    data type of pre_transformed_type.
+
+#### Returns
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_TYPE` - invalid transformed or pre_transformed `type` used and
+  conversion could not be completed.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_get_min_limit
+
+#### Description
+
+Return the minimum representable value between a transformed and pre-transformed
+zdnn_data_type.
+
+#### Format
+
+```C
+zdnn_status zdnn_get_min_limit(zdnn_data_types transformed_type,
+                           zdnn_data_types pre_transformed_type, void *limit);
+```
+
+#### Parameters
+
+- `zdnn_data_types transformed_type`
+
+  - input zdnn transformed data type.
+  - Restricted to the following transformed data types:
+    - ZDNN_DLFLOAT16
+    - ZDNN_BINARY_INT8
+    - ZDNN_BINARY_INT32
+
+- `zdnn_data_types pre_transformed_type`
+
+  - input zdnn pre-transformed data type.
+  - Restricted to the following transformed data types:
+    - INT32
+    - INT8
+    - FP32
+    - FP16
+    - BFLOAT
+
+- `void *limit`
+
+  - pointer to min value between transformed_type and pre_transformed_type in
+    data type of pre_transformed_type.
+
+#### Returns
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_TYPE` - invalid transformed or pre_transformed `type` used and
+  conversion could not be completed.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_init_pre_transformed_desc
@@ -879,7 +1515,7 @@ Initialize tensor descriptor (`zdnn_tensor_desc`) struct with pre-transformed
 
 #### Format
 
-```
+```C
 void zdnn_init_pre_transformed_desc(zdnn_data_layouts layout,
                                     zdnn_data_types type,
                                     zdnn_tensor_desc *pre_tfrmd_desc, ...);
@@ -908,6 +1544,16 @@ void zdnn_init_pre_transformed_desc(zdnn_data_layouts layout,
 
 - None
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_generate_transformed_desc
@@ -919,7 +1565,7 @@ pre-transformed tensor descriptor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_generate_transformed_desc(
     const zdnn_tensor_desc *pre_tfrmd_desc, zdnn_tensor_desc *tfrmd_desc);
 ```
@@ -937,8 +1583,88 @@ zdnn_status zdnn_generate_transformed_desc(
 #### zdnn_status indications
 
 - `ZDNN_OK`
+- `ZDNN_INVALID_TYPE` - pre-transformed `type` is not recognized or is a type
+  only used for quantized ztensors.
 - `ZDNN_INVALID_LAYOUT` - pre-transformed `layout` is not recognized or is a
   layout only used for concatenated tensors.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_generate_quantized_transformed_desc
+
+#### Description
+
+Generate quantized transformed tensor descriptor information based on supplied
+pre-transformed tensor descriptor and quantized transform type.
+
+#### Format
+
+```C
+zdnn_status zdnn_generate_quantized_transformed_desc(
+    const zdnn_tensor_desc *pre_tfrmd_desc,
+    zdnn_quantized_transform_types transform_type,
+    zdnn_tensor_desc *tfrmd_desc);
+```
+
+#### Parameters
+
+- `zdnn_tensor_desc *pre_tfrmd_desc`
+
+  - input tensor descriptor with pre-transformed shape information
+  - Has the following additional restrictions:
+    - Only the following pre-transformed layouts are supported.
+      - ZDNN_1D
+      - ZDNN_2D
+      - ZDNN_2DS
+      - ZDNN_3D
+      - ZDNN_3DS
+      - ZDNN_4D
+      - ZDNN_NHWC
+
+- `zdnn_quantized_transform_types transform_type`
+
+  - Type of quantized transformation
+    - QUANTIZED_DLFLOAT16
+    - QUANTIZED_INT8
+    - QUANTIZED_WEIGHTS_INT8
+
+- `zdnn_tensor_desc *tfrmd_desc`
+
+  - output `zdnn_tensor_desc` struct
+
+#### zdnn_status indications
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_TYPE` - pre-transformed `type` is not recognized, not supported
+  for quantized ztensors: [Quantized zTensor Requirements](#quan-zten-reqs)
+- `ZDNN_INVALID_LAYOUT` - pre-transformed `layout` is not recognized, not
+  supported for quantized ztensors, or is a layout only used for concatenated
+  tensors.
+- `ZDNN_INVALID_TRANSFORM_TYPE` - Invalid transformation type:
+  [Quantized zTensor Requirements](#quan-zten-reqs)
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -951,7 +1677,7 @@ input-gates tensors based on a supplied pre-transformed tensor descriptor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_generate_transformed_desc_concatenated(
     const zdnn_tensor_desc *pre_tfrmd_desc,
     zdnn_concat_info info, zdnn_tensor_desc *tfrmd_desc);
@@ -993,9 +1719,24 @@ zdnn_status zdnn_generate_transformed_desc_concatenated(
 #### zdnn_status indications
 
 - `ZDNN_OK`
+- `ZDNN_INVALID_TYPE` - pre-transformed `type` is not recognized or is not
+  supported for concatenated tensors.
 - `ZDNN_INVALID_LAYOUT` - pre-transformed `layout` is not recognized or is not
   supported for concatenated tensors.
 - `ZDNN_INVALID_CONCAT_INFO` - invalid concatenation information.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1008,7 +1749,7 @@ tensor shape information
 
 #### Format
 
-```
+```C
 void zdnn_init_ztensor(zdnn_tensor_desc *pre_tfrmd_desc,
                        zdnn_tensor_desc *tfrmd_desc, zdnn_ztensor *output);
 ```
@@ -1031,6 +1772,19 @@ void zdnn_init_ztensor(zdnn_tensor_desc *pre_tfrmd_desc,
 
 - None
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_init_ztensor_with_malloc
@@ -1043,7 +1797,7 @@ the tensor in the zDNN transformed format and allocates the storage for it. Sets
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_init_ztensor_with_malloc(zdnn_tensor_desc *pre_tfrmd_desc,
                                           zdnn_tensor_desc *tfrmd_desc,
                                           zdnn_ztensor *output);
@@ -1072,13 +1826,211 @@ zdnn_status zdnn_init_ztensor_with_malloc(zdnn_tensor_desc *pre_tfrmd_desc,
 - `ZDNN_INVALID_SHAPE` - (if any of the following are true)
   - One of `tfrmd_desc->dim*` dimensions is 0.
   - One of `tfrmd_desc->dim*` dimensions is greater than
-    `zdnn_get_nnpa_max_dim_idx_size`.
+    [zdnn_get_max_for_dim](#zdnn_get_max_for_dim).
     - Note: concatenation dimensions have a smaller maximum size. See
       [LSTM](#lstm-hid_sz) or [GRU](#gru-hid_sz).
   - The total number of tfrmd_desc elements is larger than
     `zdnn_get_nnpa_max_tensor_size`.
 - `ZDNN_ALLOCATION_FAILURE` - Unable to allocate required memory on a 4K
   boundary.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_init_quantized_ztensor
+
+#### Description
+
+Initialize a `zdnn_ztensor` struct using the pre-transformed and quantized
+transformed tensor shape information along with scale and offset.
+
+#### Format
+
+```C
+void zdnn_init_quantized_ztensor(zdnn_tensor_desc *pre_tfrmd_desc,
+                                 zdnn_tensor_desc *tfrmd_desc, float scale,
+                                 float offset, zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_tensor_desc *pre_tfrmd_desc`
+
+  - input tensor descriptor with pre-transformed shape information
+
+- `zdnn_tensor_desc *tfrmd_desc`
+
+  - input tensor descriptor with quantized transformed shape information
+
+- `float scale`
+
+  - scale for quantized ztensor, must not be 0.
+
+- `float offset`
+
+  - offset for quantized ztensor
+
+- `zdnn_ztensor *output`
+
+  - The `zdnn_ztensor` struct being initialized.
+
+#### Programming Notes
+
+- The reciprocal of the `scale` value is stored as `output->rec_scale` and is
+  used within subsequent quantized calls with reduced precision. Due to this,
+  large `scale` values will lead to a `output->rec_scale` that underflows to 0.0
+  and will result in an error in subsequent quantized calls.
+
+- The `offset` value is stored as `output->offset` and is used within subsequent
+  quantized calls with reduced precision. Due to this, large `offset` values
+  will overflow to infinity and will result in an error in subsequent quantized
+  calls.
+
+#### Returns
+
+- None
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_init_quantized_ztensor_with_malloc
+
+#### Description
+
+Same functionality as `zdnn_init_quantized_ztensor`, and computes the size
+required for the tensor in the zDNN transformed format and allocates the storage
+for it. Sets `buffer` and `buffer_size` fields within `output`.
+
+#### Format
+
+```C
+zdnn_status zdnn_init_quantized_ztensor_with_malloc(
+    zdnn_tensor_desc *pre_tfrmd_desc, zdnn_tensor_desc *tfrmd_desc, float scale,
+    float offset, zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_tensor_desc *pre_tfrmd_desc`
+
+  - input tensor descriptor with pre-transformed shape information
+
+- `zdnn_tensor_desc *tfrmd_desc`
+
+  - input tensor descriptor with quantized transformed shape information
+
+- `float scale`
+
+  - scale for quantized ztensor, must not be 0.
+
+- `float offset`
+
+  - offset for quantized ztensor
+
+- `zdnn_ztensor *output`
+
+  - The `zdnn_ztensor` struct being initialized.
+
+#### Programming Notes
+
+- The reciprocal of the `scale` value is stored as `output->rec_scale` and is
+  used within subsequent quantized calls with reduced precision. Due to this,
+  large `scale` values will lead to a `output->rec_scale` that underflows to 0.0
+  and will result in an error in subsequent quantized calls.
+
+- The `offset` value is stored as `output->offset` and is used within subsequent
+  quantized calls with reduced precision. Due to this, large `offset` values
+  will overflow to infinity and will result in an error in subsequent quantized
+  calls.
+
+#### Returns zdnn_status indications
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_FORMAT` - `tfrmd_desc->format` is not recognized.
+- `ZDNN_INVALID_TYPE` - `tfrmd_desc->type` is not recognized or is a
+  pre_tfrmd_desc type.
+- `ZDNN_INVALID_SHAPE` - (if any of the following are true)
+  - One of `tfrmd_desc->dim*` dimensions is 0.
+  - One of `tfrmd_desc->dim*` dimensions is greater than
+    [zdnn_get_max_for_dim](#zdnn_get_max_for_dim).
+  - The total number of tfrmd_desc elements is larger than
+    `zdnn_get_nnpa_max_tensor_size`.
+- `ZDNN_ALLOCATION_FAILURE` - Unable to allocate required memory on a 4K
+  boundary.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_is_quantized_ztensor
+
+#### Description
+
+Check if a given `zdnn_ztensor` represents a quantized ztensor or not
+
+#### Format
+
+```C
+bool zdnn_is_quantized_ztensor(zdnn_ztensor *ztensor);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *ztensor`
+
+  - The `zdnn_ztensor` being checked.
+
+#### Returns
+
+`true` if `zdnn_ztensor` represents a quantized ztensor, `false` if not.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1093,7 +2045,7 @@ nor free the transformed area storage._
 
 #### Format
 
-```
+```C
 void zdnn_reset_ztensor(zdnn_ztensor *ztensor);
 ```
 
@@ -1106,6 +2058,16 @@ void zdnn_reset_ztensor(zdnn_ztensor *ztensor);
 #### Returns
 
 - None
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1122,7 +2084,7 @@ responsible for freeing it._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_allochelper_ztensor(zdnn_ztensor *ztensor);
 ```
 
@@ -1139,16 +2101,28 @@ zdnn_status zdnn_allochelper_ztensor(zdnn_ztensor *ztensor);
 - `ZDNN_INVALID_FORMAT` - `ztensor->transformed_desc->format` is not recognized.
 - `ZDNN_INVALID_TYPE` - `ztensor->transformed_desc->type` is not recognized or
   is a pre_transformed_desc type.
+- `ZDNN_INVALID_LAYOUT` - `zdnn_ztensor->transformed_desc->layout` is not
+  recognized or is not a valid transformed_desc layout.
 - `ZDNN_INVALID_SHAPE` - (if any of the following are true)
   - One of `ztensor->transformed_desc->dim*` dimensions is 0.
   - One of `ztensor->transformed_desc->dim*` dimensions is greater than
-    `zdnn_get_nnpa_max_dim_idx_size`.
+    [zdnn_get_max_for_dim](#zdnn_get_max_for_dim).
     - Note: concatenation dimensions have a smaller maximum size. See
       [LSTM](#lstm-hid_sz) or [GRU](#gru-hid_sz).
   - The total number of transformed_desc elements is larger than
     `zdnn_get_nnpa_max_tensor_size`.
 - `ZDNN_ALLOCATION_FAILURE` - Unable to allocate required memory on a 4K
   boundary.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1164,7 +2138,7 @@ struct itself._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_free_ztensor_buffer(const zdnn_ztensor *ztensor);
 ```
 
@@ -1179,6 +2153,16 @@ zdnn_status zdnn_free_ztensor_buffer(const zdnn_ztensor *ztensor);
 - `ZDNN_OK`
 - `ZDNN_INVALID_BUFFER` - `tensor->buffer` is `NULL`
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_get_status_message
@@ -1189,7 +2173,7 @@ Retrieve status message of the status code
 
 #### Format
 
-```
+```C
 const char *zdnn_get_status_message(zdnn_status status);
 ```
 
@@ -1203,6 +2187,16 @@ const char *zdnn_get_status_message(zdnn_status status);
 
 Pointer to the description string or "(Status string is not defined.)" if
 `status` is not defined.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+- Any System Z hardware level
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1224,7 +2218,7 @@ The following conditions must be satisfied:
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest);
 ```
 
@@ -1256,7 +2250,7 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest);
     elements.
   - One of `dest->transformed_desc->dim*` dimensions is 0.
   - One of `dest->transformed_desc->dim*` dimensions is greater than
-    `zdnn_get_nnpa_max_dim_idx_size`.
+    [zdnn_get_max_for_dim](#zdnn_get_max_for_dim).
     - Note: concatenation dimensions have a smaller maximum size. See
       [LSTM](#lstm-hid_sz) or [GRU](#gru-hid_sz).
   - The total number of `dest->transformed_desc-dim*` elements is larger than
@@ -1288,6 +2282,19 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest);
   - `dest->buffer_size` is too small to hold transformed values.
 - `ZDNN_CONVERT_FAILURE` - Values failed to un-transform or transform.
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ### zdnn_is_version_runnable
@@ -1295,11 +2302,11 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest);
 #### Description
 
 Check if application built for zDNN version `ver_num` can be run on the current
-AIU hardware with the installed zDNN library
+zAIU hardware with the installed zDNN library
 
 #### Format
 
-```
+```C
 bool zdnn_is_version_runnable(uint32_t ver_num);
 ```
 
@@ -1307,12 +2314,26 @@ bool zdnn_is_version_runnable(uint32_t ver_num);
 
 - `ver_num`
 
-  - zDNN version number from the application in 0x00[major][minor][patch] form.
-    Typically this is ZDNN_VERNUM used to compile the application
+  - Version number of the zDNN library application itself, in
+    0x00\[major\]\[minor\]\[patch\] form. Typically this is the ZDNN_VERNUM used
+    to compile the application
 
 #### Returns
 
 - true/false
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1320,14 +2341,17 @@ bool zdnn_is_version_runnable(uint32_t ver_num);
 
 #### Description
 
-Returns the maximum zDNN version number that the current hardware and installed
-zDNN library can run together. The returned value means the current runtime
-environment fully supports zDNN APIs set of that `major`.`minor` version and
-below.
+Returns the maximum version number associated with the APIs supported by the
+hardware and zDNN software in the current environment. This can be compared with
+the version documented in the "REQUIRES" section of each programming interface
+to discern whether the interface is supported at run-time.
+
+The returned value is a version number in the `major`.`minor` format. APIs
+defined at that level and below will be supported in the current environment.
 
 #### Format
 
-```
+```C
 uint32_t zdnn_get_max_runnable_version();
 ```
 
@@ -1337,7 +2361,20 @@ uint32_t zdnn_get_max_runnable_version();
 
 #### Returns
 
-- A 32-bit zDNN version number in 0x00[major][minor]FF form.
+- A 32-bit zDNN version number in `0x00\[major\]\[minor\]FF` form.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1346,6 +2383,8 @@ uint32_t zdnn_get_max_runnable_version();
 [Back to Table of Contents](#TOC)
 
 - [Transform to zTensor](#zdnn_transform_ztensor)
+- [Transform to zTensor with saturation](#zdnn_transform_ztensor_with_saturation)
+- [Transform to quantized zTensor](#zdnn_transform_quantized_ztensor)
 - [Transform to Original](#zdnn_transform_origtensor)
 
 ---
@@ -1353,17 +2392,19 @@ uint32_t zdnn_get_max_runnable_version();
 zAIU requires the tensor data to be arranged in a format that enhances the
 performance characteristics of the operations. In this documentation, it is
 referred to as "transformed format". In addition, data conversions are necessary
-from the common formats (FP32, FP16, BFLOAT) to the internal format (DLFLOAT16)
-supported by the AIU. Two functions are provided:
+from the common formats (FP32, FP16, BFLOAT) to formats (DLFLOAT16) supported by
+the zAIU (DLFLOAT16, INT8). The following functions are provided:
 
-- '`zdnn_transform_ztensor`
+- '`zdnn_transform_ztensor` and `zdnn_transform_ztensor_with_saturation`
 
-  - zdnn_transform_ztensor will transform the input tensor and convert the input
-    data to the format required by the AIU. The resulting transformed ztensor
-    can be reused as many times as necessary.
+  - These functions will transform the input tensor and convert the input data
+    to the format required by the zAIU. The resulting transformed ztensor can be
+    reused as many times as necessary.
 
-  - See [zdnn_transform_ztensor](#zdnn_transform_ztensor) for details on
-    transforming an input tensor to the internal format.
+  - See [zdnn_transform_ztensor](#zdnn_transform_ztensor) and
+    [zdnn_transform_ztensor_with_saturation](#zdnn_transform_ztensor_with_saturation)
+    for details and restrictions on transforming an input tensor to the internal
+    format.
 
 - `zdnn_transform_origtensor`
 
@@ -1392,7 +2433,7 @@ functions._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...);
 ```
 
@@ -1443,13 +2484,239 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...);
 - `ZDNN_INVALID_SHAPE` - (if any of the following are true)
   - One of `zdnn_ztensor->transformed_desc->dim*` dimensions is 0.
   - One of `zdnn_ztensor->transformed_desc->dim*` dimensions is greater than
-    `zdnn_get_nnpa_max_dim_idx_size`.
+    [zdnn_get_max_for_dim](#zdnn_get_max_for_dim).
     - Note: concatenation dimensions have a smaller maximum size. See
       [LSTM](#lstm-hid_sz) or [GRU](#gru-hid_sz).
   - The total number of transformed_desc elements is larger than
     `zdnn_get_nnpa_max_tensor_size`.
 - `ZDNN_INVALID_STATE` - Tensor is already transformed.
 - `ZDNN_CONVERT_FAILURE` - Values failed to transform.
+- [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - unsupported transformation function.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_transform_ztensor_with_saturation
+
+#### Description
+
+Converts the input tensor to the supported transformed format for execution by
+zdnn operations. If during transformation, an element results in a value that
+exceeds the smallest or largest value that can be represented by DLFLOAT16, the
+resulting element will contain the smallest or largest value and no
+range-violation status will be triggered. If transformation is successful the
+`is_transformed` field within `ztensor` will be set to `true` otherwise it is
+set to `false`. Transformation will fail if `is_transformed` was already `true`.
+
+_Note that the tensor layout in memory, once in transformed format, is dependent
+on the content of the input tensor's descriptors (`zdnn_tensor_desc` fields).
+Once converted, a `zdnn_ztensor` should only be manipulated by zDNN API
+functions._
+
+#### Format
+
+```C
+zdnn_status zdnn_transform_ztensor_with_saturation(zdnn_ztensor *ztensor, ...);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *tensor`
+
+  - The input `zdnn_ztensor` struct. `pre_transformed_desc` and
+    `transformed_desc` must be set, `is_transformed` must be `false`. A
+    4k-aligned tensor storage must be pre-allocated by the caller (directly or
+    by calling the zDNN allocation helper function) and field `buffer` must
+    point to the storage.
+  - Has the following additional restrictions:
+    - Only non-quantized ztensors are supported. Use
+      `zdnn_transform_quantized_ztensor` if required.
+
+- `... (additional arguments)`
+
+  - Variadic: list of pointers for input data to be transformed:
+    - 1 data pointer supported at this time.
+
+#### Returns zdnn_status indications
+
+- `ZDNN_OK`
+- `ZDNN_ELEMENT_RANGE_VIOLATION`
+- `ZDNN_INVALID_FORMAT` - `zdnn_ztensor->transformed_desc->format` is not
+  ZDNN_FORMAT_4DFEATURE.
+- `ZDNN_INVALID_LAYOUT` - (if any of the following are true)
+  - `zdnn_ztensor->pre_transformed_desc->layout` is not recognized or is not a
+    valid pre_transformed_desc layout.
+  - `zdnn_ztensor->transformed_desc->layout` is not recognized or is not a valid
+    transformed_desc layout.
+- `ZDNN_INVALID_TYPE` - (if any of the following are true)
+  - `zdnn_ztensor->pre_transformed_desc->type` is not recognized or is not a
+    valid pre_transformed_desc type.
+  - `zdnn_ztensor->transformed_desc->type` is not recognized or is not a valid
+    transformed_desc type.
+- `ZDNN_INVALID_BUFFER` (if any of the following are true)
+  - `buffer` is `NULL`.
+  - `buffer` is not on a 4K boundary.
+  - `buffer_size` is too small to hold transformed values.
+- `ZDNN_INVALID_SHAPE` - (if any of the following are true)
+  - One of `zdnn_ztensor->transformed_desc->dim*` dimensions is 0.
+  - One of `zdnn_ztensor->transformed_desc->dim*` dimensions is greater than
+    [zdnn_get_max_for_dim](#zdnn_get_max_for_dim).
+  - The total number of transformed_desc elements is larger than
+    `zdnn_get_nnpa_max_tensor_size`.
+- `ZDNN_INVALID_STATE` - Tensor is already transformed.
+- [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - unsupported transformation function.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+---
+
+### zdnn_transform_quantized_ztensor
+
+#### Description
+
+Converts the input tensor to the supported quantized transformed format for
+execution by zdnn operations. If transformation is successful the
+`is_transformed` field within `ztensor` will be set to `true` otherwise it is
+set to `false`. Transformation will fail if `is_transformed` was already `true`.
+
+_Note that the tensor layout in memory, once in transformed format, is dependent
+on the content of the input tensor's descriptors (`zdnn_tensor_desc` fields).
+Once converted, a `zdnn_ztensor` should only be manipulated by zDNN API
+functions._
+
+#### Format
+
+```C
+zdnn_status zdnn_transform_quantized_ztensor(zdnn_ztensor *ztensor,
+                                             bool saturation_control,
+                                             int8_t clip_min, int8_t clip_max,
+                                             const void *data);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *tensor`
+
+  - The input `zdnn_ztensor` struct. `pre_transformed_desc` and
+    `transformed_desc` must be set, `is_transformed` must be `false`. A
+    4k-aligned tensor storage must be pre-allocated by the caller (directly or
+    by calling the zDNN allocation helper function) and field `buffer` must
+    point to the storage.
+  - Has the following additional restrictions:
+    - Only the following pre-transformed layouts are supported.
+      - ZDNN_1D
+      - ZDNN_2D
+      - ZDNN_2DS
+      - ZDNN_3D
+      - ZDNN_3DS
+      - ZDNN_4D
+      - ZDNN_NHWC
+    - Only NHWC transformed layout is supported.
+    - See [Quantized zTensor Requirements](#quan-zten-reqs) for supported
+      transform types.
+
+- `bool saturation_control`
+
+  - When enabled and an element results in a value that exceeds the smallest or
+    largest value that can be represented by DLFLOAT16, the resulting element
+    will contain the smallest or largest value and no range-violation status
+    will be triggered.
+  - Only applicable when all the following are true:
+
+    - `zdnn_ztensor *tensor` is of zdnn_quantized_transform_types
+      QUANTIZED_DLFLOAT16.
+    - The `pre_transformed_desc` `type` of the `zdnn_ztensor *tensor` is FP32.
+
+- `int8_t clip_min`
+
+  - Minimum clipping value
+  - Only applicable when `zdnn_ztensor *tensor` is of
+    zdnn_quantized_transform_types QUANTIZED_INT8.
+  - Must be less than `clip_max`
+
+- `int8_t clip_max`
+
+  - Maximum clipping value
+  - Only applicable when `zdnn_ztensor *tensor` is of
+    zdnn_quantized_transform_types QUANTIZED_INT8.
+  - Must be greater than `clip_min`
+
+#### Programming Notes
+
+- This function clears the pre-thread floating-point exception flags at entry,
+  and may set `FE_UNDERFLOW` / `FE_INVALID` / `FE_INEXACT` / `FE_OVERFLOW` when
+  it encounters errors during data conversion.
+
+#### Returns zdnn_status indications
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_FORMAT` - `zdnn_ztensor->transformed_desc->format` is not
+  recognized.
+- `ZDNN_INVALID_LAYOUT` - (if any of the following are true)
+  - `zdnn_ztensor->pre_transformed_desc->layout` is not recognized or is not a
+    valid pre_transformed_desc layout.
+  - `zdnn_ztensor->transformed_desc->layout` is not recognized or is not a valid
+    transformed_desc layout.
+- `ZDNN_INVALID_TYPE` - (if any of the following are true)
+  - `zdnn_ztensor->pre_transformed_desc->type` is not recognized or is a
+    transformed_desc type: [Quantized zTensor Requirements](#quan-zten-reqs)
+  - `zdnn_ztensor->transformed_desc->type` is not recognized or is a
+    pre_transformed_desc type: [Quantized zTensor Requirements](#quan-zten-reqs)
+- `ZDNN_INVALID_BUFFER` (if any of the following are true)
+  - `buffer` is `NULL`.
+  - `buffer` is not on a 4K boundary.
+  - `buffer_size` is too small to hold transformed values.
+- `ZDNN_INVALID_SHAPE` - (if any of the following are true)
+  - One of `zdnn_ztensor->transformed_desc->dim*` dimensions is 0.
+  - One of `zdnn_ztensor->transformed_desc->dim*` dimensions is greater than
+    [zdnn_get_max_for_dim](#zdnn_get_max_for_dim).
+  - The total number of transformed_desc elements is larger than
+    `zdnn_get_nnpa_max_tensor_size`.
+- `ZDNN_INVALID_STATE` - Tensor is already transformed.
+- `ZDNN_INVALID_CLIPPING_VALUE` - clip_min value is not less than clip_max
+  value.
+- [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - Unsupported transformation function.
+  - `ZDNN_FUNC_RC_F001` - Either scale or offset is non-numeric or scale value
+    is zero.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 ---
 
@@ -1468,7 +2735,7 @@ All stick format tensors are supported, except:
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf);
 ```
 
@@ -1511,6 +2778,19 @@ zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf
 - `ZDNN_INVALID_STATE` - `ztensor` is not transformed.
 - `ZDNN_CONVERT_FAILURE` - Values failed to un-transform.
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 ---
 
 ## Operations
@@ -1531,6 +2811,8 @@ See [Table of Contents](#TOC) for operations list
 - [Maximum](#zdnn_max)
 - [Natural Logarithm](#zdnn_log)
 - [Exponential](#zdnn_exp)
+- [Square Root](#zdnn_sqrt)
+- [Inverse Square Root](#zdnn_invsqrt)
 
 ---
 
@@ -1549,7 +2831,7 @@ by the caller. As such, the input tensors must be of the same shape._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_add(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
                      zdnn_ztensor *output);
 ```
@@ -1579,15 +2861,24 @@ zdnn_status zdnn_add(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Addition]
+[TensorFlow Addition](https://www.tensorflow.org/api_docs/python/tf/math/add)
 
-[tensorflow addition]: https://www.tensorflow.org/api_docs/python/tf/math/add
-
-[ONNX Addition]
-
-[onnx addition]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Add
+[ONNX Addition](https://onnx.ai/onnx/operators/onnx__Add.html#l-onnx-doc-add)
 
 ---
 
@@ -1606,7 +2897,7 @@ by the caller. As such, the input tensors must be of the same shape._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_sub(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
                      zdnn_ztensor *output);
 ```
@@ -1636,17 +2927,24 @@ zdnn_status zdnn_sub(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Subtraction]
+[TensorFlow Subtraction](https://www.tensorflow.org/api_docs/python/tf/math/subtract)
 
-[tensorflow subtraction]:
-  https://www.tensorflow.org/api_docs/python/tf/math/subtract
-
-[ONNX Subtraction]
-
-[onnx subtraction]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#sub
+[ONNX Subtraction](https://onnx.ai/onnx/operators/onnx__Sub.html#l-onnx-doc-sub)
 
 ---
 
@@ -1665,7 +2963,7 @@ by the caller. As such, the input tensors must be of the same shape._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_mul(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
                      zdnn_ztensor *output);
 ```
@@ -1695,17 +2993,24 @@ zdnn_status zdnn_mul(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Multiplication]
+[TensorFlow Multiplication](https://www.tensorflow.org/api_docs/python/tf/math/multiply)
 
-[tensorflow multiplication]:
-  https://www.tensorflow.org/api_docs/python/tf/math/multiply
-
-[ONNX Multiplication]
-
-[onnx multiplication]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#Mul
+[ONNX Multiplication](https://onnx.ai/onnx/operators/onnx__Mul.html#l-onnx-doc-mul)
 
 ---
 
@@ -1724,7 +3029,7 @@ by the caller. As such, the input tensors must be of the same shape._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_div(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
                      zdnn_ztensor *output);
 ```
@@ -1754,15 +3059,24 @@ zdnn_status zdnn_div(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Division]
+[TensorFlow Division](https://www.tensorflow.org/api_docs/python/tf/math/divide)
 
-[tensorflow division]: https://www.tensorflow.org/api_docs/python/tf/math/divide
-
-[ONNX Division]
-
-[onnx division]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Div
+[ONNX Division](https://onnx.ai/onnx/operators/onnx__Div.html#l-onnx-doc-div)
 
 ---
 
@@ -1781,7 +3095,7 @@ by the caller. As such, the input tensors must be of the same shape._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_min(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
                      zdnn_ztensor *output);
 ```
@@ -1811,15 +3125,24 @@ zdnn_status zdnn_min(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Minimum]
+[TensorFlow Minimum](https://www.tensorflow.org/api_docs/python/tf/math/minimum)
 
-[tensorflow minimum]: https://www.tensorflow.org/api_docs/python/tf/math/minimum
-
-[ONNX Minimum]
-
-[onnx minimum]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#min
+[ONNX Minimum](https://onnx.ai/onnx/operators/onnx__Min.html#l-onnx-doc-min)
 
 ---
 
@@ -1838,7 +3161,7 @@ by the caller. As such, the input tensors must be of the same shape._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_max(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
                      zdnn_ztensor *output);
 ```
@@ -1868,15 +3191,24 @@ zdnn_status zdnn_max(const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Maximum]
+[TensorFlow Maximum](ttps://www.tensorflow.org/api_docs/python/tf/math/maximum)
 
-[tensorflow maximum]: https://www.tensorflow.org/api_docs/python/tf/math/maximum
-
-[ONNX Maximum]
-
-[onnx maximum]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#max
+[ONNX Maximum](https://onnx.ai/onnx/operators/onnx__Max.html#l-onnx-doc-max)
 
 ---
 
@@ -1892,7 +3224,7 @@ element-wise and stores the result into the provided output zDNN tensor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_log(const zdnn_ztensor *input, zdnn_ztensor *output);
 ```
 
@@ -1917,17 +3249,24 @@ zdnn_status zdnn_log(const zdnn_ztensor *input, zdnn_ztensor *output);
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Natural Logarithm]
+[TensorFlow Natural Logarithm](https://www.tensorflow.org/api_docs/python/tf/math/log)
 
-[tensorflow natural logarithm]:
-  https://www.tensorflow.org/api_docs/python/tf/math/log
-
-[ONNX Natural Logarithm]
-
-[onnx natural logarithm]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#Log
+[ONNX Natural Logarithm](https://onnx.ai/onnx/operators/onnx__Log.html#l-onnx-doc-log)
 
 ---
 
@@ -1943,7 +3282,7 @@ element-wise and stores the result into the provided output zDNN tensor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_exp(const zdnn_ztensor *input, zdnn_ztensor *output);
 ```
 
@@ -1967,16 +3306,151 @@ zdnn_status zdnn_exp(const zdnn_ztensor *input, zdnn_ztensor *output);
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Exponential]
+[TensorFlow Exponential](https://www.tensorflow.org/api_docs/python/tf/math/exp)
 
-[tensorflow exponential]: https://www.tensorflow.org/api_docs/python/tf/math/exp
+[ONNX Exponential](https://onnx.ai/onnx/operators/onnx__Exp.html#l-onnx-doc-exp)
 
-[ONNX Exponential]
+---
 
-[onnx exponential]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#Exp
+### zdnn_sqrt
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Element-wise Operations](#elwise-ops)
+
+#### Description
+
+Given an input tensor in zDNN transformed format, computes the square root
+element-wise and stores the result into the provided output zDNN tensor.
+
+#### Format
+
+```C
+zdnn_status zdnn_sqrt(const zdnn_ztensor *input, zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input`
+
+  - Tensor with values to evaluate.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `zdnn_ztensor *output`
+  - Tensor that holds the calculated square root of each value from `input`
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- [hardware statuses](#hw-statuses)
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Square Root](https://www.tensorflow.org/api_docs/python/tf/math/sqrt)
+
+[ONNX Square Root](https://onnx.ai/onnx/operators/onnx__Sqrt.html#l-onnx-doc-sqrt)
+
+---
+
+### zdnn_invsqrt
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Element-wise Operations](#elwise-ops)
+
+#### Description
+
+Given an input tensor in zDNN transformed format, computes the inverse square
+root element-wise and stores the result into the provided output zDNN tensor.
+
+#### Format
+
+```C
+zdnn_status zdnn_invsqrt(const zdnn_ztensor *input, float epsilon,
+                         zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input`
+
+  - Tensor with values to evaluate.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `float epsilon`
+
+  - A float value added to input prior to computation.
+
+- `zdnn_ztensor *output`
+  - Tensor that holds the calculated inverse square root of each value from
+    `input`
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_INVALID_EPSILON`
+- [hardware statuses](#hw-statuses)
+
+#### Programming Notes
+
+- On some models, if either or both an element and epsilon are very large, the
+  addition of the two may result in a nonnumeric value, the inverse square root
+  of which will also be nonnumeric. This may occur even though the inverse
+  square root of an unconstrained sum would easily fit in the data type of an
+  output-tensor element.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Reciprical Square Root](https://www.tensorflow.org/api_docs/python/tf/math/rsqrt)
 
 ---
 
@@ -1985,9 +3459,12 @@ zdnn_status zdnn_exp(const zdnn_ztensor *input, zdnn_ztensor *output);
 [Back to Table of Contents](#TOC)
 
 - [Rectified Linear](#zdnn_relu)
+- [Leaky Rectified Linear](#zdnn_leaky_relu)
 - [Hyperbolic Tangent](#zdnn_tanh)
 - [Sigmoid](#zdnn_sigmoid)
 - [Softmax](#zdnn_softmax)
+- [Softmax with Mask](#zdnn_softmax_mask)
+- [Gaussian Error Linear Unit](#zdnn_gelu)
 
 ---
 
@@ -2005,7 +3482,7 @@ against the intermediate output where z = min(y, clipping_value).
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_relu(const zdnn_ztensor *input, const void *clipping_value,
                       zdnn_ztensor *output);
 ```
@@ -2038,17 +3515,102 @@ zdnn_status zdnn_relu(const zdnn_ztensor *input, const void *clipping_value,
 - `ZDNN_INVALID_CLIPPING_VALUE`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Rectified Linear]
+[TensorFlow Rectified Linear](https://www.tensorflow.org/api_docs/python/tf/nn/relu)
 
-[tensorflow rectified linear]:
-  https://www.tensorflow.org/api_docs/python/tf/nn/relu
+[ONNX Rectified Linear](https://onnx.ai/onnx/operators/onnx__Relu.html#l-onnx-doc-relu)
 
-[ONNX Rectified Linear]
+---
 
-[onnx rectified linear]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#relu
+### zdnn_leaky_relu
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Activation Operations](#act-ops)
+
+#### Description
+
+Given an input tensor in zDNN transformed format produce an output tensor where
+the leaky rectified linear function is applied to the input element-wise. The
+calculation used depends on the input element. When negative, y = a \* x, where
+a is the adjustment factor. When 0 or positive, y = x. If an optional
+clipping_value is provided, clipping is performed against the intermediate
+output where z = min(y, clipping_value).
+
+#### Format
+
+```C
+zdnn_status zdnn_leaky_relu(const zdnn_ztensor *input,
+                            const void *clipping_value,
+                            float adjustment_factor, zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input`
+
+  - Tensor with values to evaluate.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `void *clipping_value`
+
+  - A pointer to an FP32 value, used to clip input tensor's elements.
+  - If set to NULL or 0, no clipping will occur.
+  - Must not be a negative value.
+
+- `float adjustment_factor`
+
+  - A float value multiplied with negative elements from input.
+  - Must not be a negative value.
+  - Must not be greater than 1.
+
+- `zdnn_ztensor *output`
+  - Tensor that holds the rectified linear function result of each value from
+    `input`
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_INVALID_CLIPPING_VALUE`
+- `ZDNN_INVALID_ADJUSTMENT_FACTOR`
+- [hardware statuses](#hw-statuses)
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Leaky Rectified Linear](https://www.tensorflow.org/api_docs/python/tf/nn/leaky_relu)
+
+[ONNX Leaky Rectified Linear](https://onnx.ai/onnx/operators/onnx__LeakyRelu.html#l-onnx-doc-leakyrelu)
 
 ---
 
@@ -2064,7 +3626,7 @@ where the hyperbolic tangent is applied to the input element-wise.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_tanh(const zdnn_ztensor *input, zdnn_ztensor *output);
 ```
 
@@ -2088,17 +3650,24 @@ zdnn_status zdnn_tanh(const zdnn_ztensor *input, zdnn_ztensor *output);
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Hyperbolic Tangent]
+[TensorFlow Hyperbolic Tangent](https://www.tensorflow.org/api_docs/python/tf/math/tanh)
 
-[tensorflow hyperbolic tangent]:
-  https://www.tensorflow.org/api_docs/python/tf/math/tanh
-
-[ONNX Hyperbolic Tangent]
-
-[onnx hyperbolic tangent]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#Tanh
+[ONNX Hyperbolic Tangent](https://onnx.ai/onnx/operators/onnx__Tanh.html#l-onnx-doc-tanh)
 
 ---
 
@@ -2114,7 +3683,7 @@ where the sigmoid function is applied to the input element-wise.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_sigmoid(const zdnn_ztensor *input, zdnn_ztensor *output);
 ```
 
@@ -2138,16 +3707,24 @@ zdnn_status zdnn_sigmoid(const zdnn_ztensor *input, zdnn_ztensor *output);
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Sigmoid]
+[TensorFlow Sigmoid](https://www.tensorflow.org/api_docs/python/tf/math/sigmoid)
 
-[tensorflow sigmoid]: https://www.tensorflow.org/api_docs/python/tf/math/sigmoid
-
-[ONNX Sigmoid]
-
-[onnx sigmoid]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sigmoid
+[ONNX Sigmoid](https://onnx.ai/onnx/operators/onnx__Sigmoid.html#l-onnx-doc-sigmoid)
 
 ---
 
@@ -2167,7 +3744,7 @@ _Note: Other parameters, such as axis, are not supported._
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_softmax(const zdnn_ztensor *input, void *save_area,
                          zdnn_softmax_act act_func, zdnn_ztensor *output);
 
@@ -2219,12 +3796,13 @@ zdnn_status zdnn_softmax(const zdnn_ztensor *input, void *save_area,
     example:
     - A 4D tensor with `pre_transformed_desc` dimensions 2x2x2x2 and a data
       array of 16 FP32 entries could have an alternate `ZDNN_3DS` layout
-      `pre_transformed_desc` using dimensions 1x1x16 and use the same original
+      `pre_transformed_desc` using dimensions 8x1x2 and use the same original
       data array prior to `zdnn_transform_ztensor`. After transformation, such a
       tensor would be valid for `zdnn_softmax`.
-    - In another example, the 4D 2x2x2x2 tensor could be processed as 2 batches
-      of 8 vectors using a `ZDNN_3DS` layout `pre_transformed_desc` with
-      dimensions 1x2x8.
+    - In another example, the 4D 2x2x2x2 tensor could be processed as 8 batches
+      of 2 vectors using a `ZDNN_3DS` layout `pre_transformed_desc` with
+      dimensions 1x8x2.
+    - The inner-most dimension must remain the same during this coercion.
 
 #### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
 
@@ -2240,16 +3818,209 @@ zdnn_status zdnn_softmax(const zdnn_ztensor *input, void *save_area,
     not 1.
   - `ZDNN_FUNC_RC_F001` - Invalid `act_func`
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Softmax]
+[TensorFlow Softmax](https://www.tensorflow.org/api_docs/python/tf/nn/softmax)
 
-[tensorflow softmax]: https://www.tensorflow.org/api_docs/python/tf/nn/softmax
+[ONNX Softmax](https://onnx.ai/onnx/operators/onnx__Softmax.html#l-onnx-doc-softmax)
 
-[ONNX Softmax]
+---
 
-[onnx softmax]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
+### zdnn_softmax_mask
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Activation Operations](#act-ops)
+
+#### Description
+
+Given an input tensor in zDNN transformed format, computes the softmax
+(normalized exponential) for each vector formed in dimension-1 (from element
+zero to mask - 1), then if `act_func` is not `SOFTMAX_ACT_NONE`, the activation
+function is applied to the results. Finally stores the results into the provided
+output zDNN tensor.
+
+_Note: Other parameters, such as axis, are not supported._
+
+#### Format
+
+```C
+zdnn_status zdnn_softmax_mask(const zdnn_ztensor *input, void *save_area,
+                              zdnn_softmax_act act_func, uint32_t softmax_mask,
+                              zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input`
+
+  - [ZDNN_3DS](#common-layouts) tensor with pre-transformed shape [batch size,
+    batch size, vector dimension size] or output from another operation that is
+    of the correct shape.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `void *save_area`
+
+  - A preallocated memory address to use for temporary storage during internal
+    operation processing.
+  - The preallocate memory must be at least 8K bytes in size, aligned on a 4k
+    boundary.
+  - If set to NULL, the operation will determine, allocate and free storage
+    automatically.
+
+- `zdnn_softmax_act act_func`
+
+  - Activation function to apply to the results.
+  - `SOFTMAX_ACT_NONE` or `SOFTMAX_ACT_LOG`
+
+- `uint32_t softmax_mask`
+
+  - 32-bit unsigned binary integer that specifies a count of dimensions 1
+    elements to be processed.
+  - If 0, behavior matches `zdnn_softmax`
+  - Must not exceed dimension 1 of input tensor.
+
+- `zdnn_ztensor *output`
+  - [ZDNN_3DS](#common-layouts) tensor with the same shape as `input_a` that
+    holds the softmax result of each value from `input_a`.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Programming Notes
+
+- If all elements of a dimension 1 vector are the largest magnitude negative
+  number possible for the transformed data type, accuracy may be reduced.
+
+- A `ZDNN_3DS` tensor is expected, where the `transformed_desc` dim1 describes
+  the vector, and dim2 and dim4 are used to batch multiple vector requests
+  together. Dim3 must always be 1. The `zdnn_softmax_mask` operation is
+  performed against the vector in dim1 repeating for each dim1 vector in the
+  dim4 and dim2 dimensions.
+
+- Tensors that cannot be processed as vectors in dim1 or as batches of dim1
+  vectors must be coerced or reshaped by the caller.
+  - When the entire tensor is to be processed by softmax, it can be coerced by
+    simply creating an alternate descriptor prior to zDNN transformation. For
+    example:
+    - A 4D tensor with `pre_transformed_desc` dimensions 2x2x2x2 and a data
+      array of 16 FP32 entries could have an alternate `ZDNN_3DS` layout
+      `pre_transformed_desc` using dimensions 8x1x2 and use the same original
+      data array prior to `zdnn_transform_ztensor`. After transformation, such a
+      tensor would be valid for `zdnn_softmax_mask`.
+    - In another example, the 4D 2x2x2x2 tensor could be processed as 8 batches
+      of 2 vectors using a `ZDNN_3DS` layout `pre_transformed_desc` with
+      dimensions 1x8x2.
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_ALLOCATION_FAILURE` - A preallocated `save_area` was not specified and
+  internal allocation for the required memory failed.
+- [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - input tensor `input->transformed_desc->dim3` was
+    not 1.
+  - `ZDNN_FUNC_RC_F001` - Invalid `act_func`
+  - `ZDNN_FUNC_RC_F002` - `softmax_mask` exceeds dimension 1 of input tensor.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Softmax](https://www.tensorflow.org/api_docs/python/tf/nn/softmax)
+
+[ONNX Softmax](https://onnx.ai/onnx/operators/onnx__Softmax.html#l-onnx-doc-softmax)
+
+---
+
+### zdnn_gelu
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Activation Operations](#act-ops)
+
+#### Description
+
+Given an input tensor in zDNN transformed format produce an output tensor where
+the Gaussian Error Linear Unit activation function, y = 0.5 \* x \* (1 +
+tanh(x \* 0.7978845608 \* (1 + 0.044715 \* x \* x))), is applied to the input
+element-wise.
+
+#### Format
+
+```C
+zdnn_status zdnn_gelu(const zdnn_ztensor *input, zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input`
+
+  - Tensor with values to evaluate.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `zdnn_ztensor *output`
+  - Tensor that holds the Gaussian Error Linear Unit results of each value from
+    `input`
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- [hardware statuses](#hw-statuses)
+
+#### Programming Notes
+
+- The range of certain input-element values may result in an error of greater
+  than 1% in the output element, however the accuracy of properly conditioned
+  models is not significantly degraded.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Gaussian Error Linear Unit](https://www.tensorflow.org/api_docs/python/tf/nn/gelu)
+
+[ONNX Gaussian Error Linear Unit](https://onnx.ai/onnx/operators/onnx__Gelu.html#l-onnx-doc-gelu)
 
 ---
 
@@ -2259,6 +4030,10 @@ zdnn_status zdnn_softmax(const zdnn_ztensor *input, void *save_area,
 
 - [Mean Reduce](#zdnn_meanreduce2d)
 - [Batch Norm](#zdnn_batchnorm)
+- [Normalization](#zdnn_norm)
+- [Moments](#zdnn_moments)
+- [Layer Normalization](#zdnn_layernorm)
+- [Reduce](#zdnn_reduce)
 
 ---
 
@@ -2275,7 +4050,7 @@ values and stores the result to the provided output zDNN tensor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_meanreduce2d(const zdnn_ztensor *input, zdnn_ztensor *output);
 ```
 
@@ -2308,6 +4083,19 @@ zdnn_status zdnn_meanreduce2d(const zdnn_ztensor *input, zdnn_ztensor *output);
   - `ZDNN_FUNC_RC_F001` - `input` tensor has a Height or Width dimension greater
     than allowed for `zdnn_meanreduce2d`.
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
 [TensorFlow Reduce Mean] with `axis` set for the Height and Width axes and
@@ -2319,7 +4107,7 @@ zdnn_status zdnn_meanreduce2d(const zdnn_ztensor *input, zdnn_ztensor *output);
 [ONNX Reduce Mean]
 
 [onnx reduce mean]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReduceMean
+  https://onnx.ai/onnx/operators/onnx__ReduceMean.html#l-onnx-doc-reducemean
 
 ---
 
@@ -2341,7 +4129,7 @@ tensors, and `input_c` is a precomputed elementwise multiply of (-1) \* mean and
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_batchnorm(const zdnn_ztensor *input_a,
                            const zdnn_ztensor *input_b,
                            const zdnn_ztensor *input_c, zdnn_ztensor *output);
@@ -2378,6 +4166,19 @@ zdnn_status zdnn_batchnorm(const zdnn_ztensor *input_a,
 - `ZDNN_INVALID_FORMAT`
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
 [TensorFlow Batchnorm]
@@ -2388,7 +4189,434 @@ zdnn_status zdnn_batchnorm(const zdnn_ztensor *input_a,
 [ONNX Batchnorm]
 
 [onnx batchnorm]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization
+  https://onnx.ai/onnx/operators/onnx__BatchNormalization.html#l-onnx-doc-batchnormalization
+
+---
+
+### zdnn_norm
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Normalization Operations](#norm-ops)
+
+#### Description
+
+Given input_a and input_b tensors in zDNN transformed format, produces the norm
+of the difference of vectors. Calculation is performed as follows:
+
+1. Each element in dimension 1 of input_b is subtracted by the corresponding
+   element of input_a.
+2. The difference is squared.
+3. The sum of the squared differences for dimension 1 is computed.
+4. The square root of the sum is placed in the first element of dimension 1 of
+   output tensor.
+
+#### Format
+
+```C
+zdnn_status zdnn_norm(const zdnn_ztensor *input_a, zdnn_ztensor *input_b, zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input_a`
+
+  - Tensor with values to evaluate.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `zdnn_ztensor *input_b`
+
+  - Tensor with values to evaluate.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `zdnn_ztensor *output`
+  - Tensor with the result of the normalization operation.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- [hardware statuses](#hw-statuses)
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Normalization]
+
+[tensorflow normalization]:
+  https://www.tensorflow.org/api_docs/python/tf/keras/layers/Normalization
+
+[ONNX Normalization]
+
+N / A
+
+---
+
+### zdnn_moments
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Normalization Operations](#norm-ops)
+
+#### Description
+
+Given an input tensor in zDNN transformed format and a bessel correction type,
+this produces the mean and variance for respective input tensor.
+
+#### Format
+
+```C
+zdnn_status zdnn_moments(const zdnn_ztensor *input,
+                         zdnn_moments_bessel bessel_correction_type,
+                         zdnn_ztensor *output_a, zdnn_ztensor *output_b);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input_a`
+
+  - Must be a 4D [ZDNN_NHWC](#common-layouts) tensor
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `zdnn_moments_bessel bessel_correction_type`
+
+  - Bessel correction type to perform moments.
+    - `MOMENTS_BESSEL_POPULATION`
+    - `MOMENTS_BESSEL_SAMPLE`
+
+- `zdnn_ztensor *output_a`
+
+  - The output tensor that will hold the mean.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `zdnn_ztensor *output_b`
+
+  - The output tensor that will hold the variance.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_INVALID_BESSEL_CORRECTION`
+- [hardware statuses](#hw-statuses)
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Programming Notes
+
+- The `zdnn_moments` operation may be used in combination of the
+  `zdnn_layernorm` operation. Please see [zdnn_layernorm](#zdnn_layernorm) for
+  more guidance.
+
+- When `MOMENTS_BESSEL_SAMPLE` is provided for the bessel correction type, all
+  provided input dimensions of the input tensor must not be equal to 1.
+
+#### Framework Examples
+
+[TensorFlow Moments]
+
+[tensorflow moments]: https://www.tensorflow.org/api_docs/python/tf/nn/moments
+
+[ONNX Moments]
+
+N/A
+
+---
+
+### zdnn_layernorm
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Normalization Operations](#norm-ops)
+
+#### Description
+
+Given input_a, input_b, and input_c tensors in zDNN transformed format, produces
+the layernorm of the given tensors. Calculation is performed as follows:
+
+1. Each element in dimension 1 of input_b is subtracted by the corresponding
+   element of input_a.
+2. A corresponding element of input_c is added to epsilon.
+3. The square root of the sume from step 2 is computed.
+4. The difference from step 1 is divided by the result of step 3.
+5. The quotient from step 4 is multiplied by gamma.
+6. The product from step 5 is added to beta.
+7. Result is stored in the corresponding element of output.
+
+The above calculation could be depicted as follows:
+
+<img src="https://latex.codecogs.com/svg.image?layernorm(a)=(a-b)/sqrt
+(c&plus;\epsilon)*\gamma&plus;\beta&space;"
+title="layernorm(a)=(a-b)/sqrt(c+\epsilon)*\gamma+\beta "
+alt="layernorm(a)=(a-b)/sqrt(c+\epsilon)*\gamma+\beta " />
+
+#### Format
+
+```C
+zdnn_status zdnn_layernorm(const
+                           zdnn_ztensor *input_a,
+                           const zdnn_ztensor *input_b,
+                           const zdnn_ztensor *input_c,
+                           float beta, float gamma, float epsilon,
+                           zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input_a`
+
+  - Must be a 4D [ZDNN_NHWC](#common-layouts) tensor
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `zdnn_ztensor *input_b`
+
+  - Must be a 4D [ZDNN_NHWC](#common-layouts) tensor
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+  - Contains arithmetic means ([Moments](#zdnn_moments) output_a)
+
+- `zdnn_ztensor *input_c`
+
+  - Must be a 4D [ZDNN_NHWC](#common-layouts) tensor
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+  - Contains arithmetic variances ([Moments](#zdnn_moments) output_b)
+
+- `float beta`
+
+  - Final result adjustment addend.
+
+- `float gamma`
+
+  - Final result adjustment multiplier.
+
+- `float epsilon`
+
+  - Intermediate variance adjustment.
+
+- `zdnn_ztensor *output`
+
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_INVALID_BETA`
+- `ZDNN_INVALID_GAMMA`
+- `ZDNN_INVALID_EPSILON`
+- [hardware statuses](#hw-statuses)
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Programming Notes
+
+- `zdnn_layernorm` is intended to be used in combination with the `zdnn_moments`
+  normalization operation. The `zdnn_moments` operation produces two output
+  tensors containing the means and variances, respectively, of the dimension-
+  4-index elements of the input tensor. The original input tensor to
+  `zdnn_moments` is intended to be used as the input-tensor 1 to
+  `zdnn_layernorm`. The output-tensors 1 and 2 of `zdnn_moments`are intended to
+  be used as input as input-tensor 2 and input-tensor 3 of the `zdnn_layernorm`
+  operation.
+
+- The beta and gamma values in the 4th and 5th parameters of `zdnn_layernorm`,
+  (also reffered to as bias and gain), provide a learned scale and offset. The
+  epsilon value in parameter 6 of `zdnn_layernorm` is intended to be a small
+  value (for example, 0.001) to provide numerical stability.
+
+#### Framework Examples
+
+[TensorFlow Layernorm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LayerNormalization)
+
+[ONNX Layernorm](https://onnx.ai/onnx/operators/onnx__LayerNormalization.html#l-onnx-doc-layernormalization)
+
+---
+
+### zdnn_reduce
+
+- [Back to Table of Contents](#TOC)
+  - [Back to Activation Operations](#act-ops)
+
+#### Description
+
+Given an input tensor in zDNN transformed format, produces an output tensor
+where the given reduction operation is performed.
+
+#### Format
+
+```C
+zdnn_status zdnn_reduce(const zdnn_ztensor *input, void *save_area,
+                        zdnn_reduce_ops op_type, zdnn_ztensor *output);
+```
+
+#### Parameters
+
+- `zdnn_ztensor *input`
+
+  - Tensor with values to evaluate.
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+
+- `void *save_area`
+
+  - A preallocated memory address to use for temporary storage during internal
+    operation processing.
+  - The preallocate memory must be at least 8K bytes in size, aligned on a 4k
+    boundary.
+  - If set to NULL, the operation will determine, allocate and free storage
+    automatically.
+
+- `zdnn_reduction_ops op_type`
+
+  - Reduction Operation to perform on input tensor.
+    - `REDUCE_OP_MINIMUM`
+    - `REDUCE_OP_MINIMUM_IDX`
+    - `REDUCE_OP_MAXIMUM`
+    - `REDUCE_OP_MINIMUM_IDX`
+
+- `zdnn_ztensor *output`
+  - Tensor that holds the reduction operation result of each value from `input`
+    - Output dimension 1 must 1
+  - Must follow [general tensor requirements](#gen-zten-reqs)
+  - Data Type must be as follows:
+    - (FP32, FP16, BFLOAT) when `op_type` is `REDUCE_OP_MINIMUM` or
+      `REDUCE_OP_MAXIMUM`.
+    - INT32 when `op_type` is `REDUCE_OP_MINIMUM_IDX` or `REDUCE_OP_MAXIMUM_IDX`
+
+The output when op_type is `REDUCE_OP_MINIMUM` or `REDUCE_OP_MAXIMUM` can be
+initialized using:
+
+```C
+zdnn_data_layouts input_layout = ZDNN_3DS;
+zdnn_data_types input_type = FP32;
+
+uint32_t dim4 = 4;
+uint32_t dim2 = 5;
+uint32_t dim1 = 6;
+
+zdnn_tensor_desc input_pre_transformed_desc;
+
+zdnn_init_pre_transformed_desc(input_layout, input_type,
+                               &input_pre_transformed_desc, dim4, dim2, dim1);
+
+zdnn_tensor_desc output_pre_transformed_desc;
+
+zdnn_init_pre_transformed_desc(input_layout, input_type,
+                               &output_pre_transformed_desc, dim4, dim2, 1);
+```
+
+The output when op_type is `REDUCE_OP_MINIMUM_IDX` or `REDUCE_OP_MAXIMUM_IDX`
+can be initialized using:
+
+```C
+zdnn_data_layouts input_layout = ZDNN_3DS;
+zdnn_data_types input_type = FP32;
+
+uint32_t dim4 = 4;
+uint32_t dim2 = 5;
+uint32_t dim1 = 6;
+
+zdnn_tensor_desc input_pre_transformed_desc;
+
+zdnn_init_pre_transformed_desc(input_layout, input_type,
+                               &input_pre_transformed_desc, dim4, dim2, dim1);
+
+zdnn_data_types output_type = INT32;
+
+zdnn_tensor_desc output_pre_transformed_desc;
+
+zdnn_init_pre_transformed_desc(input_layout, output_type,
+                               &output_pre_transformed_desc, dim4, dim2, 1);
+```
+
+#### Programming Notes
+
+- If a nonnumeric element is encountered in a dimension-1 vecotr of input-tenzor
+  1, then (a) the resulting element in dimension 1 of output-tensor 1 is
+  unpredictable, and the range-violation status will be returned.
+- When the reduction operation is `REDUCE_OP_MINIMUM_IDX` the index of the first
+  min value, from left-to-right, is returned when there are mulitple elements
+  with the same min value.
+- When the reduction operation is `REDUCE_OP_MAXIMUM_IDX` the index of the first
+  max value, from left-to-right, is returned when there are mulitple elements
+  with the same max value.
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- [warning statuses](#warning-statuses)
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_UNAVAILABLE_FUNCTION`
+- `ZDNN_ALLOCATION_FAILURE` - A preallocated `save_area` was not specified and
+  internal allocation for the required memory failed.
+- [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - Invalid `op_type`.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Reduce Min and Max]
+
+[tensorflow reduce minimum](https://www.tensorflow.org/api_docs/python/tf/math/reduce_min)
+[tensorflow reduce maximum](https://www.tensorflow.org/api_docs/python/tf/math/reduce_max)
+
+[ONNX Reduce Min and Max]
+
+[onnx reduce minimum](https://onnx.ai/onnx/operators/onnx__ReduceMin.html#l-onnx-doc-reducemin)
+[onnx reduce maximum](https://onnx.ai/onnx/operators/onnx__ReduceMax.html#l-onnx-doc-reducemax)
 
 ---
 
@@ -2422,7 +4650,7 @@ all stacks are calculated in a single call.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_matmul_op(const zdnn_ztensor *input_a,
                            const zdnn_ztensor *input_b,
                            const zdnn_ztensor *input_c,
@@ -2493,16 +4721,24 @@ zdnn_status zdnn_matmul_op(const zdnn_ztensor *input_a,
 - [hardware statuses](#hw-statuses)
   - `ZDNN_FUNC_RC_F000` - Invalid `op_type`.
 
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow MatMul]
+[TensorFlow MatMul](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/mat-mul)
 
-[tensorflow matmul]:
-  https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/mat-mul
-
-[ONNX MatMul]
-
-[onnx matmul]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#MatMul
+[ONNX MatMul](https://onnx.ai/onnx/operators/onnx__MatMul.html#l-onnx-doc-matmul)
 
 ---
 
@@ -2518,20 +4754,36 @@ following operations, using `input_c` against the dot product, storing the
 result into the specified `output` zDNN tensor:
 
 - Addition
+- Compare - If dot product is greater than element.
+- Compare - If dot product is greater or equal to element.
+- Compare - If dot product is equal to element.
+- Compare - If dot product is not equal to element.
+- Compare - If dot product is less than or equal to element.
+- Compare - If dot product is less than element.
 
-The outermost dimension for `input_a` can optionally indicate that the input is
-a stack of matrices. Each stack of `input_a` is then multiplied by the same
-`input_b` matrix and `input_c` which are broadcast over each stack of `input_a`.
-Results for each stack are returned in the corresponding stack index of
-`output`.
+When an input is `ZDNN_3DS`, the outermost dimension for that input can
+optionally indicate that the input is a stack of matrices. Likewise, when an
+input is `ZDNN_2DS`, the outermost dimension for that input can optionally
+indicate that the input is a stack of vectors
+
+For exmaple, if `input_a` were `ZDNN_3DS`, each stack of `input_a` is multiplied
+by the same `input_b` matrix and `input_c` vector which are broadcast over each
+stack of `input_a`. Results for each stack are returned in the corresponding
+stack index of `output`.
+
+Likewise, if `input_b` were `ZDNN_3DS` and `input_c` were `ZDNN_2DS`, each stack
+of `input_b` is multiplied by the same `input_a` matrix which is broadcast over
+each stack of `input_b` and `input_c`. Results for each stack are returned in
+the corresponding stack index of `output`.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
                                  const zdnn_ztensor *input_b,
                                  const zdnn_ztensor *input_c,
-                                 zdnn_matmul_bcast_ops op_type, zdnn_ztensor *output);
+                                 zdnn_matmul_bcast_ops op_type,
+                                 zdnn_ztensor *output);
 ```
 
 #### Input / Output matmul broadcast tensor requirements <a id="matmul-bcast-io-table"></a>
@@ -2540,9 +4792,12 @@ zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
   for each tensor.
 - Must follow [general tensor requirements](#gen-zten-reqs)
 
-| input_a              | input_b          | input_c       | result               |
-| -------------------- | ---------------- | ------------- | -------------------- |
-| `ZDNN_3DS` (s, m, n) | `ZDNN_2D` (n, p) | `ZDNN_1D` (p) | `ZDNN_3DS` (s, m, p) |
+| type      | input_a              | input_b              | input_c           | result               |
+| --------- | -------------------- | -------------------- | ----------------- | -------------------- |
+| unstacked | `ZDNN_2D` (m, n)     | `ZDNN_2D` (n, p)     | `ZDNN_1D` (p)     | `ZDNN_2D` (m, p)     |
+| stacked   | `ZDNN_3DS` (s, m, n) | `ZDNN_3DS` (s, n, p) | `ZDNN_2DS` (s, p) | `ZDNN_3DS` (s, m, p) |
+| bcast1    | `ZDNN_2D` (m, n)     | `ZDNN_3DS` (s, n, p) | `ZDNN_2DS` (s, p) | `ZDNN_3DS` (s, m, p) |
+| bcast23   | `ZDNN_3DS` (s, m, n) | `ZDNN_2D` (n, p)     | `ZDNN_1D` (p)     | `ZDNN_3DS` (s, m, p) |
 
 #### Parameters
 
@@ -2555,8 +4810,6 @@ zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
 - `zdnn_ztensor *input_b`
 
   - Input tensor with the second matrix for multiplication.
-  - The same single `input_b` matrix is broadcast and used as the multiplier for
-    each stack dimension of `input_a`
   - pre_transformed shape and layout must match
     [matmul broadcast tensor requirements](#matmul-bcast-io-table)
 
@@ -2570,8 +4823,13 @@ zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
 - `zdnn_matmul_bcast_ops op_type`
 
   - Operation to perform on dot product.
-
     - `MATMUL_BCAST_OP_ADDITION`
+    - `MATMUL_BCAST_OP_GREATER`
+    - `MATMUL_BCAST_OP_GREATER_EQUAL`
+    - `MATMUL_BCAST_OP_EQUAL`
+    - `MATMUL_BCAST_OP_NOT_EQUAL`
+    - `MATMUL_BCAST_OP_LESSER_EQUAL`
+    - `MATMUL_BCAST_OP_LESSER`
 
 - `zdnn_ztensor *output`
   - The output tensor which will hold the result of the operation in its buffer.
@@ -2580,8 +4838,14 @@ zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
 
 #### Programming Notes
 
-- `zdnn_matmul_bcast_ops` only supports `MATMUL_BCAST_OP_ADDITION` op_type, any
-  other op_types will be ignored and may not operate compatibly in the future.
+- `zdnn_matmul_bcast_ops` only supports `MATMUL_BCAST_OP_ADDITION` op_type when
+  `NNPA_PARMBLKFORMAT_1` is not installed. If any other op_types is provided,
+  `ZDNN_UNAVAILABLE_FUNCTION` is returned.
+- `BCAST1` is not supported when `NNPA_PARMBLKFORMAT_1` is not installed and
+  will return `ZDNN_UNAVAILABLE_FUNCTION`.
+- Care must be exercised when comparing values for equality or inequality since
+  the order of operations and rounding may produce, what appear to be, slightly
+  different values when they are essentially the same value.
 
 #### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
 
@@ -2589,18 +4853,402 @@ zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
 - `ZDNN_INVALID_SHAPE`
 - `ZDNN_INVALID_TYPE`
 - `ZDNN_INVALID_FORMAT`
+- `ZDNN_UNAVAILABLE_FUNCTION`
 - [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - Invalid `op_type`.
+  - `ZDNN_FUNC_RC_F001` - Invalid input/output type or format combination.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
 
 #### Framework Examples
 
-[TensorFlow MatMul]
+[TensorFlow MatMul](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/mat-mul)
 
-[tensorflow matmul]:
-  https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/mat-mul
+[ONNX MatMul](https://onnx.ai/onnx/operators/onnx__MatMul.html#l-onnx-doc-matmul)
 
-[ONNX MatMul]
+---
 
-[onnx matmul]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#MatMul
+### zdnn_matmul_transpose_op
+
+[Back to Table of Contents](#TOC)
+
+#### Description
+
+Given three input zDNN tensors `input_a`, `input_b`, and `input_c`, determine
+the matrix multiplication of `input_a` \* `input_b` then perform one of the
+following operations, using `input_c` against the dot product, storing the
+result into the specified `output` zDNN tensor:
+
+- Addition
+- Compare - If dot product is greater than element.
+- Compare - If dot product is greater or equal to element.
+- Compare - If dot product is equal to element.
+- Compare - If dot product is not equal to element.
+- Compare - If dot product is less than or equal to element.
+- Compare - If dot product is less than element.
+
+For an operation type of addition, `input_c` is added to the intermediate dot
+product. For operation types of comparison, the intermediate dot product is
+compared to `input_c` and if the comparison is true, the result is set to a
+value of 1; otherwise it is set to a value of 0.
+
+The outermost dimension can optionally indicate that the inputs are stacks of
+matrices. The results for each matrix stack is independent of other stacks but
+all stacks are calculated in a single call.
+
+#### Format
+
+```C
+zdnn_status zdnn_matmul_transpose_op(const zdnn_ztensor *input_a,
+                                     const zdnn_ztensor *input_b,
+                                     const zdnn_ztensor *input_c,
+                                     bool transpose_a, bool transpose_b,
+                                     zdnn_matmul_ops op_type,
+                                     zdnn_ztensor *output);
+```
+
+#### Input / Output matmul transpose tensor requirements <a id="matmul-transpose-io-table"></a>
+
+- See table in this section for `pre_transformed_desc` and shape requirements
+  for each tensor.
+- All tensors must either be stacked or unstacked.
+- Must follow [general tensor requirements](#gen-zten-reqs)
+
+| type      | input_a              | input_b              | input_c           | result               |
+| --------- | -------------------- | -------------------- | ----------------- | -------------------- |
+| unstacked | `ZDNN_2D` (m, n)     | `ZDNN_2D` (n, p)     | `ZDNN_1D` (p)     | `ZDNN_2D` (m, p)     |
+| stacked   | `ZDNN_3DS` (s, m, n) | `ZDNN_3DS` (s, n, p) | `ZDNN_2DS` (s, p) | `ZDNN_3DS` (s, m, p) |
+| bcast1    | `ZDNN_2D` (m, n)     | `ZDNN_3DS` (s, n, p) | `ZDNN_2DS` (s, p) | `ZDNN_3DS` (s, m, p) |
+| bcast23   | `ZDNN_3DS` (s, m, n) | `ZDNN_2D` (n, p)     | `ZDNN_1D` (p)     | `ZDNN_3DS` (s, m, p) |
+
+#### Parameters
+
+- `zdnn_ztensor *input_a`
+
+  - Input tensor with the first matrix for multiplication
+  - pre_transformed shape and layout must match
+    [matmul transpose tensor requirements](#matmul-transpose-io-table)
+
+- `zdnn_ztensor *input_b`
+
+  - Input tensor with the second matrix for multiplication
+  - pre_transformed shape and layout must match
+    [matmul transpose tensor requirements](#matmul-transpose-io-table)
+
+- `zdnn_ztensor *input_c`
+
+  - Input tensor that will have the requested operation performed against the
+    intermediate dot product of `input_a` and `input_b`.
+  - pre_transformed shape and layout must match
+    [matmul transpose tensor requirements](#matmul-transpose-io-table)
+
+- `bool transpose_a`
+
+  - Whether to transpose `input_a` prior to dot product.
+  - If `true`, `input_a` should have the unstacked dimensions (n, m) or stacked
+    dimensions (s, n, m)
+
+- `bool transpose_b`
+
+  - Whether to transpose `input_b` prior to dot product.
+  - If `true`, `input_b` should have the unstacked dimensions (p, n) or stacked
+    dimensions (s, p, n)
+
+- `zdnn_matmul_ops op_type`
+
+  - Operation to perform on dot product.
+    - `MATMUL_OP_ADDITION`
+    - `MATMUL_OP_GREATER`
+    - `MATMUL_OP_GREATER_EQUAL`
+    - `MATMUL_OP_EQUAL`
+    - `MATMUL_OP_NOT_EQUAL`
+    - `MATMUL_OP_LESSER_EQUAL`
+    - `MATMUL_OP_LESSER`
+
+- `zdnn_ztensor *output`
+  - The output tensor which will hold the result of the operation in its buffer.
+  - pre_transformed shape and layout must match
+    [matmul transpose tensor requirements](#matmul-transpose-io-table)
+
+#### Programming Notes
+
+- `zdnn_matmul_transpose_op` is not supported when `NNPA_PARMBLKFORMAT_1` is not
+  installed and will return `ZDNN_UNAVAILABLE_FUNCTION`.
+- Care must be exercised when comparing values for equality or inequality since
+  the order of operations and rounding may produce, what appear to be, slightly
+  different values when they are essentially the same value.
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_UNAVAILABLE_FUNCTION`
+- [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - Invalid `op_type`.
+  - `ZDNN_FUNC_RC_F001` - Invalid input/output type or format combination.
+
+#### Since
+
+1.0.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow MatMul](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/mat-mul)
+
+[ONNX MatMul](https://onnx.ai/onnx/operators/onnx__MatMul.html#l-onnx-doc-matmul)
+
+---
+
+### zdnn_quantized_matmul_op
+
+[Back to Table of Contents](#TOC)
+
+#### Description
+
+Given three input zDNN tensors `input_a`, `input_b`, and `input_c`, determine
+the matrix multiplication of `input_a` \* `input_b` then perform one of the
+following operations, using `input_c` against the dot product, storing the
+result into the specified `output` zDNN tensor:
+
+- Addition
+- Compare - If dot product is greater than element.
+- Compare - If dot product is greater or equal to element.
+- Compare - If dot product is equal to element.
+- Compare - If dot product is not equal to element.
+- Compare - If dot product is less than or equal to element.
+- Compare - If dot product is less than element.
+
+For an operation type of addition, `input_c` is added to the intermediate dot
+product. For operation types of comparison, the intermediate dot product is
+compared to `input_c` and if the comparison is true, the result is set to a
+value of 1; otherwise it is set to a value of 0.
+
+The outermost dimension can optionally indicate that the inputs are stacks of
+matrices. The results for each matrix stack is independent of other stacks but
+all stacks are calculated in a single call.
+
+When dequantize is `true` the output will be dequantized after computation.
+
+When `pre_computed` is `true`. The pre-computed value of `input_c` for Addition
+can be achieved using:
+
+```C
+Za = input_a->offset;
+Sa = 1 / input_a->rec_scale;
+
+Zb = input_b->offset;
+Sb = 1 / input_b->rec_scale;
+
+Zc = input_c->offset;
+Sc = 1 / input_c->rec_scale;
+
+Zy = output->offset;
+Sy = 1 / output->rec_scale;
+
+N = input_b->pre_transformed_desc->dim2;
+
+pre_computed = Zy - (Sc/Sy) * Zc - (Sc/Sy) * input_c + ((Sa * Sb) / Sy) * NZaZb;
+```
+
+The pre-computed value of `input_c` for Compare can be achieved using:
+
+```C
+Za = input_a->offset;
+Sa = 1 / input_a->rec_scale;
+
+Zb = input_b->offset;
+Sb = 1 / input_b->rec_scale;
+
+Zc = input_c->offset;
+Sc = 1 / input_c->rec_scale;
+
+pre_computed = Sc / (Sa * Sb) * (input_c - Zc) + Za * sum(input_b, axis=-2)
+```
+
+#### Format
+
+```C
+zdnn_status zdnn_quantized_matmul_op(const zdnn_ztensor *input_a,
+                                     const zdnn_ztensor *input_b,
+                                     const zdnn_ztensor *input_c,
+                                     zdnn_matmul_ops op_type,
+                                     const int8_t clip_min,
+                                     const int8_t clip_max,
+                                     const bool disable_clipping,
+                                     const bool dequantize,
+                                     const bool pre_computed,
+                                     void *work_area,
+                                     zdnn_ztensor *output);
+```
+
+#### Input / Output quantized matmul tensor requirements <a id="quantized-matmul-io-table"></a>
+
+- See table in this section for `pre_transformed_desc` and shape requirements
+  for each tensor.
+- All tensors must either be stacked or unstacked.
+- Must follow [general tensor requirements](#gen-zten-reqs)
+- All tensors should use `zdnn_generate_quantized_transformed_desc` when
+  generating transformed descriptors, passing the appropriate
+  `zdnn_quantized_transform_types`.
+- All quantized tensors should use `zdnn_init_quantized_ztensor` or
+  `zdnn_init_quantized_ztensor_with_malloc` when initializing, passing the
+  `scale` and `offset` quantization parameters.
+  - `scale` must be in range ([-DLFLT_MAX](#zdnn_get_max_limit) <= scale <=
+    [DLFLT_MAX](#zdnn_get_max_limit)) and scale != 0.
+  - `offset` must be in range ([-DLFLT_MAX](#zdnn_get_max_limit) <= offset <=
+    [DLFLT_MAX](#zdnn_get_max_limit)).
+- All quantized input tensors should use `zdnn_transform_quantized_ztensor` when
+  transforming, passing the `clip_min` and `clip_max` quantization parameters.
+
+##### zdnn_data_layouts
+
+| type      | input_a              | input_b              | input_c           | result               |
+| --------- | -------------------- | -------------------- | ----------------- | -------------------- |
+| unstacked | `ZDNN_2D` (m, n)     | `ZDNN_2D` (n, p)     | `ZDNN_1D` (p)     | `ZDNN_2D` (m, p)     |
+| stacked   | `ZDNN_3DS` (s, m, n) | `ZDNN_3DS` (s, n, p) | `ZDNN_2DS` (s, p) | `ZDNN_3DS` (s, m, p) |
+| bcast1    | `ZDNN_2D` (m, n)     | `ZDNN_3DS` (s, n, p) | `ZDNN_2DS` (s, p) | `ZDNN_3DS` (s, m, p) |
+| bcast23   | `ZDNN_3DS` (s, m, n) | `ZDNN_2D` (n, p)     | `ZDNN_1D` (p)     | `ZDNN_3DS` (s, m, p) |
+
+##### zdnn_quantized_transform_types
+
+| type       | input_a             | input_b                | input_c        | result              |
+| ---------- | ------------------- | ---------------------- | -------------- | ------------------- |
+| normal     | QUANTIZED_INT8      | QUANTIZED_WEIGHTS_INT8 | QUANTIZED_INT8 | QUANTIZED_DLFLOAT16 |
+| on-the-fly | QUANTIZED_DLFLOAT16 | QUANTIZED_WEIGHTS_INT8 | QUANTIZED_INT8 | QUANTIZED_DLFLOAT16 |
+
+#### Parameters
+
+- `zdnn_ztensor *input_a`
+
+  - Input tensor with the first matrix for multiplication
+  - pre_transformed shape and layout must match
+    [quantized matmul tensor requirements](#quantized-matmul-io-table)
+
+- `zdnn_ztensor *input_b`
+
+  - Input tensor with the second matrix for multiplication
+  - pre_transformed shape and layout must match
+    [quantized matmul tensor requirements](#quantized-matmul-io-table)
+
+- `zdnn_ztensor *input_c`
+
+  - Input tensor that will have the requested operation performed against the
+    intermediate dot product of `input_a` and `input_b`.
+  - pre_transformed shape and layout must match
+    [quantized matmul tensor requirements](#quantized-matmul-io-table)
+
+- `int8_t clip_min`
+
+  - Minimum quantized value for `input_a` prior to dot product.
+  - Only applicable when performing `on-the-fly` quantization.
+  - Must be less than `clip_max`.
+
+- `int8_t clip_max`
+
+  - Maximum quantized value for `input_a` prior to dot product.
+  - Only applicable when performing `on-the-fly` quantization.
+  - Must be greater than `clip_min`.
+
+- `bool disable_clipping`
+
+  - When `true` disables clipping and rounding.
+
+- `bool dequantize`
+
+  - Whether to dequantize returned ztensor.
+
+- `bool pre_computed`
+
+  - Whether bias is already pre-computed.
+
+- `void *work_area`
+
+  - A preallocated memory address to use for temporary storage during internal
+    operation processing.
+  - If set to NULL, the operation will determine, allocate and free storage
+    automatically.
+  - Amount of required storage is the same as `input_c->buffer_size`.
+  - The start of the buffer must be 4k aligned.
+
+- `zdnn_matmul_ops op_type`
+
+  - Operation to perform on dot product.
+    - `MATMUL_OP_ADDITION`
+    - `MATMUL_OP_GREATER`
+    - `MATMUL_OP_GREATER_EQUAL`
+    - `MATMUL_OP_EQUAL`
+    - `MATMUL_OP_NOT_EQUAL`
+    - `MATMUL_OP_LESSER_EQUAL`
+    - `MATMUL_OP_LESSER`
+
+- `zdnn_ztensor *output`
+  - The output tensor which will hold the result of the operation in its buffer.
+  - pre_transformed shape and layout must match
+    [quantized matmul tensor requirements](#quantized-matmul-io-table)
+
+#### Programming Notes
+
+- `zdnn_quantized_matmul_op` is not supported when `NNPA_PARMBLKFORMAT_1` is not
+  installed and will return `ZDNN_UNAVAILABLE_FUNCTION`.
+- Care must be exercised when comparing values for equality or inequality since
+  the order of operations and rounding may produce, what appear to be, slightly
+  different values when they are essentially the same value.
+
+#### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
+
+- `ZDNN_OK`
+- `ZDNN_INVALID_SHAPE`
+- `ZDNN_INVALID_TYPE`: [Quantized zTensor Requirements](#quan-zten-reqs)
+- `ZDNN_INVALID_FORMAT`
+- `ZDNN_INVALID_SCALE`
+- `ZDNN_INVALID_OFFSET`
+- `ZDNN_INVALID_CLIPPING_VALUE`
+- `ZDNN_UNAVAILABLE_FUNCTION`
+- [hardware statuses](#hw-statuses)
+  - `ZDNN_FUNC_RC_F000` - Invalid `op_type`.
+  - `ZDNN_FUNC_RC_F001` - Invalid input/output type or format combination.
+  - `ZDNN_FUNC_RC_F002` - Invalid input/output scale.
+
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
+#### Framework Examples
+
+[TensorFlow Quantized MatMul](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/quantized-mat-mul)
+
+[ONNX Quantize Linear](https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html#l-onnx-doc-quantizelinear)
 
 ---
 
@@ -2617,7 +5265,7 @@ steps:
 
 (Default: f=Sigmoid, g=Tanh, h=Tanh):
 
-```
+```C
 - it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
 
 - ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Wbf + Rbf)
@@ -2633,7 +5281,7 @@ steps:
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_lstm(const zdnn_ztensor *input, const zdnn_ztensor *h0,
                       const zdnn_ztensor *c0, const zdnn_ztensor *weights,
                       const zdnn_ztensor *biases,
@@ -2649,7 +5297,8 @@ the usage example section.
 #### LSTM Input / Output requirements
 
 - `num_hidden` dimensions: <a id="lstm-hid_sz"></a>
-  - Any num_hidden dimension must be less than or equal to 8192 elements.
+  - Any num_hidden dimension must be less than or equal to
+    `zdnn_get_max_for_dim(2) / 4` elements.
 
 #### Parameters
 
@@ -2779,7 +5428,7 @@ the usage example section.
       replace the `num_timesteps`, `num_batches`, and `num_hidden` variables
       with your own values.
 
-      ```
+      ```C
         zdnn_tensor_desc desc;
         desc.dim4 = (4 * num_timesteps) + 6;
         desc.dim3 = 1;
@@ -2882,16 +5531,24 @@ the usage example section.
   internal allocation for the required memory failed.
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow LSTM]
+[TensorFlow LSTM](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTMCell)
 
-[tensorflow lstm]:
-  https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTMCell
-
-[ONNX LSTM]
-
-[onnx lstm]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#LSTM
+[ONNX LSTM](https://onnx.ai/onnx/operators/onnx__LSTM.html#l-onnx-doc-lstm)
 
 ---
 
@@ -2907,7 +5564,7 @@ linear.
 The following formula is computed for the input tensor input(t) for all time
 steps:
 
-```
+```C
 (Default: f=Sigmoid, g=Tanh):
 
 - zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
@@ -2921,7 +5578,7 @@ steps:
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_gru(const zdnn_ztensor *input, const zdnn_ztensor *h0,
                      const zdnn_ztensor *weights, const zdnn_ztensor *biases,
                      const zdnn_ztensor *hidden_weights,
@@ -2936,7 +5593,8 @@ the usage example section.
 #### GRU Input / Output requirements
 
 - `num_hidden` dimensions: <a id="gru-hid_sz"></a>
-  - Any num_hidden dimension must be less than or equal to 10880 elements.
+  - Any num_hidden dimension must be less than or equal to
+    `zdnn_get_max_for_dim(2) / 3` elements.
 
 #### Parameters
 
@@ -3058,7 +5716,7 @@ the usage example section.
       replace the `num_timesteps`, `num_batches`, and `num_hidden` variables
       with your own values.
 
-      ```
+      ```C
         zdnn_tensor_desc desc;
         desc.dim4 = (3 * num_timesteps) + 5;
         desc.dim3 = 1;
@@ -3104,7 +5762,6 @@ the usage example section.
 | -------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
 | input          | `ZDNN_3DS`             | (num_timesteps, num_batches, num_features)                                                          |
 | h0             | `ZDNN_3DS`             | (num_dirs, num_batches, num_hidden)                                                                 |
-| c0             | `ZDNN_3DS`             | (num_dirs, num_batches, num_hidden)                                                                 |
 | weights        | `ZDNN_3DS`             | (num_dirs, num_features, num_hidden)                                                                |
 | bias           | `ZDNN_2DS`             | (num_dirs, num_hidden)                                                                              |
 | hidden_weights | `ZDNN_3DS`             | (num_dirs, num_hidden, num_hidden)                                                                  |
@@ -3115,7 +5772,6 @@ the usage example section.
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | input          | `zdnn_generate_transformed_desc`                                                                                                                                          |
 | h0             | `zdnn_generate_transformed_desc`                                                                                                                                          |
-| c0             | `zdnn_generate_transformed_desc`                                                                                                                                          |
 | weights        | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_WEIGHTS` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`        |
 | bias           | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_BIASES` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR`         |
 | hidden_weights | `zdnn_generate_transformed_desc_concatenated` - `RNN_TYPE_LSTM` + `USAGE_HIDDEN_WEIGHTS` + one of the following:<br>`PREV_LAYER_NONE`/`PREV_LAYER_UNI`/`PREV_LAYER_BIDIR` |
@@ -3140,16 +5796,24 @@ the usage example section.
   internal allocation for the required memory failed.
 - [hardware statuses](#hw-statuses)
 
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow GRU]
+[TensorFlow GRU](https://www.tensorflow.org/api_docs/python/tf/keras/layers/GRUCell)
 
-[tensorflow gru]:
-  https://www.tensorflow.org/api_docs/python/tf/keras/layers/GRUCell
-
-[ONNX GRU]
-
-[onnx gru]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#GRU
+[ONNX GRU](https://onnx.ai/onnx/operators/onnx__GRU.html#l-onnx-doc-gru)
 
 ---
 
@@ -3166,7 +5830,7 @@ results into the provided output zDNN tensor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_avgpool2d(const zdnn_ztensor *input,
                            zdnn_pool_padding padding_type,
                            uint32_t kernel_height, uint32_t kernel_width,
@@ -3278,10 +5942,10 @@ Parameter restrictions may vary based on provided strides and padding_type.
 - [hardware statuses](#hw-statuses)
   - `ZDNN_EXCEEDS_MDIS` will also occur if any of the following conditions
     occur:
-    - stride_height is larger than `zdnn_get_nnpa_max_dim_idx_size`.
-    - stride_width is larger than `zdnn_get_nnpa_max_dim_idx_size`.
-    - kernel_height is 0 or is larger than `zdnn_get_nnpa_max_dim_idx_size`.
-    - kernel_width is 0 or is larger than `zdnn_get_nnpa_max_dim_idx_size`.
+    - stride_height is larger than `zdnn_get_max_for_dim(3)`.
+    - stride_width is larger than `zdnn_get_max_for_dim(2)`.
+    - kernel_height is 0 or is larger than `zdnn_get_max_for_dim(3)`.
+    - kernel_width is 0 or is larger than `zdnn_get_max_for_dim(2)`.
   - `ZDNN_FUNC_RC_F000` - Invalid `padding_type`
   - `ZDNN_FUNC_RC_F001` - `stride_height` = 0 and `stride_width` = 0, but a
     kernel parameter is greater than allowed (see `kernel_height` or
@@ -3295,17 +5959,24 @@ Parameter restrictions may vary based on provided strides and padding_type.
   - `ZDNN_FUNC_RC_F004` - `stride_height` > 0 and `stride_width` > 0, but either
     input tensor's height or weight dimension is greater than 1024.
 
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow AvgPool]
+[TensorFlow AvgPool](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/avg-pool)
 
-[tensorflow avgpool]:
-  https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/avg-pool
-
-[ONNX AvgPool]
-
-[onnx avgpool]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#AveragePool
+[ONNX AvgPool](https://onnx.ai/onnx/operators/onnx__AveragePool.html#l-onnx-doc-averagepool)
 
 ---
 
@@ -3322,7 +5993,7 @@ results into the provided output zDNN tensor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_maxpool2d(const zdnn_ztensor *input,
                            zdnn_pool_padding padding_type,
                            uint32_t kernel_height, uint32_t kernel_width,
@@ -3434,10 +6105,10 @@ Parameter restrictions may vary based on provided strides and padding_type.
 - [hardware statuses](#hw-statuses)
   - `ZDNN_EXCEEDS_MDIS` will also occur if any of the following conditions
     occur:
-    - stride_height is larger than `zdnn_get_nnpa_max_dim_idx_size`.
-    - stride_width is larger than `zdnn_get_nnpa_max_dim_idx_size`.
-    - kernel_height is 0 or is larger than `zdnn_get_nnpa_max_dim_idx_size`.
-    - kernel_width is 0 or is larger than `zdnn_get_nnpa_max_dim_idx_size`.
+    - stride_height is larger than `zdnn_get_max_for_dim(3)`.
+    - stride_width is larger than `zdnn_get_max_for_dim(2)`.
+    - kernel_height is 0 or is larger than `zdnn_get_max_for_dim(3)`.
+    - kernel_width is 0 or is larger than `zdnn_get_max_for_dim(2)`.
   - `ZDNN_FUNC_RC_F000` - Invalid `padding_type`
   - `ZDNN_FUNC_RC_F001` - `stride_height` = 0 and `stride_width` = 0, but a
     kernel parameter is greater than allowed (see `kernel_height` or
@@ -3451,17 +6122,24 @@ Parameter restrictions may vary based on provided strides and padding_type.
   - `ZDNN_FUNC_RC_F004` - `stride_height` > 0 and `stride_width` > 0, but either
     input tensor's height or weight dimension is greater than 1024.
 
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow MaxPool]
+[TensorFlow MaxPool](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/max-pool)
 
-[tensorflow maxpool]:
-  https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/max-pool
-
-[ONNX MaxPool]
-
-[onnx maxpool]:
-  https://github.com/onnx/onnx/blob/master/docs/Operators.md#MaxPool
+[ONNX MaxPool](https://onnx.ai/onnx/operators/onnx__MaxPool.html#l-onnx-doc-maxpool)
 
 ---
 
@@ -3483,7 +6161,7 @@ tensor.
 
 #### Format
 
-```
+```C
 zdnn_status zdnn_conv2d(const zdnn_ztensor *input,
                         const zdnn_ztensor *kernel,
                         const zdnn_ztensor *bias,
@@ -3594,16 +6272,24 @@ zdnn_status zdnn_conv2d(const zdnn_ztensor *input,
     `kernel_height` or `kernel_width` > 64
   - `ZDNN_FUNC_RC_F004` - Either `stride_height` or `stride_width` > 13
 
+#### Since
+
+1.1.0
+
+#### Requirements
+
+This feature requires that:
+
+- `zdnn_is_nnpa_installed()` returns true
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+
+See [Validating the environment at runtime](#runtime-val).
+
 #### Framework Examples
 
-[TensorFlow Conv2D]
+[TensorFlow Conv2D](https://www.tensorflow.org/api_docs/python/tf/keras/layers/Conv2D)
 
-[tensorflow conv2d]:
-  https://www.tensorflow.org/api_docs/python/tf/keras/layers/Conv2D
-
-[ONNX Conv2D]
-
-[onnx conv2d]: https://github.com/onnx/onnx/blob/master/docs/Operators.md
+[ONNX Conv2D](https://onnx.ai/onnx/operators/onnx__Conv.html#l-onnx-doc-conv)
 
 ## Convenience Functions
 
@@ -3619,7 +6305,7 @@ zdnn_status zdnn_conv2d(const zdnn_ztensor *input,
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -3652,8 +6338,8 @@ int main(int argc, char *argv[]) {
 
   // read input_data
 
-  // check status for AIU availability, supported ops, etc. here
-  // status = zdnn_query(…);
+  // check status for zAIU availability, supported ops, etc. here
+  // status = zdnn_query();
 
   // set input tensor data to 0 to 127 sequentially and repeat
   for (uint64_t i = 0; i < num_elements; i++) {
@@ -3712,11 +6398,811 @@ int main(int argc, char *argv[]) {
 
 ---
 
+### Example of calling the zdnn_quantized_matmul_op API (normal)
+
+[Back to Table of Contents](#TOC)
+
+```C
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021, 2024
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "zdnn.h"
+
+// Sample: Quantized Matmul
+int main(int argc, char *argv[]) {
+  zdnn_status status;
+
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
+  /***********************************************************************
+   *
+   * Quantized Matmul:
+   *
+   * INPUTS --------------------------------------------------------------
+   * input           |  ZDNN_3DS  | (s, m, n)
+   * weights         |  ZDNN_3DS  | (s, n, p)
+   * input_biases    |  ZDNN_2DS  | (s, p)
+   *
+   * OUTPUTS -------------------------------------------------------------
+   * output          |  ZDNN_3DS  | (s, m, p)
+   ***********************************************************************/
+  uint32_t s = 2;
+  uint32_t m = 3;
+  uint32_t n = 4;
+  uint32_t p = 5;
+
+  short int8_size = 1; // size of each int8 element in bytes
+  short float_size = 4; // size of each float element in bytes
+
+  /***********************************************************************
+   * Create input zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc input_pre_tfrmd_desc, input_tfrmd_desc;
+  zdnn_ztensor input;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &input_pre_tfrmd_desc,
+                                 s, m, n);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &input_pre_tfrmd_desc, QUANTIZED_INT8, &input_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float input_scale = 1.f;
+  float input_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&input_pre_tfrmd_desc,
+                                                   &input_tfrmd_desc,
+                                                   input_scale, input_offset,
+                                                   &input);
+  assert(status == ZDNN_OK);
+
+  uint64_t input_data_size = s * m * n * float_size;
+  void *input_data = malloc(input_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&input, false, INT8_MIN, INT8_MAX,
+                                            input_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create weights zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc weights_pre_tfrmd_desc, weights_tfrmd_desc;
+  zdnn_ztensor weights;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, INT8, &weights_pre_tfrmd_desc,
+                                 s, n, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &weights_pre_tfrmd_desc, QUANTIZED_WEIGHTS_INT8, &weights_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float weights_scale = 1.f;
+  float weights_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&weights_pre_tfrmd_desc,
+                                                   &weights_tfrmd_desc,
+                                                   weights_scale,
+                                                   weights_offset, &weights);
+  assert(status == ZDNN_OK);
+
+  uint64_t weights_data_size = s * n * p * int8_size;
+  void *weights_data = malloc(weights_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&weights, false, INT8_MIN, INT8_MAX,
+                                            weights_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create biases zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, FP32, &biases_pre_tfrmd_desc,
+                                 s, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &biases_pre_tfrmd_desc, QUANTIZED_INT8, &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float biases_scale = 1.f;
+  float biases_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                                   &biases_tfrmd_desc,
+                                                   biases_scale, biases_offset,
+                                                   &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = s * p * float_size;
+  void *biases_data = malloc(biases_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&biases, false, INT8_MIN, INT8_MAX,
+                                            biases_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create output zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc output_pre_tfrmd_desc, output_tfrmd_desc;
+  zdnn_ztensor output;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &output_pre_tfrmd_desc,
+                                 s, m, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &output_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &output_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float output_scale = 1.f;
+  float output_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&output_pre_tfrmd_desc,
+                                                   &output_tfrmd_desc,
+                                                   output_scale, output_offset,
+                                                   &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Call the zAIU
+   ***********************************************************************/
+  status = zdnn_quantized_matmul_op(&input, &weights, &biases,
+                                    MATMUL_OP_ADDITION, INT8_MIN, INT8_MAX,
+                                    NULL, &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Output and Cleanup
+   ***********************************************************************/
+  uint64_t output_data_size = s * m * p * float_size;
+  void *output_data = malloc(output_data_size);
+
+  status = zdnn_transform_origtensor(&output, output_data);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_free_ztensor_buffer(&input);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&weights);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&biases);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&output);
+  assert(status == ZDNN_OK);
+
+  free(input_data);
+  free(weights_data);
+  free(biases_data);
+  free(output_data);
+}
+```
+
+---
+
+### Example of calling the zdnn_quantized_matmul_op API (on-the-fly)
+
+[Back to Table of Contents](#TOC)
+
+```C
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021, 2024
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "zdnn.h"
+
+// Sample: Quantized Matmul on-the-fly
+int main(int argc, char *argv[]) {
+  zdnn_status status;
+
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
+  /***********************************************************************
+   *
+   * Quantized Matmul on-the-fly:
+   *
+   * INPUTS --------------------------------------------------------------
+   * input           |  ZDNN_3DS  | (s, m, n)
+   * weights         |  ZDNN_3DS  | (s, n, p)
+   * input_biases    |  ZDNN_2DS  | (s, p)
+   *
+   * OUTPUTS -------------------------------------------------------------
+   * output          |  ZDNN_3DS  | (s, m, p)
+   ***********************************************************************/
+  uint32_t s = 2;
+  uint32_t m = 3;
+  uint32_t n = 4;
+  uint32_t p = 5;
+
+  short int8_size = 1; // size of each int8 element in bytes
+  short float_size = 4; // size of each float element in bytes
+
+  /***********************************************************************
+   * Create input zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc input_pre_tfrmd_desc, input_tfrmd_desc;
+  zdnn_ztensor input;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &input_pre_tfrmd_desc,
+                                 s, m, n);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &input_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &input_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float input_scale = 1.f;
+  float input_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&input_pre_tfrmd_desc,
+                                                   &input_tfrmd_desc,
+                                                   input_scale, input_offset,
+                                                   &input);
+  assert(status == ZDNN_OK);
+
+  uint64_t input_data_size = s * m * n * float_size;
+  void *input_data = malloc(input_data_size);
+
+  status = zdnn_transform_ztensor(&input, input_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create weights zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc weights_pre_tfrmd_desc, weights_tfrmd_desc;
+  zdnn_ztensor weights;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, INT8, &weights_pre_tfrmd_desc,
+                                 s, n, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &weights_pre_tfrmd_desc, QUANTIZED_WEIGHTS_INT8, &weights_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float weights_scale = 1.f;
+  float weights_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&weights_pre_tfrmd_desc,
+                                                   &weights_tfrmd_desc,
+                                                   weights_scale,
+                                                   weights_offset, &weights);
+  assert(status == ZDNN_OK);
+
+  uint64_t weights_data_size = s * n * p * int8_size;
+  void *weights_data = malloc(weights_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&weights, false, INT8_MIN, INT8_MAX,
+                                            weights_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create biases zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, FP32, &biases_pre_tfrmd_desc,
+                                 s, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &biases_pre_tfrmd_desc, QUANTIZED_INT8, &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float biases_scale = 1.f;
+  float biases_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                                   &biases_tfrmd_desc,
+                                                   biases_scale, biases_offset,
+                                                   &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = s * p * float_size;
+  void *biases_data = malloc(biases_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&biases, false, INT8_MIN, INT8_MAX,
+                                            biases_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create output zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc output_pre_tfrmd_desc, output_tfrmd_desc;
+  zdnn_ztensor output;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &output_pre_tfrmd_desc,
+                                 s, m, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &output_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &output_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float output_scale = 1.f;
+  float output_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&output_pre_tfrmd_desc,
+                                                   &output_tfrmd_desc,
+                                                   output_scale, output_offset,
+                                                   &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Call the zAIU
+   ***********************************************************************/
+  status = zdnn_quantized_matmul_op(&input, &weights, &biases,
+                                    MATMUL_OP_ADDITION, INT8_MIN, INT8_MAX,
+                                    NULL, &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Output and Cleanup
+   ***********************************************************************/
+  uint64_t output_data_size = s * m * p * float_size;
+  void *output_data = malloc(output_data_size);
+
+  status = zdnn_transform_origtensor(&output, output_data);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_free_ztensor_buffer(&input);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&weights);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&biases);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&output);
+  assert(status == ZDNN_OK);
+
+  free(input_data);
+  free(weights_data);
+  free(biases_data);
+  free(output_data);
+}
+```
+
+---
+
+### Example of calling the zdnn_quantized_matmul with pre_computed=true API (normal)
+
+[Back to Table of Contents](#TOC)
+
+```C
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021, 2024
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "zdnn.h"
+
+// Sample: Quantized Matmul Pre-Computed
+int main(int argc, char *argv[]) {
+  zdnn_status status;
+
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
+  /***********************************************************************
+   *
+   * Quantized Matmul Pre-Computed:
+   *
+   * INPUTS --------------------------------------------------------------
+   * input           |  ZDNN_3DS  | (s, m, n)
+   * weights         |  ZDNN_3DS  | (s, n, p)
+   * input_biases    |  ZDNN_2DS  | (s, p)
+   *
+   * OUTPUTS -------------------------------------------------------------
+   * output          |  ZDNN_3DS  | (s, m, p)
+   ***********************************************************************/
+  uint32_t s = 2;
+  uint32_t m = 3;
+  uint32_t n = 4;
+  uint32_t p = 5;
+
+  short int8_size = 1; // size of each int8 element in bytes
+  short float_size = 4; // size of each float element in bytes
+
+  /***********************************************************************
+   * Create input zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc input_pre_tfrmd_desc, input_tfrmd_desc;
+  zdnn_ztensor input;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &input_pre_tfrmd_desc,
+                                 s, m, n);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &input_pre_tfrmd_desc, QUANTIZED_INT8, &input_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float input_scale = 1.f;
+  float input_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&input_pre_tfrmd_desc,
+                                                   &input_tfrmd_desc,
+                                                   input_scale, input_offset,
+                                                   &input);
+  assert(status == ZDNN_OK);
+
+  uint64_t input_data_size = s * m * n * float_size;
+  void *input_data = malloc(input_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&input, false, INT8_MIN, INT8_MAX,
+                                            input_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create weights zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc weights_pre_tfrmd_desc, weights_tfrmd_desc;
+  zdnn_ztensor weights;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, INT8, &weights_pre_tfrmd_desc,
+                                 s, n, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &weights_pre_tfrmd_desc, QUANTIZED_WEIGHTS_INT8, &weights_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float weights_scale = 1.f;
+  float weights_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&weights_pre_tfrmd_desc,
+                                                   &weights_tfrmd_desc,
+                                                   weights_scale,
+                                                   weights_offset, &weights);
+  assert(status == ZDNN_OK);
+
+  uint64_t weights_data_size = s * n * p * int8_size;
+  void *weights_data = malloc(weights_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&weights, false, INT8_MIN, INT8_MAX,
+                                            weights_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create pre-computed biases zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, FP32, &biases_pre_tfrmd_desc,
+                                 s, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &biases_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float biases_scale = 1.f;
+  float biases_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                                   &biases_tfrmd_desc,
+                                                   biases_scale, biases_offset,
+                                                   &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = s * p * float_size;
+  void *biases_data = malloc(biases_data_size);
+
+  status = zdnn_transform_ztensor(&biases, biases_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create output zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc output_pre_tfrmd_desc, output_tfrmd_desc;
+  zdnn_ztensor output;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &output_pre_tfrmd_desc,
+                                 s, m, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &output_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &output_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float output_scale = 1.f;
+  float output_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&output_pre_tfrmd_desc,
+                                                   &output_tfrmd_desc,
+                                                   output_scale, output_offset,
+                                                   &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Call the zAIU
+   ***********************************************************************/
+  status = zdnn_quantized_matmul_op(&input, &weights, &biases,
+                                                 MATMUL_OP_ADDITION, INT8_MIN,
+                                                 INT8_MAX, false, true, NULL, &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Output and Cleanup
+   ***********************************************************************/
+  uint64_t output_data_size = s * m * p * float_size;
+  void *output_data = malloc(output_data_size);
+
+  status = zdnn_transform_origtensor(&output, output_data);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_free_ztensor_buffer(&input);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&weights);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&biases);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&output);
+  assert(status == ZDNN_OK);
+
+  free(input_data);
+  free(weights_data);
+  free(biases_data);
+  free(output_data);
+}
+```
+
+---
+
+### Example of calling the zdnn_quantized_matmul_op with pre_computed=true API (on-the-fly)
+
+[Back to Table of Contents](#TOC)
+
+```C
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2021, 2024
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "zdnn.h"
+
+// Sample: Quantized Matmul Pre-Computed on-the-fly
+int main(int argc, char *argv[]) {
+  zdnn_status status;
+
+#ifdef STATIC_LIB
+  zdnn_init();
+#endif
+
+  /***********************************************************************
+   *
+   * Quantized Matmul Pre-Computed on-the-fly:
+   *
+   * INPUTS --------------------------------------------------------------
+   * input           |  ZDNN_3DS  | (s, m, n)
+   * weights         |  ZDNN_3DS  | (s, n, p)
+   * input_biases    |  ZDNN_2DS  | (s, p)
+   *
+   * OUTPUTS -------------------------------------------------------------
+   * output          |  ZDNN_3DS  | (s, m, p)
+   ***********************************************************************/
+  uint32_t s = 2;
+  uint32_t m = 3;
+  uint32_t n = 4;
+  uint32_t p = 5;
+
+  short int8_size = 1; // size of each int8 element in bytes
+  short float_size = 4; // size of each float element in bytes
+
+  /***********************************************************************
+   * Create input zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc input_pre_tfrmd_desc, input_tfrmd_desc;
+  zdnn_ztensor input;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &input_pre_tfrmd_desc,
+                                 s, m, n);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &input_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &input_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float input_scale = 1.f;
+  float input_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&input_pre_tfrmd_desc,
+                                                   &input_tfrmd_desc,
+                                                   input_scale, input_offset,
+                                                   &input);
+  assert(status == ZDNN_OK);
+
+  uint64_t input_data_size = s * m * n * float_size;
+  void *input_data = malloc(input_data_size);
+
+  status = zdnn_transform_ztensor(&input, input_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create weights zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc weights_pre_tfrmd_desc, weights_tfrmd_desc;
+  zdnn_ztensor weights;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, INT8, &weights_pre_tfrmd_desc,
+                                 s, n, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &weights_pre_tfrmd_desc, QUANTIZED_WEIGHTS_INT8, &weights_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float weights_scale = 1.f;
+  float weights_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&weights_pre_tfrmd_desc,
+                                                   &weights_tfrmd_desc,
+                                                   weights_scale,
+                                                   weights_offset, &weights);
+  assert(status == ZDNN_OK);
+
+  uint64_t weights_data_size = s * n * p * int8_size;
+  void *weights_data = malloc(weights_data_size);
+
+  status = zdnn_transform_quantized_ztensor(&weights, false, INT8_MIN, INT8_MAX,
+                                            weights_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create pre-computed biases zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc biases_pre_tfrmd_desc, biases_tfrmd_desc;
+  zdnn_ztensor biases;
+
+  zdnn_init_pre_transformed_desc(ZDNN_2DS, FP32, &biases_pre_tfrmd_desc,
+                                 s, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &biases_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &biases_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float biases_scale = 1.f;
+  float biases_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&biases_pre_tfrmd_desc,
+                                                   &biases_tfrmd_desc,
+                                                   biases_scale, biases_offset,
+                                                   &biases);
+  assert(status == ZDNN_OK);
+
+  uint64_t biases_data_size = s * p * float_size;
+  void *biases_data = malloc(biases_data_size);
+
+  status = zdnn_transform_ztensor(&biases, biases_data);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Create output zTensor
+   ***********************************************************************/
+  zdnn_tensor_desc output_pre_tfrmd_desc, output_tfrmd_desc;
+  zdnn_ztensor output;
+
+  zdnn_init_pre_transformed_desc(ZDNN_3DS, FP32, &output_pre_tfrmd_desc,
+                                 s, m, p);
+
+  status = zdnn_generate_quantized_transformed_desc(
+      &output_pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &output_tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  float output_scale = 1.f;
+  float output_offset = 0.f;
+
+  status = zdnn_init_quantized_ztensor_with_malloc(&output_pre_tfrmd_desc,
+                                                   &output_tfrmd_desc,
+                                                   output_scale, output_offset,
+                                                   &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Call the zAIU
+   ***********************************************************************/
+  status = zdnn_quantized_matmul_op(&input, &weights, &biases,
+                                                 MATMUL_OP_ADDITION, INT8_MIN,
+                                                 INT8_MAX, false, true, NULL, &output);
+  assert(status == ZDNN_OK);
+
+  /***********************************************************************
+   * Output and Cleanup
+   ***********************************************************************/
+  uint64_t output_data_size = s * m * p * float_size;
+  void *output_data = malloc(output_data_size);
+
+  status = zdnn_transform_origtensor(&output, output_data);
+  assert(status == ZDNN_OK);
+
+  status = zdnn_free_ztensor_buffer(&input);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&weights);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&biases);
+  assert(status == ZDNN_OK);
+  status = zdnn_free_ztensor_buffer(&output);
+  assert(status == ZDNN_OK);
+
+  free(input_data);
+  free(weights_data);
+  free(biases_data);
+  free(output_data);
+}
+```
+
+---
+
 ### Example of an application calling the zdnn_lstm API (forward)
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 // SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright IBM Corp. 2021
@@ -3975,7 +7461,7 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Call the AIU
+   * Call the zAIU
    ***********************************************************************/
 
   void *work_area = NULL;
@@ -4045,11 +7531,11 @@ int main(int argc, char *argv[]) {
 
 ---
 
-### Example of an application calling the zdnn_lstm API (bi-directional)
+#### Example of an application calling the zdnn_lstm API (bi-directional)
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 // SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright IBM Corp. 2021
@@ -4312,7 +7798,7 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Call the AIU
+   * Call the zAIU
    ***********************************************************************/
 
   void *work_area = NULL;
@@ -4385,11 +7871,13 @@ int main(int argc, char *argv[]) {
 
 ---
 
-### Example of an application calling the zdnn_lstm API (multi-layer bi-directional)
+### Example of an application calling the zdnn_lstm API
+
+#### Example of an application calling the zdnn_lstm API (multi-layer bi-directional)
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 // SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright IBM Corp. 2021
@@ -4608,7 +8096,7 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Call the AIU
+   * Call the zAIU
    ***********************************************************************/
 
   void *work_area = NULL;
@@ -4762,11 +8250,13 @@ int main(int argc, char *argv[]) {
 
 ---
 
-### Example of an application calling the zdnn_gru API (forward)
+### Example of an application calling the zdnn_gru API
+
+#### Example of an application calling the zdnn_gru API (forward)
 
 [Back to Table of Contents](#TOC)
 
-```
+```C
 // SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright IBM Corp. 2021
@@ -5005,7 +8495,7 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Call the AIU
+   * Call the zAIU
    ***********************************************************************/
 
   void *work_area = NULL;
@@ -5058,4 +8548,91 @@ int main(int argc, char *argv[]) {
 
 
 
+```
+
+---
+
+### Example of an application creating a quantized ztensor
+
+[Back to Table of Contents](#TOC)
+
+```C
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright IBM Corp. 2023
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "zdnn.h"
+
+// ***************************************************************************
+// Sample:
+//
+// Create a quantized zTensors
+// ***************************************************************************
+int main(int argc, char *argv[]) {
+  zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
+  zdnn_ztensor ztensor;
+  zdnn_status status;
+
+  uint32_t dim_n = 1, dim_h = 32, dim_w = 32, dim_c = 3;
+  zdnn_data_types type = FP32;
+  short element_size = 4; // size of each element in bytes
+  uint64_t num_elements = dim_n * dim_h * dim_w * dim_c;
+
+  // allocate tensor data storage
+  void *data1 = malloc(num_elements * element_size);
+
+  // read input_data
+
+  // check status for zAIU availability, supported ops, etc. here
+  // status = zdnn_query();
+
+  // set input tensor data to 0 to 127 sequentially and repeat
+  for (uint64_t i = 0; i < num_elements; i++) {
+    ((float *)data1)[i] = (float)(i & 0x7f);
+  }
+
+  zdnn_init_pre_transformed_desc(ZDNN_NHWC, type, &pre_tfrmd_desc, dim_n, dim_h,
+                                 dim_w, dim_c);
+  float scale = 3;
+  float offset = 2;
+
+  // generate transformed shape information
+  status = zdnn_generate_quantized_transformed_desc(
+      &pre_tfrmd_desc, QUANTIZED_DLFLOAT16, &tfrmd_desc);
+  assert(status == ZDNN_OK);
+
+  // initialize zTensors and allocate 4k-aligned storage via helper function
+  status = zdnn_init_quantized_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc,
+                                                   scale, offset, &ztensor);
+  assert(status == ZDNN_OK);
+
+  // transform the feature tensor
+  status = zdnn_transform_ztensor(&ztensor, data1);
+  assert(status == ZDNN_OK);
+
+  // Free zTensors
+  status = zdnn_free_ztensor_buffer(&ztensor);
+  assert(status == ZDNN_OK);
+
+  free(data1);
+}
 ```

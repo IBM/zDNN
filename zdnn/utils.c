@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,23 +71,6 @@ void print_hex(size_t const size, void const *const ptr) {
   printf("\n");
 }
 
-/// Set bit at bit_pos to 1 in a bit128_t struct
-///  Bit position is determined from left to right of uint64_t field
-///
-/// \param[in] field Pointer to bit128_t struct
-/// \param[in] bit_pos 0-based bit position
-///
-/// \return None
-///
-void setbit_128(bit128_t *field, uint8_t bit_pos) {
-  if (bit_pos < 64) {
-    field->bits_0to63 |= (uint64_t)1 << ((BIT_SIZEOF(uint64_t) - 1) - bit_pos);
-  } else if (bit_pos < 128) {
-    field->bits_64to127 |= (uint64_t)1
-                           << ((BIT_SIZEOF(uint64_t) - 1) - (bit_pos - 64));
-  }
-}
-
 /// Test if bit at bit_pos is 1 in a bit128_t struct
 ///  Bit position is assumed to be left to right of uint64_t field
 ///
@@ -105,29 +88,6 @@ bool is_bitset_128(bit128_t field, uint8_t bit_pos) {
            ((uint64_t)1 << ((BIT_SIZEOF(uint64_t) - 1) - (bit_pos - 64)));
   } else {
     return false;
-  }
-}
-
-/// Set bit at bit_pos to 1 in a bit256_t struct
-///  Bit position is determined from left to right of uint64_t field
-///
-/// \param[in] field Pointer to bit256_t struct
-/// \param[in] bit_pos 0-based bit position
-///
-/// \return None
-///
-void setbit_256(bit256_t *field, uint16_t bit_pos) {
-  if (bit_pos < 64) {
-    field->bits_0to63 |= (uint64_t)1 << ((BIT_SIZEOF(uint64_t) - 1) - bit_pos);
-  } else if (bit_pos < 128) {
-    field->bits_64to127 |= (uint64_t)1
-                           << ((BIT_SIZEOF(uint64_t) - 1) - (bit_pos - 64));
-  } else if (bit_pos < 192) {
-    field->bits_128to191 |= (uint64_t)1
-                            << ((BIT_SIZEOF(uint64_t) - 1) - (bit_pos - 128));
-  } else if (bit_pos < 256) {
-    field->bits_192to255 |= (uint64_t)1
-                            << ((BIT_SIZEOF(uint64_t) - 1) - (bit_pos - 192));
   }
 }
 
@@ -157,13 +117,24 @@ bool is_bitset_256(bit256_t field, uint16_t bit_pos) {
   }
 }
 
+/// Determine if parmblock version is available.
+///
+/// \param[in] parmblock_version Parameter block version to check.
+///
+/// \return true or false
+///
+bool is_query_parmblock_installed(uint8_t parmblock_version) {
+  return is_bitset_128(nnpa_query_result.installed_parameter_block_formats,
+                       parmblock_version);
+}
+
 /// Get the number of elements based on a tensor's dimensions.
 ///
 /// \param[in] ztensor zDNN tensor to get element count from
 /// \param[in] elements_mode controls how to count elements.
 ///
 ///     ELEMENTS_AIU -
-///         All elements wrt the AIU (ie the tfrmd shape)
+///         All elements wrt the zAIU (ie the tfrmd shape)
 ///         For concatenated and RNN output tensors, this includes horizontal
 ///         and vertical paddings
 ///
@@ -356,8 +327,176 @@ void print_ztensor(const zdnn_ztensor *ztensor, char *name, bool print_data) {
   }
   printf("\n");
 
+  printf("Scale:\t %f\n", ztensor->rec_scale);
+  printf("Offset:\t %f\n", ztensor->offset);
+
   if (print_data) {
     print_dlf16_buffer(ztensor->buffer, ztensor->buffer_size);
   }
   printf("=========================================\n");
+}
+
+/// query nnpa with nnpa function code and parmblock format
+/// to see if operation is installed on underlying hardware
+///
+/// \param[in] api zdnn_operation_apis enum
+///
+/// \return true if nnpa function code and parmblock format is installed
+/// otherwise false
+///
+bool query_nnpa_op(zdnn_operation_apis api) {
+  nnpa_parmblk_format parmblock_format;
+  nnpa_function_code function_code;
+
+  switch (api) {
+    // set 1
+    // NNPA_PARMBLKFORMAT_0 and invoke nnpa function
+  case ZDNN_ADD:
+    function_code = NNPA_ADD;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_SUB:
+    function_code = NNPA_SUB;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_MUL:
+    function_code = NNPA_MUL;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_DIV:
+    function_code = NNPA_DIV;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_MIN:
+    function_code = NNPA_MIN;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_MAX:
+    function_code = NNPA_MAX;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_LOG:
+    function_code = NNPA_LOG;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_EXP:
+    function_code = NNPA_EXP;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_TANH:
+    function_code = NNPA_TANH;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_BATCHNORM:
+    function_code = NNPA_BATCHNORMALIZATION;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_SIGMOID:
+    function_code = NNPA_SIGMOID;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_MEANREDUCE2D:
+  case ZDNN_AVGPOOL2D:
+    function_code = NNPA_AVGPOOL2D;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_MAXPOOL2D:
+    function_code = NNPA_MAXPOOL2D;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+
+  // set 2
+  // NNPA_PARMBLKFORMAT_1 and invoke nnpa function
+  case ZDNN_SQRT:
+    function_code = NNPA_SQRT;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_INVSQRT:
+    function_code = NNPA_INVSQRT;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_NORM:
+    function_code = NNPA_NORM;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_MOMENTS:
+    function_code = NNPA_MOMENTS;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_LAYERNORM:
+    function_code = NNPA_LAYERNORM;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_REDUCE:
+    function_code = NNPA_REDUCE;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_CONV2D:
+    function_code = NNPA_CONVOLUTION;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_GELU:
+    function_code = NNPA_GELU;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+
+  // set 3
+  // >1 zdnn api using same NNPA function code but different nnpa parmblock
+  // format
+  case ZDNN_RELU:
+    function_code = NNPA_RELU;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_LEAKY_RELU:
+    function_code = NNPA_RELU;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_SOFTMAX:
+    function_code = NNPA_SOFTMAX;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_SOFTMAX_MASK:
+    function_code = NNPA_SOFTMAX;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+  case ZDNN_TRANSFORM_ZTENSOR_WITH_SATURATION:
+  case ZDNN_TRANSFORM_QUANTIZED_ZTENSOR:
+    function_code = NNPA_TRANSFORM;
+    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    break;
+
+    // set 4
+    // zdnn function that invokes multiple NNPA function but may have multiple
+    // paths i.e., matmul (see operations.c)
+  case ZDNN_MATMUL_OP:
+    function_code = NNPA_MATMUL_OP;
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
+    break;
+  case ZDNN_LSTM:
+    return (zdnn_is_nnpa_function_installed(3, NNPA_LSTMACT, NNPA_MATMUL_OP,
+                                            NNPA_MATMUL_OP_BCAST23) &&
+            zdnn_is_nnpa_parmblk_fmt_installed(1, NNPA_PARMBLKFORMAT_0));
+  case ZDNN_GRU:
+    return (zdnn_is_nnpa_function_installed(3, NNPA_GRUACT, NNPA_MATMUL_OP,
+                                            NNPA_MATMUL_OP_BCAST23) &&
+            zdnn_is_nnpa_parmblk_fmt_installed(1, NNPA_PARMBLKFORMAT_0));
+
+    // These are handled by using is_nnpa_fc_and_parmblock_installed:
+    // case ZDNN_MATMUL_BCAST_OP:
+    // case ZDNN_MATMUL_TRANSPOSE_OP:
+    // case ZDNN_QUANTIZED_MATMUL_OP:
+    //  - pre_computed
+    //  - quantization
+
+  default:
+    return false;
+  }
+  return is_nnpa_fc_and_parmblock_installed(function_code, parmblock_format);
+}
+
+bool is_nnpa_fc_and_parmblock_installed(uint8_t function_code,
+                                        uint8_t parmblock_version) {
+
+  return (zdnn_is_nnpa_function_installed(1, function_code) &&
+          zdnn_is_nnpa_parmblk_fmt_installed(1, parmblock_version));
 }

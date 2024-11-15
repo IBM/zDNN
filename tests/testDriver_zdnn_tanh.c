@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,18 +29,15 @@
 //                                               introductions/Tanh/ShowAll.html
 // -----------------------------------------------------------------------------
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 /**
  * Helper function to compute output tensor values using activation
  * tanh
  */
-void act_tanh(float input[], float output[], int num_elems) {
+void act_tanh(const float input[], float output[], int num_elems) {
   for (long i = 0; i < num_elems; i++) {
     output[i] = (2 / (1 + exp(-2 * input[i]))) - 1;
   }
@@ -76,13 +73,10 @@ void zdnn_tanh_test(uint32_t *shape, zdnn_data_layouts layout, float *input,
       "%08x\n",
       status, expected_status);
 
-#ifdef TEST_AIU
   // Only check expected values if we expected the NNPA call to be successful
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values(output_ztensor, false, expected_values);
   }
-
-#endif
 
   // All done--clean up the tensor buffers
   free_ztensor_buffers(2, input_ztensor, output_ztensor);
@@ -967,39 +961,39 @@ void zdnn_tanh_balanced_3d_large() {
 int main() {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_basic_nhwc_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_zeros_nhwc_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_negative_nhwc_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_positive_nhwc_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_balanced_nhwc_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_basic_nhwc_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_zeros_nhwc_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_negative_nhwc_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_positive_nhwc_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_balanced_nhwc_1);
 
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_basic_3d_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_zeros_3d_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_negative_3d_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_positive_3d_1);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_balanced_3d_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_basic_3d_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_zeros_3d_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_negative_3d_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_positive_3d_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_balanced_3d_1);
 
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_basic_nhwc_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_zeros_nhwc_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_negative_nhwc_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_positive_nhwc_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_balanced_nhwc_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_basic_nhwc_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_zeros_nhwc_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_negative_nhwc_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_positive_nhwc_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_balanced_nhwc_2);
 
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_basic_nhwc_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_zeros_nhwc_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_negative_nhwc_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_balanced_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_basic_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_zeros_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_negative_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_balanced_nhwc_large);
 
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_basic_3d_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_zeros_3d_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_negative_3d_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_positive_3d_2);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_balanced_3d_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_basic_3d_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_zeros_3d_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_negative_3d_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_positive_3d_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_balanced_3d_2);
 
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_basic_3d_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_zeros_3d_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_negative_3d_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_tanh_balanced_3d_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_basic_3d_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_zeros_3d_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_negative_3d_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_tanh_balanced_3d_large);
 
   return UNITY_END();
 }

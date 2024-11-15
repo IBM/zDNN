@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,7 @@
 
 #include "common_elwise.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 /*
@@ -204,12 +202,12 @@ void api_mul_1D() {
 int main() {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(api_mul_basic);
-  RUN_TEST_ALL_DATATYPES(api_mul_med_dims);
-  RUN_TEST_ALL_DATATYPES(api_mul_high_dims);
-  RUN_TEST_ALL_DATATYPES(api_mul_3D);
-  RUN_TEST_ALL_DATATYPES(api_mul_2D);
-  RUN_TEST_ALL_DATATYPES(api_mul_1D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_mul_basic);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_mul_med_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_mul_high_dims);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_mul_3D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_mul_2D);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(api_mul_1D);
 
   return UNITY_END();
 }

@@ -24,7 +24,7 @@ all: config.make
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@egrep '^[a-z]+:' Makefile | cut -d: -f1 | sort | xargs -n 1 echo "    "
+	@egrep "^[a-z]+:" Makefile | cut -d':' -f1 | sort | xargs -n 1 echo "    "
 
 .PHONY: build
 build: config.make

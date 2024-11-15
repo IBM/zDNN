@@ -21,6 +21,3 @@
 /* Enable additional checking, error reporting, disable compiler
    optimizations, and add debug information */
 #undef ZDNN_CONFIG_DEBUG
-
-/* Skip all NNPA facility instructions. */
-#undef ZDNN_CONFIG_NO_NNPA

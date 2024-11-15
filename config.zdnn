@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Copyright IBM Corp. 2021
+# Copyright IBM Corp. 2021, 2024
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,14 +28,14 @@ case "${target}" in
 	ARFLAGS="${ARFLAGS:--rc}"
 	CFLAGS_INIT="-O3 -mzvector -Wall -std=gnu99 -fstack-protector-all ${CFLAGS_INIT:-}"
 	CFLAGS_QUOTE_INIT="-Wall" # Not needed on Linux. Just repeat an option to prevent it from being empty.
-	CFLAGS="-O3 -march=z14 -mzvector -Wall -std=gnu99 -fstack-protector-all ${CFLAGS:-}"
+	CFLAGS_OPT_EXPENSIVE="-funroll-loops"
+	CFLAGS="-O3 -march=z16 -mzvector -Wall -std=gnu99 -fstack-protector-all ${CFLAGS_OPT_EXPENSIVE} ${CFLAGS:-}"
 	CFLAGS_QUOTE="-Wall"
 	CFLAGS_DEBUG="-O0 -g3 ${CFLAGS_DEBUG:-}"
 	CFLAGS_SHARED="-fPIC ${CFLAGS_SHARED:-}"
 	CFLAGS_ASM="-Wa,-adhln -fno-asynchronous-unwind-tables ${CFLAGS_ASM:-}"
-	CFLAGS_OPT_EXPENSIVE="-funroll-loops"
 	CFLAGS_NOSEARCH=""
-	CXXFLAGS="-O3 -march=z14 -Wall ${CXXFLAGS:-}"
+	CXXFLAGS="-O3 -march=z16 -Wall ${CXXFLAGS:-}"
 	CPP_SYMCHECK_FLAGS="-E -o zdnn.i"
 	SODIR="${SODIR:-lib}"
 	LIBNAME="${LIBNAME:-libzdnn}"
@@ -58,16 +58,16 @@ case "${target}" in
 	LD=${LD:-xlC}
 	AR=${AR:-ar}
 	ARFLAGS="${ARFLAGS:--rc}"
-	CXXFLAGS="-I /usr/include -I /u/mvsbuild/zos25/usr/include/zos/ -Wc,ASM,LP64,INLINE,VECTOR ${CXXFLAGS:-}"
+	CXXFLAGS="-I /usr/include -I /usr/include/zos/ -Wc,ASM,LP64,INLINE,VECTOR ${CXXFLAGS:-}"
 	CFLAGS_INIT="${CXXFLAGS} -qlanglvl=extc99 ${CFLAGS_INIT:-}"
 	CFLAGS_QUOTE_INIT="-Wc,SUPPRESS(CCN4108),STACKPROTECT(ALL)" # The options with () require an extra pair of quotes in config.make.in
-	CFLAGS="${CXXFLAGS} -qlanglvl=extc99 ${CFLAGS:-}"
-	CFLAGS_QUOTE="-Wc,ARCH(12),SUPPRESS(CCN4108),STACKPROTECT(ALL)"
+	CFLAGS_OPT_EXPENSIVE="-qhot"
+	CFLAGS="${CXXFLAGS} -qlanglvl=extc99 ${CFLAGS_OPT_EXPENSIVE} ${CFLAGS:-}"
+	CFLAGS_QUOTE="-Wc,ARCH(13),SUPPRESS(CCN4108),STACKPROTECT(ALL)"
 	CFLAGS_DEBUG="-g3 ${CFLAGS_DEBUG:-}"
 	CFLAGS_SHARED="-Wc,DLL ${CFLAGS_SHARED:-}"
 	CXXFLAGS_ASM='-Wc,"SOURCE,LIST"'" ${CXXFLAGS_ASM:-}"
 	CFLAGS_ASM="${CXXFLAGS_ASM} -Wc,AGGREGATE ${CFLAGS_ASM:-}"
-	CFLAGS_OPT_EXPENSIVE="-qhot"
 	CFLAGS_NOSEARCH="-qnosearch"
 	CPP_SYMCHECK_FLAGS="-P"
 	SODIR="${SODIR:-lib}"
@@ -76,9 +76,9 @@ case "${target}" in
 	LIBNAME_PRIVATE="${LIBNAME_PRIVATE:-${LIBNAME}-private}"
 	LIBSONAME_PRIVATE="${LIBSONAME_PRIVATE:-}"
 	LDFLAGS="${LDFLAGS:-}"
-	LDFLAGS_SHARED="-Wl,DLL -Wc,LP64 ${LDFLAGS_SHARED:-}"
-	LDFLAGS_SHARED_EXPORTALL="${LDFLAGS_SHARED_EXPORTALL:-}"
-	LDFLAGS_TEST="../zdnn/${SODIR}/${LIBNAME_PRIVATE}.x -lm ${LDFLAGS_TEST:-}"
+	LDFLAGS_SHARED="-Wl,DLL -Wc,LP64 ${LDFLAGS_SHARED:-} ${LDFLAGS:-}"
+	LDFLAGS_SHARED_EXPORTALL="${LDFLAGS_SHARED_EXPORTALL:-} ${LDFLAGS:-}"
+	LDFLAGS_TEST="../zdnn/${SODIR}/${LIBNAME_PRIVATE}.x -lm ${LDFLAGS_TEST:-} ${LDFLAGS:-}"
 	LD_PATH_VAR="${LD_PATH_VAR:-LIBPATH}"
 	ECHOFLAGS=""
 	ZDNN_TMAKE_FILES="t-xlcexpo t-symcheck t-listings"

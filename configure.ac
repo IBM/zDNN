@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Copyright IBM Corp. 2021
+# Copyright IBM Corp. 2021, 2024
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,11 +77,6 @@ AS_IF([test x"$AWK" = x"false"], [AC_MSG_ERROR([Please install awk before config
 AC_CHECK_TOOL(READELF, readelf, "")
 AS_IF([test x"$READELF" = x"false"], [AC_MSG_WARN([readelf is required for checking the exported symbols. Check will be skipped.])])
 
-AC_ARG_ENABLE([nnpa], AS_HELP_STRING([--disable-nnpa], [Skip all NNPA facility instructions.]))
-AS_IF([test "x$enable_nnpa" = "xno"], [
-  AC_DEFINE(ZDNN_CONFIG_NO_NNPA, 1, [Skip all NNPA facility instructions.])
-])
-
 AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Enable additional checking, error reporting, disable compiler optimizations, and add debug information]))
 AS_IF([test "x$enable_debug" = "xyes"], [
   zdnn_config_debug=1
@@ -98,10 +93,6 @@ AS_IF([test "x$enable_listings" = "xyes"], [
 
 AC_ARG_ENABLE([test-rpath], AS_HELP_STRING([--disable-test-rpath], [Don't set the rpath in the test binaries to keep them relocatable]))
 AS_IF([test "x$enable_test_rpath" = "xno"], [zdnn_config_no_rpath=1])
-
-AC_ARG_ENABLE([expensive-optimizations], AS_HELP_STRING([--disable-expensive-optimizations], [Disable expensive compiler optimizations.]))
-AS_IF([test "x$enable_expensive_optimizations" != "xno"], [ CFLAGS="${CFLAGS} ${CFLAGS_OPT_EXPENSIVE}" ])
-
 
 # Generate output
 AC_CONFIG_FILES([config.make])

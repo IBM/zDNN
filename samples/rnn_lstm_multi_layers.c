@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,8 +83,8 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
                                  num_dirs, num_features, num_hidden);
   status = zdnn_generate_transformed_desc_concatenated(
       &weights_pre_tfrmd_desc,
-      RNN_TYPE_LSTM | USAGE_WEIGHTS |
-          (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI),
+      (is_prev_layer_bidir ? PREV_LAYER_BIDIR : PREV_LAYER_UNI) |
+          RNN_TYPE_LSTM | USAGE_WEIGHTS,
       &weights_tfrmd_desc);
   assert(status == ZDNN_OK);
 
@@ -216,7 +216,7 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
   assert(status == ZDNN_OK);
 
   /***********************************************************************
-   * Call the AIU
+   * Call the zAIU
    ***********************************************************************/
 
   void *work_area = NULL;

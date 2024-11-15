@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,6 +70,23 @@ DECLARE_STATUS_STR_N_MSG(ZDNN_MISALIGNED_PARMBLOCK,
                          "NNPA parameter block is not on doubleword boundary.")
 DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_CLIPPING_VALUE,
                          "Invalid clipping for the specified operation.")
+DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_ADJUSTMENT_FACTOR,
+                         "Invalid adjustment for the specified operation.")
+DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_EPSILON,
+                         "Invalid epsilon for the specified operation.")
+DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_TRANSFORM_TYPE,
+                         "Invalid transformation type.")
+DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_BETA,
+                         "Invalid beta value for the specified operation.")
+DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_GAMMA,
+                         "Invalid gamma value for the specified operation.")
+DECLARE_STATUS_STR_N_MSG(
+    ZDNN_INVALID_BESSEL_CORRECTION,
+    "Invalid bessel correction value for the specified operation.")
+DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_SCALE,
+                         "Invalid scale value for the specified operation.")
+DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_OFFSET,
+                         "Invalid offset value for the specified operation.")
 DECLARE_STATUS_STR_N_MSG(ZDNN_ALLOCATION_FAILURE, "Can not allocate storage.")
 DECLARE_STATUS_STR_N_MSG(
     ZDNN_INVALID_BUFFER,
@@ -79,7 +96,7 @@ DECLARE_STATUS_STR_N_MSG(ZDNN_CONVERT_FAILURE,
                          "Floating point data conversion failure.")
 DECLARE_STATUS_STR_N_MSG(ZDNN_INVALID_STATE, "Invalid zTensor state.")
 DECLARE_STATUS_STR_N_MSG(ZDNN_UNSUPPORTED_AIU_EXCEPTION,
-                         "AIU operation returned an unexpected exception.")
+                         "zAIU operation returned an unexpected exception.")
 DECLARE_STATUS_STR_N_MSG(
     ZDNN_UNSUPPORTED_PARMBLOCK,
     "NNPA parameter block format is not supported by the model.")
@@ -152,6 +169,14 @@ const char *zdnn_get_status_message(zdnn_status status) {
     CASE_RTN_MSG(ZDNN_INVALID_STRIDES);
     CASE_RTN_MSG(ZDNN_MISALIGNED_PARMBLOCK);
     CASE_RTN_MSG(ZDNN_INVALID_CLIPPING_VALUE);
+    CASE_RTN_MSG(ZDNN_INVALID_ADJUSTMENT_FACTOR);
+    CASE_RTN_MSG(ZDNN_INVALID_EPSILON);
+    CASE_RTN_MSG(ZDNN_INVALID_TRANSFORM_TYPE);
+    CASE_RTN_MSG(ZDNN_INVALID_BETA);
+    CASE_RTN_MSG(ZDNN_INVALID_GAMMA);
+    CASE_RTN_MSG(ZDNN_INVALID_BESSEL_CORRECTION);
+    CASE_RTN_MSG(ZDNN_INVALID_SCALE);
+    CASE_RTN_MSG(ZDNN_INVALID_OFFSET);
     CASE_RTN_MSG(ZDNN_ALLOCATION_FAILURE);
     CASE_RTN_MSG(ZDNN_INVALID_BUFFER);
     CASE_RTN_MSG(ZDNN_CONVERT_FAILURE);
@@ -209,6 +234,14 @@ static const char *get_status_str(zdnn_status status) {
     CASE_RTN_STR(ZDNN_INVALID_STRIDES);
     CASE_RTN_STR(ZDNN_MISALIGNED_PARMBLOCK);
     CASE_RTN_STR(ZDNN_INVALID_CLIPPING_VALUE);
+    CASE_RTN_STR(ZDNN_INVALID_ADJUSTMENT_FACTOR);
+    CASE_RTN_STR(ZDNN_INVALID_EPSILON);
+    CASE_RTN_STR(ZDNN_INVALID_TRANSFORM_TYPE);
+    CASE_RTN_STR(ZDNN_INVALID_BETA);
+    CASE_RTN_STR(ZDNN_INVALID_GAMMA);
+    CASE_RTN_STR(ZDNN_INVALID_BESSEL_CORRECTION);
+    CASE_RTN_STR(ZDNN_INVALID_SCALE);
+    CASE_RTN_STR(ZDNN_INVALID_OFFSET);
     CASE_RTN_STR(ZDNN_ALLOCATION_FAILURE);
     CASE_RTN_STR(ZDNN_INVALID_BUFFER);
     CASE_RTN_STR(ZDNN_CONVERT_FAILURE);
@@ -258,7 +291,8 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
 #ifdef ZDNN_CONFIG_DEBUG
       (status == ZDNN_OK) ? LOGLEVEL_INFO :
 #endif
-                          LOGLEVEL_ERROR;
+      ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) ? LOGLEVEL_WARN
+                                                          : LOGLEVEL_ERROR;
 
   if (format) {
     va_list argptr;

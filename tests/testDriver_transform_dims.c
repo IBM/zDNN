@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -264,7 +264,7 @@ void test_tfrmd_dims_lstm_no_vconcat_weights_odd_dim2_pass() {
 }
 
 void test_tfrmd_dims_lstm_prev_bidir_weights_odd_dim2_fail() {
-  test_concat_weights_dim2(RNN_TYPE_LSTM | USAGE_WEIGHTS | PREV_LAYER_BIDIR, 3,
+  test_concat_weights_dim2(PREV_LAYER_BIDIR | RNN_TYPE_LSTM | USAGE_WEIGHTS, 3,
                            9, 10, ZDNN_INVALID_SHAPE);
 }
 
@@ -289,31 +289,35 @@ void test_tfrmd_dims_4ds_bidir_rnn_output() {
 int main() {
   UNITY_BEGIN();
 
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_nhwc_1);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_nhwc_2);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_4d);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_3ds_1);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_3ds_2);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_3d);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_2ds);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_2d);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_1d);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_nhwc_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_nhwc_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_4d);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_3ds_1);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_3ds_2);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_3d);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_2ds);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_2d);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_1d);
 
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_lstm_biases);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_lstm_no_vconcat_weights);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_lstm_prev_bidir_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_lstm_biases);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_lstm_no_vconcat_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_lstm_prev_bidir_weights);
 
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_gru_biases);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_gru_no_vconcat_weights);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_gru_prev_bidir_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_gru_biases);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_gru_no_vconcat_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_gru_prev_bidir_weights);
 
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_lstm_no_vconcat_weights_odd_dim2_pass);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_lstm_prev_bidir_weights_odd_dim2_fail);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_gru_no_vconcat_weights_odd_dim2_pass);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_gru_prev_bidir_weights_odd_dim2_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_tfrmd_dims_lstm_no_vconcat_weights_odd_dim2_pass);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_tfrmd_dims_lstm_prev_bidir_weights_odd_dim2_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_tfrmd_dims_gru_no_vconcat_weights_odd_dim2_pass);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_tfrmd_dims_gru_prev_bidir_weights_odd_dim2_fail);
 
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_4ds_uni_rnn_output);
-  RUN_TEST_ALL_DATATYPES(test_tfrmd_dims_4ds_bidir_rnn_output);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_4ds_uni_rnn_output);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_tfrmd_dims_4ds_bidir_rnn_output);
 
   return UNITY_END();
 }

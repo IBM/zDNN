@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,9 +29,10 @@
  * to, not as much as if it's producing the correct output.
  * *******************************************************************/
 
-#ifndef __MVS__
-
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
+#ifdef __MVS__
+  TEST_IGNORE_MESSAGE("No easy way to verify ctrace on z/OS. Skipping.");
+#endif // __MVS__
 }
 
 void tearDown(void) {}
@@ -92,16 +93,3 @@ int main() {
 
   return UNITY_END();
 }
-
-#else
-
-void setUp(void) {}
-
-void tearDown(void) {}
-
-int main() {
-  UNITY_BEGIN();
-  return UNITY_END();
-}
-
-#endif // __MVS__

@@ -53,4 +53,9 @@ void test_zdnn_api_lstm_gru(
 
     lstm_gru_direction direction, zdnn_status exp_status);
 
+// this macro assume values of NNPA_LSTMACT and NNPA_GRUACT are next to each
+// other
+#define LOOP_LSTM_AND_GRU(lg)                                                  \
+  for (int lg = NNPA_LSTMACT; lg <= NNPA_GRUACT; lg++)
+
 #endif /* TESTS_COMMON_RNN_H_ */

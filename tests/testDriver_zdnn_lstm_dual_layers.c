@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,9 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 zdnn_ztensor *
 test_layer(zdnn_ztensor *input, uint32_t *h0_shape, void *h0_values,
@@ -1041,12 +1038,9 @@ void lstm_bidir_to_fwd() {
 
 int main() {
   UNITY_BEGIN();
-
-#ifdef TEST_AIU
-  RUN_TEST_ALL_DATATYPES(lstm_fwd_to_fwd);
-  RUN_TEST_ALL_DATATYPES(lstm_fwd_to_bidir);
-  RUN_TEST_ALL_DATATYPES(lstm_bidir_to_bidir);
-  RUN_TEST_ALL_DATATYPES(lstm_bidir_to_fwd);
-#endif
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(lstm_fwd_to_fwd);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(lstm_fwd_to_bidir);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(lstm_bidir_to_bidir);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(lstm_bidir_to_fwd);
   return UNITY_END();
 }

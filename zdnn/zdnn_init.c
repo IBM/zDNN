@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -109,14 +109,10 @@ void zdnn_init() {
     strncpy(log_module, ptr, LOGMODULE_SIZE - 1);
   }
 
-  /* Exit silently if there is no NNPA facility installed.  Explicit
-     invocations of functions requiring NNPA will result in an
-     error.  */
-#ifndef ZDNN_CONFIG_NO_NNPA
-  if (zdnn_is_nnpa_installed() == false)
-    return;
-#endif
-  zdnn_refresh_nnpa_query_result();
+  // If there is an NNPA facility installed refresh query results.
+  if (zdnn_is_nnpa_installed() == true) {
+    zdnn_refresh_nnpa_query_result();
+  }
 }
 
 #ifndef __MVS__
@@ -148,7 +144,7 @@ static int invoke_stfle(unsigned char *facility_list) {
   return cc;
 }
 
-static inline int check_bitfield(uint8_t *bitfield, int bitno) {
+static inline int check_bitfield(const uint8_t *bitfield, int bitno) {
   uint8_t mask = (1 << 7) >> (bitno & 7);
   return !!(bitfield[bitno / 8] & mask);
 }

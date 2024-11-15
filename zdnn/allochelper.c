@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@
 /// \return ZDNN_OK
 ///         ZDNN_INVALID_FORMAT
 ///         ZDNN_INVALID_TYPE
+///         ZDNN_INVALID_LAYOUT
 ///         ZDNN_INVALID_SHAPE
 ///         ZDNN_ALLOCATION_FAILURE
 ///
@@ -89,9 +90,31 @@ zdnn_status zdnn_free_ztensor_buffer(const zdnn_ztensor *ztensor) {
 /// \return Memory size (in bytes)
 ///
 uint64_t zdnn_getsize_ztensor(const zdnn_tensor_desc *tfrmd_desc) {
-  // same formula for 4DFEATURE and 4DKERNEL tensors
+  uint32_t cells_per_stick;
+  uint32_t number_of_sticks;
+  switch (tfrmd_desc->type) {
+  case ZDNN_BINARY_INT8:
+    if (tfrmd_desc->format == ZDNN_FORMAT_4DWEIGHTS) {
+      // 4DWEIGHTS has two vectors interleaved, therefore only 64 cells vs 128
+      // Due to this interleaving, number_of_sticks is halved, but must be
+      // rounded up to stay even for proper interleaving.
+      cells_per_stick = AIU_2BYTE_CELLS_PER_STICK;
+      number_of_sticks = CEIL(tfrmd_desc->dim2, 2);
+    } else {
+      cells_per_stick = AIU_1BYTE_CELLS_PER_STICK;
+      number_of_sticks = tfrmd_desc->dim2;
+    }
+    break;
+  case ZDNN_BINARY_INT32:
+    cells_per_stick = AIU_4BYTE_CELLS_PER_STICK;
+    number_of_sticks = tfrmd_desc->dim2;
+    break;
+  case ZDNN_DLFLOAT16: /* fallthrough */
+  default:
+    cells_per_stick = AIU_2BYTE_CELLS_PER_STICK;
+    number_of_sticks = tfrmd_desc->dim2;
+  }
   return (uint64_t)(tfrmd_desc->dim4) * tfrmd_desc->dim3 *
-         CEIL(tfrmd_desc->dim2, AIU_STICKS_PER_PAGE) *
-         CEIL(tfrmd_desc->dim1, AIU_2BYTE_CELLS_PER_STICK) *
-         AIU_PAGESIZE_IN_BYTES;
+         CEIL(number_of_sticks, AIU_STICKS_PER_PAGE) *
+         CEIL(tfrmd_desc->dim1, cells_per_stick) * AIU_PAGESIZE_IN_BYTES;
 }

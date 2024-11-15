@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,10 @@
 #define NNPA_OP_FAKE 255
 #define NNPA_PARMBLKFORMAT_FAKE 127
 #define QUERY_DATATYPE_FAKE (1 << 0)
-#define QUERY_LAYOUTFMT_FAKE (1 << 0)
+#define QUERY_LAYOUTFMT_FAKE (10 << 0)
 #define QUERY_BFPFMT_FAKE (1 << 0)
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
 void tearDown(void) {}
 
@@ -102,14 +100,51 @@ void test_datatype_conversion_not_installed() {
       "QUERY_BFPFMT_FAKE is not detected as unavailable");
 }
 
+// Values from AR11010-12
 #define MAXIMUM_DIMENSION_INDEX_SIZE ((uint32_t)1 << 15) // 32768
+#define MAX_DIM4_INDEX_SIZE ((uint32_t)1 << 15)          // 32768
+#define MAX_DIM3_INDEX_SIZE ((uint32_t)1 << 15)          // 32768
+#define MAX_DIM2_INDEX_SIZE ((uint32_t)1 << 20)          // 1048576
+#define MAX_DIM1_INDEX_SIZE ((uint32_t)1 << 21)          // 2097152
 #define MAXIMUM_TENSOR_SIZE ((uint64_t)1 << 32)          // 4294967296
 
 void test_get_max_dim_idx_size() {
   TEST_ASSERT_MESSAGE_FORMATTED(
       zdnn_get_nnpa_max_dim_idx_size() == MAXIMUM_DIMENSION_INDEX_SIZE,
-      "zdnn_get_nnpa_max_dim_idx_size() %u did not return %d",
-      zdnn_get_nnpa_max_dim_idx_size(), 1);
+      "zdnn_get_nnpa_max_dim_idx_size() %u did not return %u",
+      zdnn_get_nnpa_max_dim_idx_size(), MAXIMUM_DIMENSION_INDEX_SIZE);
+}
+
+void test_get_max_dim4_idx_size() {
+  uint32_t expected_index_size = MAX_DIM4_INDEX_SIZE;
+  TEST_ASSERT_MESSAGE_FORMATTED(zdnn_get_max_for_dim(4) == expected_index_size,
+                                "zdnn_get_max_for_dim() %u did not return %u",
+                                zdnn_get_max_for_dim(4), expected_index_size);
+}
+
+void test_get_max_dim3_idx_size() {
+  uint32_t expected_index_size = MAX_DIM3_INDEX_SIZE;
+  TEST_ASSERT_MESSAGE_FORMATTED(zdnn_get_max_for_dim(3) == expected_index_size,
+                                "zdnn_get_max_for_dim(3) %u did not return %u",
+                                zdnn_get_max_for_dim(3), expected_index_size);
+}
+
+void test_get_max_dim2_idx_size() {
+  uint32_t expected_index_size = nnpa_query_result.max_dim2_index_size
+                                     ? MAX_DIM2_INDEX_SIZE
+                                     : MAXIMUM_DIMENSION_INDEX_SIZE;
+  TEST_ASSERT_MESSAGE_FORMATTED(zdnn_get_max_for_dim(2) == expected_index_size,
+                                "zdnn_get_max_for_dim(2) %u did not return %u",
+                                zdnn_get_max_for_dim(2), expected_index_size);
+}
+
+void test_get_max_dim1_idx_size() {
+  uint32_t expected_index_size = nnpa_query_result.max_dim1_index_size
+                                     ? MAX_DIM1_INDEX_SIZE
+                                     : MAXIMUM_DIMENSION_INDEX_SIZE;
+  TEST_ASSERT_MESSAGE_FORMATTED(zdnn_get_max_for_dim(1) == expected_index_size,
+                                "zdnn_get_max_for_dim(1) %u did not return %u",
+                                zdnn_get_max_for_dim(1), expected_index_size);
 }
 
 void test_get_max_tensor_size() {
@@ -146,6 +181,10 @@ int main(void) {
   RUN_TEST(test_datatype_conversion_not_installed);
 
   RUN_TEST(test_get_max_dim_idx_size);
+  RUN_TEST(test_get_max_dim4_idx_size);
+  RUN_TEST(test_get_max_dim3_idx_size);
+  RUN_TEST(test_get_max_dim2_idx_size);
+  RUN_TEST(test_get_max_dim1_idx_size);
   RUN_TEST(test_get_max_tensor_size);
 
   RUN_TEST(test_print_version);

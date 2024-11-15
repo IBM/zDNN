@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,19 +29,20 @@
  * data types. But for the purposes of type conversion, we treat
  * these as integers.  C likes to help convert floats to integers,
  * but we need to control all aspects of conversion to ensure
- * proper results for the AIU.  Hence, routines that receive
+ * proper results for the zAIU.  Hence, routines that receive
  * "float"-types will immediately cast to one of the float_bitxx
  * types and use those from then on.
  */
 
-#define STICKCVT_MAX_ENTRIES_TO_CONVERT 8
-/* Number of entries to be converted at a time. Conversion to/from
-   FP32 to DLFLOAT require 2 vector regs to contain the 8 values,
-   all others use 1 VR */
-
 vec_char8 selection_vector = {0,  1,  4,  5,  8,  9,  12, 13,
                               16, 17, 20, 21, 24, 25, 28, 29};
 static vec_int16 zero_vector16 = {0, 0, 0, 0, 0, 0, 0, 0};
+// 4 vector of the MIN DFL16 value represented as FP32
+static const vector float dlflt_min_vec = {
+    DLF16_MIN_AS_FP32, DLF16_MIN_AS_FP32, DLF16_MIN_AS_FP32, DLF16_MIN_AS_FP32};
+// 4 vector of the MAX DFL16 value represented as FP32
+static const vector float dlflt_max_vec = {
+    DLF16_MAX_AS_FP32, DLF16_MAX_AS_FP32, DLF16_MAX_AS_FP32, DLF16_MAX_AS_FP32};
 
 /***********************************************************************
  * aiu_vec_round_from_fp32 routines
@@ -59,7 +60,6 @@ static vec_int16 inline aiu_vec_round_from_fp32_inline(vec_float32 a,
                                                        vec_float32 b) {
   vec_int16 out;
 
-#ifndef ZDNN_CONFIG_NO_NNPA
 #if defined(__MVS__)
   /*
        Invoke the VCRNF
@@ -90,11 +90,6 @@ static vec_int16 inline aiu_vec_round_from_fp32_inline(vec_float32 a,
                 : [ in_hi ] "v"(a), [ in_lo ] "v"(b));
 // clang-format on
 #endif
-#else
-  // cast our 32 bit vectors as bytes, then select via vec_perm which
-  // bytes to return. (Will be first 2 bytes of every float32)
-  out = (vec_int16)vec_perm((vec_char8)a, (vec_char8)b, selection_vector);
-#endif // ZDNN_CONFIG_NO_NNPA
 
   return out;
 } // End aiu_vec_round_from_fp32
@@ -119,7 +114,6 @@ vec_int16 aiu_vec_round_from_fp32(vec_float32 a, vec_float32 b) {
 static vec_int16 inline aiu_vec_convert_from_fp16_inline(vec_int16 a) {
   vec_int16 out;
 
-#ifndef ZDNN_CONFIG_NO_NNPA
 #if defined(__MVS__)
   /*
       Invoke the VCNF
@@ -148,10 +142,6 @@ static vec_int16 inline aiu_vec_convert_from_fp16_inline(vec_int16 a) {
                 : [ in_vec ] "v"(a));
 // clang-format on
 #endif
-#else
-  // scaffolding: just copy the input 16-bit elements as is to output
-  memcpy(&out, &a, sizeof(vec_int16));
-#endif // ZDNN_CONFIG_NO_NNPA
 
   return out;
 } // End aiu_vec_convert_from_fp16
@@ -176,8 +166,6 @@ vec_int16 aiu_vec_convert_from_fp16(vec_int16 a) {
 static void inline aiu_vec_lengthen_to_fp32_inline(vec_int16 a,
                                                    vec_float32 *out1,
                                                    vec_float32 *out2) {
-
-#ifndef ZDNN_CONFIG_NO_NNPA
   vec_float32 work_float_1;
   vec_float32 work_float_2;
 
@@ -216,10 +204,6 @@ static void inline aiu_vec_lengthen_to_fp32_inline(vec_int16 a,
   *out1 = work_float_1;
   *out2 = work_float_2;
 #endif
-#else
-  *out1 = (vec_float32)vec_mergeh(a, zero_vector16);
-  *out2 = (vec_float32)vec_mergel(a, zero_vector16);
-#endif // ZDNN_CONFIG_NO_NNPA
 
   return;
 } // End aiu_vec_lengthen_to_fp32
@@ -245,7 +229,6 @@ void aiu_vec_lengthen_to_fp32(vec_int16 a, vec_float32 *out1,
 static vec_int16 inline aiu_vec_convert_to_fp16_inline(vec_int16 a) {
   vec_int16 work_short_1;
 
-#ifndef ZDNN_CONFIG_NO_NNPA
 #if defined(__MVS__)
   /*
    *  Invoke the VCFN
@@ -272,10 +255,6 @@ static vec_int16 inline aiu_vec_convert_to_fp16_inline(vec_int16 a) {
                 : [in_vec] "v"(a));
   // clang-format on
 #endif
-#else
-  // scaffolding: just copy the input 16-bit elements as is to output
-  memcpy(&work_short_1, &a, sizeof(vec_int16));
-#endif // #ifndef ZDNN_CONFIG_NO_NNPA
   return work_short_1;
 }
 
@@ -293,7 +272,7 @@ vec_int16 aiu_vec_convert_to_fp16(vec_int16 a) {
 uint16_t cnvt_1_fp32_to_dlf16(float a) {
 
   vec_int16 aiu_op_output_dfloat; // vector output from aiu_vec_round...
-  /* Copy value to work area, use AIU op routine to convert value from fp32
+  /* Copy value to work area, use zAIU op routine to convert value from fp32
      to dlfloat in pseudo vector (array), then copy the 1 converted entry
      into the expected data area */
 
@@ -313,7 +292,7 @@ float cnvt_1_dlf16_to_fp32(uint16_t a) {
 
   vec_float32 aiu_op_output_fp32[2]; // vector output from aiu_vec_lengthen
 
-  /* Copy value to work area, use AIU op routine to convert value from
+  /* Copy value to work area, use zAIU op routine to convert value from
      dlfloat to fp32 in pseudo vector (array), then copy the 1 converted
      entry into the expected data area */
   float_bit16 tempshortarray[8] = {a}; // used as input to aiu_vec_lengthen...
@@ -331,7 +310,7 @@ float cnvt_1_dlf16_to_fp32(uint16_t a) {
 uint16_t cnvt_1_fp16_to_dlf16(uint16_t a) {
   vec_int16 aiu_op_output;
 
-  /* Copy value to work area, use AIU op routine to convert value from fp16
+  /* Copy value to work area, use zAIU op routine to convert value from fp16
      to dlfloat in pseudo vector (array), then copy the 1 converted entry
      into the expected data area */
   float_bit16 tempFP16array[8] = {a}; /* used as input to
@@ -346,7 +325,7 @@ uint16_t cnvt_1_fp16_to_dlf16(uint16_t a) {
 uint16_t cnvt_1_dlf16_to_fp16(uint16_t a) {
   vec_int16 aiu_op_output;
 
-  /* Copy value to work area, use AIU op routine to convert value from dlfloat
+  /* Copy value to work area, use zAIU op routine to convert value from dlfloat
      to fp16 in pseudo vector (array), then copy the 1 converted entry
      into the expected data area */
   float_bit16 tempFP16array[8] = {a}; /* input to aiu_vec_lengthen
@@ -358,7 +337,7 @@ uint16_t cnvt_1_dlf16_to_fp16(uint16_t a) {
 
 uint16_t cnvt_1_bfloat_to_dlf16(uint16_t a) {
   /* Copy value to work area adding decimal places to make it into a FP32,
-         use AIU op routine to convert value from FP32 to dlfloat  */
+         use zAIU op routine to convert value from FP32 to dlfloat  */
   uint32_float_u temp_pseudo_float;
 
   // copy bfloat value into left side of a float, implementing a pseudo version
@@ -393,15 +372,13 @@ float cnvt_1_bfloat_to_fp32(uint16_t a) {
 
 // convert 1 FP16 element to FP32 (C float)
 float cnvt_1_fp16_to_fp32(uint16_t a) {
-  uint32_float_u x = {cnvt_1_dlf16_to_fp32(cnvt_1_fp16_to_dlf16(a))};
-  return x.f;
+  float x = cnvt_1_dlf16_to_fp32(cnvt_1_fp16_to_dlf16(a));
+  return x;
 }
 
 // convert 1 FP32 element to BFLOAT
-uint16_t cnvt_1_fp32_to_bfloat(float a) {
-  uint32_float_u x = {cnvt_1_dlf16_to_bfloat(cnvt_1_fp32_to_dlf16(a))};
-  return x.u;
-}
+// cppcheck-suppress invalidPointerCast
+uint16_t cnvt_1_fp32_to_bfloat(float a) { return *(uint16_t *)(&a); }
 
 // convert 1 FP32 element to FP16
 uint16_t cnvt_1_fp32_to_fp16(float a) {
@@ -543,6 +520,60 @@ uint64_t dlf16_to_fp16(uint16_t *input_dflt16_data, uint16_t *output_fp16_data,
 
   return nbr_fields_to_convert;
 }
+
+/***********************************************************************
+ * saturate_fp32_to_dlf16
+ *
+ * Performs MIN/MAX saturation of two vectors of FP32 to DLF16. Does not
+ * perform any conversion, values remain in FP32 format
+ *
+ * Input: in_vector_left, in_vector_right: vector of four FP32 values
+ *
+ * Output: out_vector_left, out_vector_right: returned pointers to vectors
+ * with saturated output
+ *
+ **********************************************************************/
+void saturate_fp32_to_dlf16(const vec_float32 *in_vector_left,
+                            const vec_float32 *in_vector_right,
+                            vec_float32 *out_vector_left,
+                            vec_float32 *out_vector_right) {
+
+  // Create temp vector for output and perform min and max saturation on left
+  // vector
+  vector float temp_left =
+      vec_max((vector float)(*in_vector_left), dlflt_min_vec);
+  temp_left = vec_min(temp_left, dlflt_max_vec);
+  *out_vector_left = (vec_float32)temp_left;
+
+  // Create temp vector for output and perform min and max saturation on right
+  // vector
+  vector float temp_right =
+      vec_max((vector float)(*in_vector_right), dlflt_min_vec);
+  temp_right = vec_min(temp_right, dlflt_max_vec);
+  *out_vector_right = (vec_float32)temp_right;
+}
+
+/***********************************************************************
+ * skip_saturate_fp32_to_dlf16
+ *
+ * This function acts as a no-op for saturation and is used when the caller of
+ * conversion does not request MIN/MAX saturation.
+ *
+ * Input: in_vector_left, in_vector_right: vector of four FP32 values
+ *
+ * Output: out_vector_left, out_vector_right: returns the same pointers that
+ *                                            were input with no changes
+ *
+ **********************************************************************/
+void skip_saturate_fp32_to_dlf16(const vec_float32 *in_vector_left,
+                                 const vec_float32 *in_vector_right,
+                                 vec_float32 *out_vector_left,
+                                 vec_float32 *out_vector_right) {
+  // No saturation performed, pass through the input to the output
+  *out_vector_left = *in_vector_left;
+  *out_vector_right = *in_vector_right;
+}
+
 /***********************************************************************
  * fp32_to_dlf16
  *
@@ -558,7 +589,10 @@ uint64_t dlf16_to_fp16(uint16_t *input_dflt16_data, uint16_t *output_fp16_data,
  *              (i.e. 'N' must be <= 64)
  **********************************************************************/
 uint64_t fp32_to_dlf16(float *input_data, uint16_t *output_data,
-                       uint64_t nbr_fields_to_convert) {
+                       uint64_t nbr_fields_to_convert,
+                       void (*saturate_func)(const vec_float32 *,
+                                             const vec_float32 *, vec_float32 *,
+                                             vec_float32 *)) {
 
   // Set vector pointers from input/output pointers passed in.
   // Note: adding 1 to a vector pointer will move it ahead 16 bytes
@@ -582,10 +616,12 @@ uint64_t fp32_to_dlf16(float *input_data, uint16_t *output_data,
   /* If there's 8 or more to convert, convert groups of 8 FP32s to 8 DL16s */
   for (int i = 0; i < nbr_fields_to_convert / STICKCVT_MAX_ENTRIES_TO_CONVERT;
        ++i) {
+    saturate_func(
+        cur_input_data, cur_input_data + 1, &in_vector_left,
+        &in_vector_right); // Perform saturation using the passed saturation
+    // function. No saturation performed if skip function is passed
     *(cur_output_data) = aiu_vec_round_from_fp32_inline(
-        *(vec_float32 *)(cur_input_data),
-        *(vec_float32 *)(cur_input_data +
-                         1)); // Convert from fp32 with rounding
+        in_vector_left, in_vector_right); // Convert from fp32 with rounding
     cur_input_data += 2; /* bump ptr to start of next concatenated vector (8
                        uint32s = 32 bytes = 2 vectors) */
     cur_output_data++;   /* bump ptr to start of next output vector (8 shorts =
@@ -628,13 +664,16 @@ uint64_t fp32_to_dlf16(float *input_data, uint16_t *output_data,
   }
 
   // Invoke the VCRNF
+  saturate_func(&in_vector_left, &in_vector_right, &in_vector_left,
+                &in_vector_right); // Perform saturation using the passed
+                                   // saturation function. No saturation
+                                   // performed if skip function is passed
   out_vector = aiu_vec_round_from_fp32_inline(in_vector_left, in_vector_right);
   vec_store_len(out_vector, (uint16_t *)cur_output_data,
                 curnbr_fields_to_convert * 2 - 1);
 
   // Don't need to update the cur_input_data or cur_output_data because
   // we're done.  Also, don't need to update curnbr_fields_to_convert.
-
   return nbr_fields_to_convert;
 } // End fp32_to_dlf16
 
@@ -741,7 +780,10 @@ uint64_t dlf16_to_fp32(uint16_t *input_data, float *output_data,
  *              (i.e. 'N' must be <= 64)
  **********************************************************************/
 uint64_t bfloat_to_dlf16(uint16_t *input_data, uint16_t *output_data,
-                         uint64_t nbr_fields_to_convert) {
+                         uint64_t nbr_fields_to_convert,
+                         void (*saturate_func)(const vec_float32 *,
+                                               const vec_float32 *,
+                                               vec_float32 *, vec_float32 *)) {
 
   // Set vector pointers from input/output pointers passed in.
   // Note: adding 1 to a vector pointer will move it ahead 16 bytes
@@ -755,7 +797,6 @@ uint64_t bfloat_to_dlf16(uint16_t *input_data, uint16_t *output_data,
                         // a Vector Register can fit 8 int16 fields
   vec_int16 out_vector; // Define a vector to hold a partial output
                         // vector.
-
   // If there's more than 8 to convert, convert groups of 8 FP16s to 8 DL32s
   for (int i = 0; i < nbr_fields_to_convert / STICKCVT_MAX_ENTRIES_TO_CONVERT;
        ++i) {
@@ -764,6 +805,10 @@ uint64_t bfloat_to_dlf16(uint16_t *input_data, uint16_t *output_data,
     // then use our "convert and round" routine to transform to dlfloat
     interim_data1 = vec_mergeh(*cur_input_data, zero_vector16);
     interim_data2 = vec_mergel(*cur_input_data, zero_vector16);
+    // Perform saturation using the passed saturation function.
+    // No saturation performed if skip function is passed
+    saturate_func((vec_float32 *)&interim_data1, (vec_float32 *)&interim_data2,
+                  (vec_float32 *)&interim_data1, (vec_float32 *)&interim_data2);
     *cur_output_data = aiu_vec_round_from_fp32_inline(
         (vec_float32)interim_data1, (vec_float32)interim_data2);
 
@@ -797,6 +842,10 @@ uint64_t bfloat_to_dlf16(uint16_t *input_data, uint16_t *output_data,
   // then use our "convert and round" routine to transform to dlfloat
   interim_data1 = vec_mergeh(in_vector, zero_vector16);
   interim_data2 = vec_mergel(in_vector, zero_vector16);
+  // Perform saturation using the passed saturation function.
+  // No saturation performed if skip function is passed
+  saturate_func((vec_float32 *)&interim_data1, (vec_float32 *)&interim_data2,
+                (vec_float32 *)&interim_data1, (vec_float32 *)&interim_data2);
   out_vector = aiu_vec_round_from_fp32_inline((vec_float32)interim_data1,
                                               (vec_float32)interim_data2);
 

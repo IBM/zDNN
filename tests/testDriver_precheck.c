@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,9 +29,7 @@ zdnn_tensor_desc pre_tfrmd_desc, input1_tfrmd_desc, input2_tfrmd_desc,
 
 void create_garbage_tensors();
 
-void setUp(void) { /* This is run before EACH TEST */
-  create_garbage_tensors();
-}
+void setUp(void) { create_garbage_tensors(); }
 
 void tearDown(void) {}
 
@@ -40,11 +38,11 @@ void tearDown(void) {}
  * precheck_enabled = true, not if the verifier routine returns the
  * correct status code (which is testDriver_tensor_verify*.c's job).
  *
- * On environment equipped with AIU, all testcases will cause program
+ * On environment equipped with zAIU, all testcases will cause program
  * termination due to DXG rather than issuing a non-ZDNN_OK status.
  * *******************************************************************/
 
-/// Create garbage input/output tensors that are guaranteed to fail any AIU op
+/// Create garbage input/output tensors that are guaranteed to fail any zAIU op
 void create_garbage_tensors() {
   precheck_enabled = true;
 

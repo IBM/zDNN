@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -78,13 +78,6 @@ void test_num_elements_concat(zdnn_data_layouts layout, zdnn_concat_info info,
                               uint64_t exp_all_gates, uint64_t exp_aiu) {
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
-
-// SIM alters AIU_2BYTE_CELLS_PER_STICK which affects the padded dim1 set
-// by zdnn_generate_transformed_desc_concatenated(). That changes the
-// expected number of all elements (which includes padding), so skip if SIM
-#ifdef ZDNN_CONFIG_SIMULATION
-  TEST_PASS();
-#endif
 
   switch (layout) {
   case ZDNN_2DS:
@@ -285,23 +278,25 @@ void get_num_elements_bidir_output() {
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(get_num_elements_nhwc);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_4d);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_3ds);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_3d);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_2ds);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_2d);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_1d);
+  RUN_TEST_ALL_PRE_DATATYPES(get_num_elements_nhwc);
+  RUN_TEST_ALL_PRE_DATATYPES(get_num_elements_4d);
+  RUN_TEST_ALL_PRE_DATATYPES(get_num_elements_3ds);
+  RUN_TEST_ALL_PRE_DATATYPES(get_num_elements_3d);
+  RUN_TEST_ALL_PRE_DATATYPES(get_num_elements_2ds);
+  RUN_TEST_ALL_PRE_DATATYPES(get_num_elements_2d);
+  RUN_TEST_ALL_PRE_DATATYPES(get_num_elements_1d);
 
-  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_no_vconcat_weights);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_prev_bidir_weights);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_lstm_biases);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_no_vconcat_weights);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_prev_bidir_weights);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_gru_biases);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      get_num_elements_lstm_no_vconcat_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      get_num_elements_lstm_prev_bidir_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(get_num_elements_lstm_biases);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(get_num_elements_gru_no_vconcat_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(get_num_elements_gru_prev_bidir_weights);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(get_num_elements_gru_biases);
 
-  RUN_TEST_ALL_DATATYPES(get_num_elements_uni_output);
-  RUN_TEST_ALL_DATATYPES(get_num_elements_bidir_output);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(get_num_elements_uni_output);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(get_num_elements_bidir_output);
 
   return UNITY_END();
 }

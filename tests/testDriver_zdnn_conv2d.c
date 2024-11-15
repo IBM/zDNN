@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 
 #include "testsupport.h"
 
-void setUp(void) { /* This is run before EACH TEST */
+void setUp(void) {
 
   tol_bfloat.ulps = 64;
   tol_bfloat.epsilon_mult = (0.1 / EPSILON_BFLOAT) + 1;
@@ -34,8 +34,7 @@ void setUp(void) { /* This is run before EACH TEST */
   VERIFY_HW_ENV;
 }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 // convenience debug macro
 #define PRINT_DIMS(x)                                                          \
@@ -112,7 +111,7 @@ void test_conv2d(input_set *set, strides_input_set *strides, void *input_vals,
                              set->channel_out}; // 0s are placeholders
 
   // zero-strides + VALID_PADDING is special case, so ignore kernel_size[0] &
-  // [1] and set kernel_dims[0] & [1] to what AIU wants
+  // [1] and set kernel_dims[0] & [1] to what zAIU wants
   if (padding == VALID_PADDING && strides->height == 0 && strides->width == 0) {
     kernel_dims[0] = set->height_in;
     kernel_dims[1] = set->width_in;
@@ -121,7 +120,7 @@ void test_conv2d(input_set *set, strides_input_set *strides, void *input_vals,
     kernel_dims[1] = set->kernel_size[1];
   }
 
-  // output_dims[1] & [2] are exactly what the AIU wants
+  // output_dims[1] & [2] are exactly what the zAIU wants
   if (padding == VALID_PADDING) {
     // output dim3
     output_dims[1] =
@@ -6075,29 +6074,35 @@ void test_f004_stride_width_fail() {
 
 int main() {
   UNITY_BEGIN();
-#ifdef TEST_AIU
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_non_zero_strides_small);
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_non_zero_strides_small_with_clip);
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_zero_strides_small);
-  RUN_TEST_ALL_DATATYPES(test_same_padding_non_zero_strides_small);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_valid_padding_non_zero_strides_small);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_valid_padding_non_zero_strides_small_with_clip);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_valid_padding_zero_strides_small);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_same_padding_non_zero_strides_small);
 
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_non_zero_strides_medium);
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_zero_strides_medium);
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_zero_strides_medium_with_clip);
-  RUN_TEST_ALL_DATATYPES(test_same_padding_non_zero_strides_medium);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_valid_padding_non_zero_strides_medium);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_valid_padding_zero_strides_medium);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_valid_padding_zero_strides_medium_with_clip);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_same_padding_non_zero_strides_medium);
 
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_non_zero_strides_large);
-  RUN_TEST_ALL_DATATYPES(test_valid_padding_zero_strides_large);
-  RUN_TEST_ALL_DATATYPES(test_same_padding_non_zero_strides_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_valid_padding_non_zero_strides_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_valid_padding_zero_strides_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(
+      test_same_padding_non_zero_strides_large);
 
-  RUN_TEST_ALL_DATATYPES(test_f000_fail);
-  RUN_TEST_ALL_DATATYPES(test_f001_fail);
-  RUN_TEST_ALL_DATATYPES(test_f002_height_fail);
-  RUN_TEST_ALL_DATATYPES(test_f002_width_fail);
-  RUN_TEST_ALL_DATATYPES(test_f003_height_fail);
-  RUN_TEST_ALL_DATATYPES(test_f003_width_fail);
-  RUN_TEST_ALL_DATATYPES(test_f004_stride_height_fail);
-  RUN_TEST_ALL_DATATYPES(test_f004_stride_width_fail);
-#endif
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f000_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f001_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f002_height_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f002_width_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f003_height_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f003_width_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f004_stride_height_fail);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(test_f004_stride_width_fail);
   return UNITY_END();
 }

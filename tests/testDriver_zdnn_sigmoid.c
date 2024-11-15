@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021
+ * Copyright IBM Corp. 2021, 2024
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,18 +28,15 @@
 //          https://mathworld.wolfram.com/SigmoidFunction.html
 // -----------------------------------------------------------------------------
 
-void setUp(void) { /* This is run before EACH TEST */
-  VERIFY_HW_ENV;
-}
+void setUp(void) { VERIFY_HW_ENV; }
 
-void tearDown(void) { /* This is run after EACH TEST */
-}
+void tearDown(void) {}
 
 /**
  * Helper function to compute output tensor values using activation
  * sigmoid
  */
-void act_sigmoid(float input[], float output[], int num_elems) {
+void act_sigmoid(const float input[], float output[], int num_elems) {
   for (long i = 0; i < num_elems; i++) {
     output[i] = 1 / (1 + exp(-input[i]));
   }
@@ -74,11 +71,9 @@ void zdnn_sigmoid_test(uint32_t *shape, zdnn_data_layouts layout,
       "call to zdnn_sigmoid() to returned status %08x but expected %08x\n",
       status, expected_status);
 
-#ifdef TEST_AIU
   if (expected_status == ZDNN_OK) {
     assert_ztensor_values(output_ztensor, false, expected_values);
   }
-#endif
 
   // All done--clean up the tensor buffers
   free_ztensor_buffers(2, input_ztensor, output_ztensor);
@@ -306,11 +301,11 @@ void zdnn_sigmoid_negative_3d_large() {
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST_ALL_DATATYPES(zdnn_sigmoid_basic_nhwc);
-  RUN_TEST_ALL_DATATYPES(zdnn_sigmoid_basic_nhwc_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_sigmoid_balanced_nhwc);
-  RUN_TEST_ALL_DATATYPES(zdnn_sigmoid_negative_3d);
-  RUN_TEST_ALL_DATATYPES(zdnn_sigmoid_balanced_nhwc_large);
-  RUN_TEST_ALL_DATATYPES(zdnn_sigmoid_negative_3d_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_sigmoid_basic_nhwc);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_sigmoid_basic_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_sigmoid_balanced_nhwc);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_sigmoid_negative_3d);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_sigmoid_balanced_nhwc_large);
+  RUN_TEST_ALL_DLFLOAT16_PRE_DATATYPES(zdnn_sigmoid_negative_3d_large);
   return UNITY_END();
 }
