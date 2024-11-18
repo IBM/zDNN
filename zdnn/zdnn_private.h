@@ -589,6 +589,29 @@ void aiu_vec_lengthen_to_fp32(vec_int16 a, vec_float32 *out1,
 vec_int16 aiu_vec_convert_from_fp16(vec_int16 a);
 vec_int16 aiu_vec_convert_to_fp16(vec_int16 a);
 
+#ifdef __MVS__
+#define VEC_ROUND_FROM_FP32(FP_HI, FP_LO)                                      \
+  aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&(FP_HI)),                  \
+                          *(vec_float32 *)((void *)&(FP_LO)));
+#define VEC_LENGTHEN_TO_FP32(IN, OUT_HI, OUT_LO)                               \
+  aiu_vec_lengthen_to_fp32((IN), (vec_float32 *)((void *)&(OUT_HI)),           \
+                           (vec_float32 *)((void *)&(OUT_LO)));
+#else
+#define VEC_ROUND_FROM_FP32(FP_HI, FP_LO)                                      \
+  (vec_int16) vec_round_from_fp32((FP_HI), (FP_LO), 0);
+/* These compiler intrinsics changed between GCC 13 and 14 from using
+   vector short to vector unsigned short.  */
+#if __GNUC__ <= 13
+#define VEC_LENGTHEN_TO_FP32(IN, OUT_HI, OUT_LO)                               \
+  (OUT_HI) = vec_extend_to_fp32_hi((vector short)(IN), 0);                     \
+  (OUT_LO) = vec_extend_to_fp32_lo((vector short)(IN), 0);
+#else
+#define VEC_LENGTHEN_TO_FP32(IN, OUT_HI, OUT_LO)                               \
+  (OUT_HI) = vec_extend_to_fp32_hi((IN), 0);                                   \
+  (OUT_LO) = vec_extend_to_fp32_lo((IN), 0);
+#endif
+#endif
+
 // -----------------------------------------------------------------------------
 // NNPA-MATMUL-OP function-specific-parameters and their bitfields
 // -----------------------------------------------------------------------------

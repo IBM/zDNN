@@ -271,13 +271,8 @@ static void compute_bias(const zdnn_ztensor *input_c, const float scale,
       vec_char *in_c_vec =
           (vec_char *)((void *)((uintptr_t)input_c->buffer + in_c_offset));
 
-#if defined(__MVS__)
       vec_int16 *qc_tilde_vec =
           (vec_int16 *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#else
-      vec_short *qc_tilde_vec =
-          (vec_short *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#endif
 
       remaining_fields = input_c->transformed_desc->dim1 - e1x;
       fields_to_convert = MIN(remaining_fields, AIU_2BYTE_CELLS_PER_STICK);
@@ -288,21 +283,12 @@ static void compute_bias(const zdnn_ztensor *input_c, const float scale,
         // Load high end of in_c_vec (first 8 elements) into temp_int16
         vec_short temp_int16 = vec_unpackh(*in_c_vec);
 
-#if defined(__MVS__)
         vec_fp32 temp_float_hi =
             vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset);
         vec_fp32 temp_float_lo =
             vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset);
 
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(
-            vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset),
-            vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset),
-            0);
-#endif
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
 
         nbr_fields_converted += 8;
 
@@ -312,21 +298,12 @@ static void compute_bias(const zdnn_ztensor *input_c, const float scale,
         // Load low end of in_c_vec (final 8 elements) into temp_int16
         temp_int16 = vec_unpackl(*in_c_vec);
 
-#if defined(__MVS__)
         temp_float_hi =
             vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset);
         temp_float_lo =
             vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset);
 
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(
-            vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset),
-            vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset),
-            0);
-#endif
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
 
         // Push in_c_vec to the next 16 int8 elements
         in_c_vec++;
@@ -341,35 +318,20 @@ static void compute_bias(const zdnn_ztensor *input_c, const float scale,
       // is AIU_PAGESIZE_IN_BYTES number of bytes away since dim3 and dim2 == 1
       out_offset += AIU_PAGESIZE_IN_BYTES;
 
-#if defined(__MVS__)
       qc_tilde_vec =
           (vec_int16 *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#else
-      qc_tilde_vec =
-          (vec_short *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#endif
 
       // Final AIU_2BYTE_CELLS_PER_STICK of AIU_1BYTE_CELLS_PER_STICK
       while (nbr_fields_converted < remaining_fields) {
         // Load high end of in_c_vec (first 8 elements) into temp_int16
         vec_short temp_int16 = vec_unpackh(*in_c_vec);
 
-#if defined(__MVS__)
         vec_fp32 temp_float_hi =
             vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset);
         vec_fp32 temp_float_lo =
             vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset);
 
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(
-            vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset),
-            vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset),
-            0);
-#endif
-
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
         nbr_fields_converted += 8;
 
         if (nbr_fields_converted >= remaining_fields)
@@ -378,21 +340,12 @@ static void compute_bias(const zdnn_ztensor *input_c, const float scale,
         // Load low end of in_c_vec (final 8 elements) into temp_int16
         temp_int16 = vec_unpackl(*in_c_vec);
 
-#if defined(__MVS__)
         temp_float_hi =
             vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset);
         temp_float_lo =
             vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset);
 
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(
-            vec_madd(vec_float(vec_unpackh(temp_int16)), vec_scale, vec_offset),
-            vec_madd(vec_float(vec_unpackl(temp_int16)), vec_scale, vec_offset),
-            0);
-#endif
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
 
         // Push in_c_vec to the next 16 int8 elements.
         in_c_vec++;
@@ -541,13 +494,8 @@ static void compute_folded_bias(const zdnn_ztensor *input_b,
       vec_char *in_c_vec =
           (vec_char *)((void *)((uintptr_t)input_c->buffer + in_c_offset));
 
-#if defined(__MVS__)
       vec_int16 *qc_tilde_vec =
           (vec_int16 *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#else
-      vec_short *qc_tilde_vec =
-          (vec_short *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#endif
 
       remaining_fields = input_c->transformed_desc->dim1 - e1x;
       fields_to_convert = MIN(remaining_fields, AIU_2BYTE_CELLS_PER_STICK);
@@ -606,13 +554,7 @@ static void compute_folded_bias(const zdnn_ztensor *input_b,
         temp_float_hi -= (vec_float(summ_vec_hi) * vec_MZa);
         temp_float_lo -= (vec_float(summ_vec_lo) * vec_MZa);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
 
         in_b_offset += 16;
 
@@ -672,13 +614,7 @@ static void compute_folded_bias(const zdnn_ztensor *input_b,
         temp_float_hi -= (vec_float(summ_vec_hi) * vec_MZa);
         temp_float_lo -= (vec_float(summ_vec_lo) * vec_MZa);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
 
         in_b_offset += 16;
 
@@ -694,13 +630,8 @@ static void compute_folded_bias(const zdnn_ztensor *input_b,
       in_b_offset = in_b_w_offset + in_b_bytes_all_w;
       out_offset += AIU_PAGESIZE_IN_BYTES;
 
-#if defined(__MVS__)
       qc_tilde_vec =
           (vec_int16 *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#else
-      qc_tilde_vec =
-          (vec_short *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#endif
 
       // Final AIU_2BYTE_CELLS_PER_STICK of AIU_1BYTE_CELLS_PER_STICK
       while (nbr_fields_converted < remaining_fields) {
@@ -755,14 +686,7 @@ static void compute_folded_bias(const zdnn_ztensor *input_b,
         temp_float_hi -= (vec_float(summ_vec_hi) * vec_MZa);
         temp_float_lo -= (vec_float(summ_vec_lo) * vec_MZa);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
-
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
         in_b_offset += 16;
 
         nbr_fields_converted += 8;
@@ -821,14 +745,7 @@ static void compute_folded_bias(const zdnn_ztensor *input_b,
         temp_float_hi -= (vec_float(summ_vec_hi) * vec_MZa);
         temp_float_lo -= (vec_float(summ_vec_lo) * vec_MZa);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
-
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
         in_b_offset += 16;
 
         // Push in_c_vec to the next 16 int8 elements.
@@ -965,13 +882,8 @@ static void compute_comparison_bias(const zdnn_ztensor *input_b,
       vec_char *in_c_vec =
           (vec_char *)((void *)((uintptr_t)input_c->buffer + in_c_offset));
 
-#if defined(__MVS__)
       vec_int16 *qc_tilde_vec =
           (vec_int16 *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#else
-      vec_short *qc_tilde_vec =
-          (vec_short *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#endif
 
       remaining_fields = input_c->transformed_desc->dim1 - e1x;
       fields_to_convert = MIN(remaining_fields, AIU_2BYTE_CELLS_PER_STICK);
@@ -1030,14 +942,7 @@ static void compute_comparison_bias(const zdnn_ztensor *input_b,
         temp_float_hi += (vec_float(summ_vec_hi) * vec_Za);
         temp_float_lo += (vec_float(summ_vec_lo) * vec_Za);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
-
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
         in_b_offset += 16;
 
         nbr_fields_converted += 8;
@@ -1100,14 +1005,7 @@ static void compute_comparison_bias(const zdnn_ztensor *input_b,
         temp_float_hi += (vec_float(summ_vec_hi) * vec_Za);
         temp_float_lo += (vec_float(summ_vec_lo) * vec_Za);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
-
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
         in_b_offset += 16;
 
         // Push in_c_vec to the next 16 int8 elements.
@@ -1122,13 +1020,8 @@ static void compute_comparison_bias(const zdnn_ztensor *input_b,
       in_b_offset = in_b_w_offset + in_b_bytes_all_w;
       out_offset += AIU_PAGESIZE_IN_BYTES;
 
-#if defined(__MVS__)
       qc_tilde_vec =
           (vec_int16 *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#else
-      qc_tilde_vec =
-          (vec_short *)((void *)((uintptr_t)qc_tilde->buffer + out_offset));
-#endif
 
       // Final AIU_2BYTE_CELLS_PER_STICK of AIU_1BYTE_CELLS_PER_STICK
       while (nbr_fields_converted < remaining_fields) {
@@ -1183,14 +1076,7 @@ static void compute_comparison_bias(const zdnn_ztensor *input_b,
         temp_float_hi += (vec_float(summ_vec_hi) * vec_Za);
         temp_float_lo += (vec_float(summ_vec_lo) * vec_Za);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
-
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
         in_b_offset += 16;
 
         nbr_fields_converted += 8;
@@ -1249,14 +1135,7 @@ static void compute_comparison_bias(const zdnn_ztensor *input_b,
         temp_float_hi += (vec_float(summ_vec_hi) * vec_Za);
         temp_float_lo += (vec_float(summ_vec_lo) * vec_Za);
 
-#if defined(__MVS__)
-        *qc_tilde_vec++ =
-            aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_float_hi),
-                                    *(vec_float32 *)((void *)&temp_float_lo));
-#else
-        *qc_tilde_vec++ = vec_round_from_fp32(temp_float_hi, temp_float_lo, 0);
-#endif
-
+        *qc_tilde_vec++ = VEC_ROUND_FROM_FP32(temp_float_hi, temp_float_lo);
         in_b_offset += 16;
 
         // Push in_c_vec to the next 16 int8 elements.
@@ -1500,39 +1379,22 @@ static void apply_clipping(const int8_t clip_min, const int8_t clip_max,
 
       for (uint32_t e1x = 0; e1x < output->transformed_desc->dim1;
            e1x += AIU_2BYTE_CELLS_PER_STICK) {
-#if defined(__MVS__)
+
         vec_int16 *output_vec =
             (vec_int16 *)((void *)((uintptr_t)output->buffer + out_offset));
-#else
-        vec_short *output_vec =
-            (vec_short *)((void *)((uintptr_t)output->buffer + out_offset));
-#endif
 
         fields_to_convert = MIN(output->transformed_desc->dim1 - e1x,
                                 AIU_2BYTE_CELLS_PER_STICK);
         nbr_fields_converted = 0;
 
         while (nbr_fields_converted < fields_to_convert) {
-#if defined(__MVS__)
           vec_fp32 temp_vec_hi, temp_vec_lo;
-          aiu_vec_lengthen_to_fp32(*output_vec,
-                                   (vec_float32 *)((void *)&temp_vec_hi),
-                                   (vec_float32 *)((void *)&temp_vec_lo));
-#else
-          vec_fp32 temp_vec_hi = vec_extend_to_fp32_hi(*output_vec, 0);
-          vec_fp32 temp_vec_lo = vec_extend_to_fp32_lo(*output_vec, 0);
-#endif
+          VEC_LENGTHEN_TO_FP32(*output_vec, temp_vec_hi, temp_vec_lo);
           (*clip_round_hi_func)(&temp_vec_hi, &vec_clip_min, &vec_clip_max);
           (*clip_round_lo_func)(&temp_vec_lo, &vec_clip_min, &vec_clip_max);
           (*deq_func)(&temp_vec_hi, &temp_vec_lo, vec_scale, vec_offset);
 
-#if defined(__MVS__)
-          *output_vec++ =
-              aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_vec_hi),
-                                      *(vec_float32 *)((void *)&temp_vec_lo));
-#else
-          *output_vec++ = vec_round_from_fp32(temp_vec_hi, temp_vec_lo, 0);
-#endif
+          *output_vec++ = VEC_ROUND_FROM_FP32(temp_vec_hi, temp_vec_lo);
           nbr_fields_converted += 8;
         }
 
@@ -1774,28 +1636,17 @@ static void apply_correction_term(const zdnn_ztensor *input_a,
 
       for (uint32_t e1x = 0; e1x < output->transformed_desc->dim1;
            e1x += AIU_2BYTE_CELLS_PER_STICK) {
-#if defined(__MVS__)
+
         vec_int16 *output_vec =
             (vec_int16 *)((void *)((uintptr_t)output->buffer + out_offset));
-#else
-        vec_short *output_vec =
-            (vec_short *)((void *)((uintptr_t)output->buffer + out_offset));
-#endif
 
         fields_to_convert = MIN(output->transformed_desc->dim1 - e1x,
                                 AIU_2BYTE_CELLS_PER_STICK);
         nbr_fields_converted = 0;
 
         while (nbr_fields_converted < fields_to_convert) {
-#if defined(__MVS__)
           vec_fp32 temp_vec_hi, temp_vec_lo;
-          aiu_vec_lengthen_to_fp32(*output_vec,
-                                   (vec_float32 *)((void *)&temp_vec_hi),
-                                   (vec_float32 *)((void *)&temp_vec_lo));
-#else
-          vec_fp32 temp_vec_hi = vec_extend_to_fp32_hi(*output_vec, 0);
-          vec_fp32 temp_vec_lo = vec_extend_to_fp32_lo(*output_vec, 0);
-#endif
+          VEC_LENGTHEN_TO_FP32(*output_vec, temp_vec_hi, temp_vec_lo);
           temp_vec_hi -= (*term_b_vec + term_a_vec);
           (*clip_round_hi_func)(&temp_vec_hi, &vec_clip_min, &vec_clip_max);
           term_b_vec++;
@@ -1803,14 +1654,7 @@ static void apply_correction_term(const zdnn_ztensor *input_a,
           (*clip_round_lo_func)(&temp_vec_lo, &vec_clip_min, &vec_clip_max);
           term_b_vec++;
           (*deq_func)(&temp_vec_hi, &temp_vec_lo, vec_scale, vec_offset);
-
-#if defined(__MVS__)
-          *output_vec++ =
-              aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_vec_hi),
-                                      *(vec_float32 *)((void *)&temp_vec_lo));
-#else
-          *output_vec++ = vec_round_from_fp32(temp_vec_hi, temp_vec_lo, 0);
-#endif
+          *output_vec++ = VEC_ROUND_FROM_FP32(temp_vec_hi, temp_vec_lo);
           nbr_fields_converted += 8;
         }
 
@@ -1912,13 +1756,9 @@ static void apply_correction_term_on_the_fly(
 
         for (uint32_t e1x = 0; e1x < input_a->transformed_desc->dim1;
              e1x += AIU_2BYTE_CELLS_PER_STICK) {
-#if defined(__MVS__)
+
           vec_int16 *in_a_vec =
               (vec_int16 *)((void *)((uintptr_t)input_a->buffer + in_a_offset));
-#else
-          vec_short *in_a_vec =
-              (vec_short *)((void *)((uintptr_t)input_a->buffer + in_a_offset));
-#endif
 
           remaining_fields = MIN(input_a->transformed_desc->dim1 - e1x,
                                  AIU_2BYTE_CELLS_PER_STICK);
@@ -1926,42 +1766,28 @@ static void apply_correction_term_on_the_fly(
           nbr_fields_converted = 0;
 
           while (nbr_fields_converted < fields_to_convert) {
-#if defined(__MVS__)
-            vec_float32 temp_float_hi, temp_float_lo;
-            aiu_vec_lengthen_to_fp32(*in_a_vec, &temp_float_hi, &temp_float_lo);
+            vec_fp32 temp_float_hi, temp_float_lo;
+            VEC_LENGTHEN_TO_FP32(*in_a_vec, temp_float_hi, temp_float_lo);
 
-            summ_vec_a_hi += *(vec_fp32 *)((void *)&temp_float_hi);
-            summ_vec_a_lo += *(vec_fp32 *)((void *)&temp_float_lo);
-#else
-            summ_vec_a_hi += vec_extend_to_fp32_hi(*in_a_vec, 0);
-            summ_vec_a_lo += vec_extend_to_fp32_lo(*in_a_vec, 0);
-#endif
+            summ_vec_a_hi += temp_float_hi;
+            summ_vec_a_lo += temp_float_lo;
 
             in_a_vec++;
             nbr_fields_converted += 8;
           }
 
           if (nbr_fields_converted < remaining_fields) {
-#if defined(__MVS__)
+
             // Load remaining fields_to_convert into temp_vec
             vec_int16 temp_vec =
                 vec_load_len((uint16_t *)in_a_vec,
                              (remaining_fields - nbr_fields_converted) * 2 - 1);
 
-            vec_float32 temp_float_hi, temp_float_lo;
-            aiu_vec_lengthen_to_fp32(temp_vec, &temp_float_hi, &temp_float_lo);
+            vec_fp32 temp_float_hi, temp_float_lo;
+            VEC_LENGTHEN_TO_FP32(temp_vec, temp_float_hi, temp_float_lo);
 
-            summ_vec_a_hi += *(vec_fp32 *)((void *)&temp_float_hi);
-            summ_vec_a_lo += *(vec_fp32 *)((void *)&temp_float_lo);
-#else
-            // Load remaining fields into temp_vec
-            vec_short temp_vec =
-                vec_load_len((short *)in_a_vec,
-                             (remaining_fields - nbr_fields_converted) * 2 - 1);
-
-            summ_vec_a_hi += vec_extend_to_fp32_hi(temp_vec, 0);
-            summ_vec_a_lo += vec_extend_to_fp32_lo(temp_vec, 0);
-#endif
+            summ_vec_a_hi += temp_float_hi;
+            summ_vec_a_lo += temp_float_lo;
           }
 
           in_a_offset += in_a_bytes_all_w;
@@ -2065,28 +1891,17 @@ static void apply_correction_term_on_the_fly(
 
       for (uint32_t e1x = 0; e1x < output->transformed_desc->dim1;
            e1x += AIU_2BYTE_CELLS_PER_STICK) {
-#if defined(__MVS__)
         vec_int16 *output_vec =
             (vec_int16 *)((void *)((uintptr_t)output->buffer + out_offset));
-#else
-        vec_short *output_vec =
-            (vec_short *)((void *)((uintptr_t)output->buffer + out_offset));
-#endif
 
         fields_to_convert = MIN(output->transformed_desc->dim1 - e1x,
                                 AIU_2BYTE_CELLS_PER_STICK);
         nbr_fields_converted = 0;
 
         while (nbr_fields_converted < fields_to_convert) {
-#if defined(__MVS__)
+
           vec_fp32 temp_vec_hi, temp_vec_lo;
-          aiu_vec_lengthen_to_fp32(*output_vec,
-                                   (vec_float32 *)((void *)&temp_vec_hi),
-                                   (vec_float32 *)((void *)&temp_vec_lo));
-#else
-          vec_fp32 temp_vec_hi = vec_extend_to_fp32_hi(*output_vec, 0);
-          vec_fp32 temp_vec_lo = vec_extend_to_fp32_lo(*output_vec, 0);
-#endif
+          VEC_LENGTHEN_TO_FP32(*output_vec, temp_vec_hi, temp_vec_lo);
           temp_vec_hi -= (*term_b_vec + term_a_vec);
           (*clip_round_hi_func)(&temp_vec_hi, &vec_clip_min, &vec_clip_max);
           term_b_vec++;
@@ -2094,14 +1909,7 @@ static void apply_correction_term_on_the_fly(
           (*clip_round_lo_func)(&temp_vec_lo, &vec_clip_min, &vec_clip_max);
           term_b_vec++;
           (*deq_func)(&temp_vec_hi, &temp_vec_lo, vec_scale, vec_offset);
-
-#if defined(__MVS__)
-          *output_vec++ =
-              aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&temp_vec_hi),
-                                      *(vec_float32 *)((void *)&temp_vec_lo));
-#else
-          *output_vec++ = vec_round_from_fp32(temp_vec_hi, temp_vec_lo, 0);
-#endif
+          *output_vec++ = VEC_ROUND_FROM_FP32(temp_vec_hi, temp_vec_lo);
           nbr_fields_converted += 8;
         }
 
