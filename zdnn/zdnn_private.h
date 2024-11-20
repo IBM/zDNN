@@ -589,13 +589,12 @@ void aiu_vec_lengthen_to_fp32(vec_int16 a, vec_float32 *out1,
 vec_int16 aiu_vec_convert_from_fp16(vec_int16 a);
 vec_int16 aiu_vec_convert_to_fp16(vec_int16 a);
 
-#ifdef __MVS__
+#if defined(__MVS__) || (defined(__ARCH__) && __ARCH__ < 14)
 #define VEC_ROUND_FROM_FP32(FP_HI, FP_LO)                                      \
-  aiu_vec_round_from_fp32(*(vec_float32 *)((void *)&(FP_HI)),                  \
-                          *(vec_float32 *)((void *)&(FP_LO)));
+  aiu_vec_round_from_fp32((vec_float32)(FP_HI), (vec_float32)(FP_LO));
 #define VEC_LENGTHEN_TO_FP32(IN, OUT_HI, OUT_LO)                               \
-  aiu_vec_lengthen_to_fp32((IN), (vec_float32 *)((void *)&(OUT_HI)),           \
-                           (vec_float32 *)((void *)&(OUT_LO)));
+  aiu_vec_lengthen_to_fp32((IN), (vec_float32 *)&(OUT_HI),                     \
+                           (vec_float32 *)&(OUT_LO));
 #else
 #define VEC_ROUND_FROM_FP32(FP_HI, FP_LO)                                      \
   (vec_int16) vec_round_from_fp32((FP_HI), (FP_LO), 0);
@@ -1541,6 +1540,32 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
 // padded = next multiple of AIU_2BYTE_CELLS_PER_STICK
 #define PADDED(x)                                                              \
   ((uint32_t)CEIL(x, AIU_2BYTE_CELLS_PER_STICK) * AIU_2BYTE_CELLS_PER_STICK)
+
+#if !defined(vec_float) || __ARCH__ < 13
+#undef vec_float
+#define vec_float(X)                                                           \
+  ({                                                                           \
+    __vector float out;                                                        \
+    /* vcefb\t%[out],%[in],0,0 */                                              \
+    __asm__(".insn vrr,0xe700000020c3,%[out],%[in],0,2,0,0"                    \
+            : [out] "=v"(out)                                                  \
+            : [in] "v"(X));                                                    \
+    out;                                                                       \
+  })
+#endif
+
+#if defined(__GNUC__) && __GNUC__ <= 7
+#undef vec_round
+#define vec_round(X)                                                           \
+  ({                                                                           \
+    __vector float out;                                                        \
+    /* vfisb %[out],%[in],4,4 */                                               \
+    __asm__(".insn vrr,0xe700000020c7,%[out],%[in],0,2,4,4"                    \
+            : [out] "=v"(out)                                                  \
+            : [in] "v"(X));                                                    \
+    out;                                                                       \
+  })
+#endif
 
 // -----------------------------------------------------------------------------
 // Private global variables
