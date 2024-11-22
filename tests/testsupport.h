@@ -39,6 +39,8 @@ extern float ZERO_ARRAY[1];
 // likely due to something's wrong with the testcase itself
 #define GENERAL_TESTCASE_FAILURE 0xDEADBEEF
 
+void nhwc_2_nchw(void *nhwc_ptr, uint32_t n, uint32_t h, uint32_t w, uint32_t c,
+                 int element_size, void *nchw_ptr);
 size_t *alloc_offsets(zdnn_ztensor *ztensor);
 size_t *alloc_rnn_offsets(const zdnn_ztensor *ztensor);
 size_t *alloc_rnn_output_offsets(const zdnn_ztensor *ztensor);
@@ -228,6 +230,10 @@ extern char error_message[ERROR_MESSAGE_STR_LENGTH];
 
 extern zdnn_data_types test_datatype;
 
+void UnityDefaultTestRunWithAllPreDataType(UnityTestFunction Func,
+                                           const char *FuncName,
+                                           const int FuncLineNum);
+
 void UnityDefaultTestRunWithDLFloat16PreDataType(UnityTestFunction Func,
                                                  const char *FuncName,
                                                  const int FuncLineNum);
@@ -237,6 +243,10 @@ void UnityDefaultTestRunWithQuantizedPreDataType(UnityTestFunction Func,
                                                  const int FuncLineNum);
 
 void UnityDefaultTestRunWithIndexPreDataType(UnityTestFunction Func,
+                                             const char *FuncName,
+                                             const int FuncLineNum);
+
+void UnityDefaultTestRunWithAllTfrmdDataType(UnityTestFunction Func,
                                              const char *FuncName,
                                              const int FuncLineNum);
 
