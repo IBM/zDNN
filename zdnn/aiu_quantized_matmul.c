@@ -1463,7 +1463,6 @@ static void apply_correction_term(const zdnn_ztensor *input_a,
   vec_fp32 vec_MZa = vec_splats(M * input_a->offset);
 
   float term_a[input_a->transformed_desc->dim2];
-  // cppcheck-suppress unassignedVariable
   float term_b[input_b->transformed_desc->dim1 + 7];
 
   vec_fp32 vec_clip_min = vec_splats((float)clip_min);
@@ -1723,7 +1722,6 @@ static void apply_correction_term_on_the_fly(
   vec_fp32 vec_MZa = vec_splats(M * input_a->offset);
 
   float term_a[input_a->transformed_desc->dim2];
-  // cppcheck-suppress unassignedVariable
   float term_b[input_b->transformed_desc->dim1 + 7];
 
   vec_fp32 vec_clip_min = vec_splats((float)clip_min);

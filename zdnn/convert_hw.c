@@ -379,7 +379,7 @@ float cnvt_1_fp16_to_fp32(uint16_t a) {
 // convert 1 FP32 element to BFLOAT
 uint16_t cnvt_1_fp32_to_bfloat(float a) {
   union {
-    float in;
+    float in; // cppcheck-suppress unusedStructMember
     uint16_t out;
   } u = {.in = a};
   return u.out;
