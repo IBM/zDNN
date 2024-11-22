@@ -280,11 +280,11 @@ Include Files: `zdnn.h`
 [Back to Table of Contents](#TOC)
 
 ```C
-#define ZDNN_VERSION "1.1.1"
-#define ZDNN_VERNUM 0x010101 // 0x[major][minor][patch]
+#define ZDNN_VERSION "1.1.2"
+#define ZDNN_VERNUM 0x010102 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
 #define ZDNN_VER_MINOR 1
-#define ZDNN_VER_PATCH 1
+#define ZDNN_VER_PATCH 2
 ```
 
 1. zDNN major version (_ZDNN_VER_MAJOR_) will be incremented if any backwards
