@@ -377,8 +377,13 @@ float cnvt_1_fp16_to_fp32(uint16_t a) {
 }
 
 // convert 1 FP32 element to BFLOAT
-// cppcheck-suppress invalidPointerCast
-uint16_t cnvt_1_fp32_to_bfloat(float a) { return *(uint16_t *)(&a); }
+uint16_t cnvt_1_fp32_to_bfloat(float a) {
+  union {
+    float in; // cppcheck-suppress unusedStructMember
+    uint16_t out;
+  } u = {.in = a};
+  return u.out;
+}
 
 // convert 1 FP32 element to FP16
 uint16_t cnvt_1_fp32_to_fp16(float a) {
