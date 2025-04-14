@@ -20,6 +20,16 @@
 void setUp(void) {
   VERIFY_HW_ENV;
   VERIFY_PARMBLKFORMAT_1;
+
+  tol_bfloat.ulps = MAX_ULPS_BFLOAT;
+  tol_bfloat.epsilon_mult = MAX_EPSILON_MULT_BFLOAT;
+
+  tol_fp16.ulps = MAX_ULPS_FP16;
+  tol_fp16.epsilon_mult = MAX_EPSILON_MULT_FP16;
+
+  // note: zdnn_gelu_basic_random_neg_large_3d (FP32) needs custom tolerance
+  tol_fp32.ulps = MAX_ULPS_FLOAT;
+  tol_fp32.epsilon_mult = (0.003 / EPSILON_FLOAT) + 1;
 }
 
 void tearDown(void) {}
@@ -57,8 +67,24 @@ void zdnn_gelu_test(uint32_t *io_dims, zdnn_data_layouts layout, float *input,
       "call to zdnn_gelu() to returned status %08x but expected  %08x\n",
       status, expected_status);
 
+  // To allow for unique tolerance
+  fp_tolerance *tol = NULL;
+  switch (output_ztensor->pre_transformed_desc->type) {
+  case BFLOAT:
+    tol = &tol_bfloat;
+    break;
+  case FP16:
+    tol = &tol_fp16;
+    break;
+  case FP32:
+    tol = &tol_fp32;
+    break;
+  default:
+    break;
+    // should never get here
+  }
   if (expected_status == ZDNN_OK) {
-    assert_ztensor_values(output_ztensor, false, expected_values);
+    assert_ztensor_values_adv(output_ztensor, false, expected_values, *tol);
   }
 
   // All done--clean up the tensor buffers

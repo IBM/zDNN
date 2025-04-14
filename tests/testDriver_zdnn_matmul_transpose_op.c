@@ -36,7 +36,7 @@ void setUp(void) {
   VERIFY_PARMBLKFORMAT_1;
 }
 
-void tearDown(void) {}
+void tearDown(void){}
 
 /**
  * Helper macro that given the indices and sizes of a multidimensional array

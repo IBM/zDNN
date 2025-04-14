@@ -189,12 +189,19 @@ aiu_ops_func_specific(uint16_t op_parm_block_version, uint8_t function_code,
 
   // Indicate output tensor is stickified only if invoke_nnpa() was OK
   if (status == ZDNN_OK) {
+    const func_sp_parms_transform *fsp_transform =
+        (func_sp_parms_transform *)&fsp;
+    if (ef & EF_RANGE_VIOLATION_MASK && fsp_transform->parm1.sc == true) {
+      return ZDNN_STATUS(ZDNN_CONVERT_FAILURE,
+                         "Floating point data conversion failure.", NO_ARG);
+    }
+
     if (ef & EF_RANGE_VIOLATION_MASK) {
       status =
           ZDNN_STATUS(ZDNN_ELEMENT_RANGE_VIOLATION,
                       "Range violation on tensor data", NO_ARG); /*
-                               zAIU operation returned a RANGE VIOLATION, set as
-                               a warning code and continue processing */
+                               zAIU operation returned a RANGE VIOLATION, set
+                               as a warning code and continue processing */
     } else if (ef & ~EF_RANGE_VIOLATION_MASK) {
       return status = ZDNN_STATUS(ZDNN_UNSUPPORTED_AIU_EXCEPTION,
                                   "Unsupported exception on ZDNN operation",

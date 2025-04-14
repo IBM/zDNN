@@ -35,7 +35,7 @@ void setUp(void) { /* This is run before EACH TEST */
   VERIFY_HW_ENV;
 }
 
-void tearDown(void) {}
+void tearDown(void){}
 
 /**
  * Helper macro that given the indices and sizes of a multidimensional array
