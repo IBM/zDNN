@@ -189,13 +189,6 @@ aiu_ops_func_specific(uint16_t op_parm_block_version, uint8_t function_code,
 
   // Indicate output tensor is stickified only if invoke_nnpa() was OK
   if (status == ZDNN_OK) {
-    const func_sp_parms_transform *fsp_transform =
-        (func_sp_parms_transform *)&fsp;
-    if (ef & EF_RANGE_VIOLATION_MASK && fsp_transform->parm1.sc == true) {
-      return ZDNN_STATUS(ZDNN_CONVERT_FAILURE,
-                         "Floating point data conversion failure.", NO_ARG);
-    }
-
     if (ef & EF_RANGE_VIOLATION_MASK) {
       status =
           ZDNN_STATUS(ZDNN_ELEMENT_RANGE_VIOLATION,
