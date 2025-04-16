@@ -8,8 +8,6 @@
 
 ## Version
 
-1.2.0
-
 ## Table of Contents <a id="TOC"></a>
 
 1. [Overview](#overview)
@@ -282,11 +280,11 @@ Include Files: `zdnn.h`
 [Back to Table of Contents](#TOC)
 
 ```C
-#define ZDNN_VERSION "1.2.0"
-#define ZDNN_VERNUM 0x010200 // 0x[major][minor][patch]
+#define ZDNN_VERSION "1.1.2"
+#define ZDNN_VERNUM 0x010102 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
-#define ZDNN_VER_MINOR 2
-#define ZDNN_VER_PATCH 0
+#define ZDNN_VER_MINOR 1
+#define ZDNN_VER_PATCH 2
 ```
 
 1. zDNN major version (_ZDNN_VER_MAJOR_) will be incremented if any backwards
@@ -612,6 +610,7 @@ operation that returned the status for the specific meaning.
   - Prints or produces diagnostic information whenever zDNN status code is equal
     to the specified value. Only one status value can be specified.
 
+<!--- (Begin external-only section) -->
 _The following are only available when the zDNN library was built with
 `ZDNN_CONFIG_DEBUG` enabled._
 
@@ -621,6 +620,7 @@ _The following are only available when the zDNN library was built with
   - Produces log output only when the issuer's module name is in the list. You
     may specify multiple module names by separating them with either commas or
     spaces.
+<!--- (End external-only section) -->
 
 ### Programming Notes
 
@@ -4840,13 +4840,13 @@ zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
 
 #### Programming Notes
 
-- `zdnn_matmul_bcast_ops` only supports `MATMUL_BCAST_OP_ADDITION` op_type when
-  `NNPA_PARMBLKFORMAT_1` is not installed. If any other op_types is provided,
-  `ZDNN_UNAVAILABLE_FUNCTION` is returned.
+- When `NNPA_PARMBLKFORMAT_1` is not installed, `zdnn_matmul_bcast_ops` only
+  supports the `MATMUL_BCAST_OP_ADDITION` op_type.
+  If any other op_type is provided, `ZDNN_UNAVAILABLE_FUNCTION` is returned.
 - `BCAST1` is not supported when `NNPA_PARMBLKFORMAT_1` is not installed and
   will return `ZDNN_UNAVAILABLE_FUNCTION`.
 - Care must be exercised when comparing values for equality or inequality since
-  the order of operations and rounding may produce, what appear to be, slightly
+  the order of operations and rounding may produce what appear to be slightly
   different values when they are essentially the same value.
 
 #### Returns (see [zDNN Statuses](#common-statuses) for descriptions)
@@ -4862,14 +4862,25 @@ zdnn_status zdnn_matmul_bcast_op(const zdnn_ztensor *input_a,
 
 #### Since
 
-1.1.0
+1.0.0
 
 #### Requirements
 
 This feature requires that:
 
 - `zdnn_is_nnpa_installed()` returns true
-- the underlying hardware supports zDNN APIs 1.1.x or later at runtime
+- the underlying hardware supports zDNN APIs 1.1.x or later at runtime for the
+  following:
+  - `zdnn_data_layouts` specification
+    - bcast1
+  - `zdnn_matmul_bcast_ops` specifications:
+    - `MATMUL_BCAST_OP_GREATER`
+    - `MATMUL_BCAST_OP_GREATER_EQUAL`
+    - `MATMUL_BCAST_OP_EQUAL`
+    - `MATMUL_BCAST_OP_NOT_EQUAL`
+    - `MATMUL_BCAST_OP_LESSER_EQUAL`
+    - `MATMUL_BCAST_OP_LESSER`
+- the underlying hardware supports zDNN APIs 1.0.x or later at runtime.
 
 See [Validating the environment at runtime](#runtime-val).
 
@@ -5800,7 +5811,7 @@ the usage example section.
 
 #### Since
 
-1.1.0
+1.0.0
 
 #### Requirements
 
@@ -5963,7 +5974,7 @@ Parameter restrictions may vary based on provided strides and padding_type.
 
 #### Since
 
-1.1.0
+1.0.0
 
 #### Requirements
 
@@ -6126,7 +6137,7 @@ Parameter restrictions may vary based on provided strides and padding_type.
 
 #### Since
 
-1.1.0
+1.0.0
 
 #### Requirements
 
@@ -6276,7 +6287,7 @@ zdnn_status zdnn_conv2d(const zdnn_ztensor *input,
 
 #### Since
 
-1.1.0
+1.0.0
 
 #### Requirements
 
