@@ -23,6 +23,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // -----------------------------------------------------------------------------
 // NOTE:
 // Ensure that symbols in zdnn.h and zdnn.map are in sync!
@@ -649,5 +653,8 @@ zdnn_status zdnn_get_max_limit(zdnn_data_types transformed_type,
 zdnn_status zdnn_get_min_limit(zdnn_data_types transformed_type,
                                zdnn_data_types pre_transformed_type,
                                void *limit);
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 #endif /* ZDNN_ZDNN_H_ */
