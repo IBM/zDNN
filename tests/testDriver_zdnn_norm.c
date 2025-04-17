@@ -20,6 +20,16 @@
 void setUp(void) {
   VERIFY_HW_ENV;
   VERIFY_PARMBLKFORMAT_1;
+
+  tol_bfloat.ulps = MAX_ULPS_BFLOAT;
+  tol_bfloat.epsilon_mult = MAX_EPSILON_MULT_BFLOAT;
+
+  // note: zdnn_norm_basic_large_nhwc (FP16) needs custom tolerance
+  tol_fp16.ulps = MAX_ULPS_FP16;
+  tol_fp16.epsilon_mult = (0.25 / EPSILON_FP16) + 1;
+
+  tol_fp32.ulps = MAX_ULPS_FLOAT;
+  tol_fp32.epsilon_mult = MAX_EPSILON_MULT_FLOAT;
 }
 
 void tearDown(void) {}
@@ -62,8 +72,24 @@ void zdnn_norm_test(uint32_t *i_dims, uint32_t *o_dims,
       "call to zdnn_norm() to returned status %08x but expected  %08x\n",
       status, expected_status);
 
+  // To allow for unique tolerance
+  fp_tolerance *tol = NULL;
+  switch (output_ztensor->pre_transformed_desc->type) {
+  case BFLOAT:
+    tol = &tol_bfloat;
+    break;
+  case FP16:
+    tol = &tol_fp16;
+    break;
+  case FP32:
+    tol = &tol_fp32;
+    break;
+  default:
+    break;
+    // should never get here
+  }
   if (expected_status == ZDNN_OK) {
-    assert_ztensor_values(output_ztensor, false, expected_values);
+    assert_ztensor_values_adv(output_ztensor, false, expected_values, *tol);
   }
 
   // All done--clean up the tensor buffers

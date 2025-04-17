@@ -1124,7 +1124,7 @@ void assert_ztensor_values(zdnn_ztensor *ztensor,
 ///                            method
 /// \param[in] ... variable number of ztensor pointers
 ///
-/// \return None (assert fails if freeing any buffer fails
+/// \return None (assert fails if freeing any buffer fails)
 ///
 void free_ztensor_buffers(uint32_t num_ztensors, ...) {
 
@@ -1149,6 +1149,29 @@ void free_ztensor_buffers(uint32_t num_ztensors, ...) {
   va_end(ztensor_list);
 }
 
+/// Initializes seed for rand() function.
+/// If the environment variable ZDNN_TEST_RANDOM_SEED is set to a
+/// numeric string, the value will be used as the seed. If ZDNN_TEST_RANDOM_SEED
+/// is NULL, 0, or non-numeric, a random seed is generated
+///
+/// \return None
+///
+void setup_random_seed() {
+  char *env_seed = getenv(ENVVAR_TEST_RANDOM_SEED);
+  int seed;
+  if (env_seed != NULL && (int)(strtoull(env_seed, NULL, 10)) != 0) {
+    seed = (int)(strtoull(env_seed, NULL, 10));
+    // Casting to ensure truncation is clear if necessary
+  } else {
+    struct timeval t1;
+    gettimeofday(&t1, NULL);
+    seed = (int)(t1.tv_sec * t1.tv_usec);
+  }
+
+  srand(seed);
+  printf("Using seed: %d\n", seed);
+}
+
 /// Allocates a data buffer then fills it with random float values (between
 /// SMALLEST_RANDOM_FP to 1)
 ///
@@ -1165,10 +1188,7 @@ unsigned char *create_and_fill_random_fp_data(zdnn_ztensor *ztensor) {
   uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_PRE_SINGLE_GATE);
   zdnn_data_types dtype = ztensor->pre_transformed_desc->type;
   void *data = malloc(num_elements * get_data_type_size(dtype));
-
-  struct timeval t1;
-  gettimeofday(&t1, NULL);
-  srand(t1.tv_usec * t1.tv_sec);
+  setup_random_seed();
 
   for (int i = 0; i < num_elements; i++) {
 
@@ -1209,10 +1229,7 @@ int8_t *create_and_fill_random_int8_data(zdnn_ztensor *ztensor) {
 
   uint64_t num_elements = get_num_elements(ztensor, ELEMENTS_PRE_SINGLE_GATE);
   int8_t *data = (int8_t *)malloc(num_elements);
-
-  struct timeval t1;
-  gettimeofday(&t1, NULL);
-  srand(t1.tv_usec * t1.tv_sec);
+  setup_random_seed();
 
   int upper = 127, lower = -128;
   for (int i = 0; i < num_elements; i++) {
@@ -1229,9 +1246,7 @@ int8_t *create_and_fill_random_int8_data(zdnn_ztensor *ztensor) {
  * https://stackoverflow.com/questions/13408990/how-to-generate-random-float-number-in-c
  */
 void gen_random_float_array(int size, float arr[]) {
-  struct timeval t1;
-  gettimeofday(&t1, NULL);
-  srand(t1.tv_usec * t1.tv_sec);
+  setup_random_seed();
 
   // The raw output value will be [0, a]. To make sure we're always at least
   // SMALLEST_RANDOM_FP from zero, add it to the result. Also subtract it
@@ -1249,9 +1264,7 @@ void gen_random_float_array(int size, float arr[]) {
  * unit tests.
  */
 void gen_random_float_array_neg(int size, float arr[]) {
-  struct timeval t1;
-  gettimeofday(&t1, NULL);
-  srand(t1.tv_usec * t1.tv_sec);
+  setup_random_seed();
 
   // The raw output value will be [0, a]. To make sure we're always at least
   // SMALLEST_RANDOM_FP from zero, add it to the result. Also subtract it
@@ -1273,9 +1286,7 @@ void gen_random_float_array_neg(int size, float arr[]) {
  * Example: [-1, 2, -3, 4, -5, 6]
  */
 void gen_random_float_array_pos_neg(int size, float arr[]) {
-  struct timeval t1;
-  gettimeofday(&t1, NULL);
-  srand(t1.tv_usec * t1.tv_sec);
+  setup_random_seed();
 
   float desired_max = LARGEST_RANDOM_FP - SMALLEST_RANDOM_FP;
   for (int i = 0; i < size; i++) {
@@ -1292,9 +1303,7 @@ void gen_random_float_array_pos_neg(int size, float arr[]) {
  * https://stackoverflow.com/questions/13408990/how-to-generate-random-float-number-in-c
  */
 void gen_random_float_array_range(int size, float arr[], float min, float max) {
-  struct timeval t1;
-  gettimeofday(&t1, NULL);
-  srand(t1.tv_usec * t1.tv_sec);
+  setup_random_seed();
 
   // The raw output value will be [min, max].
   for (int i = 0; i < size; i++) {
