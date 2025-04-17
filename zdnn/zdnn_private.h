@@ -37,11 +37,17 @@
 #define AIU_2BYTE_CELLS_PER_STICK 64
 #define AIU_4BYTE_CELLS_PER_STICK 32
 
+#define AIU_1BYTE_CELL_SIZE 1
 #define AIU_2BYTE_CELL_SIZE 2
+#define AIU_4BYTE_CELL_SIZE 4
 #define AIU_STICKS_PER_PAGE 32
 #define AIU_PAGESIZE_IN_BYTES 4096
 
 #define ZDNN_MAX_DIMS 4 // number of dims in zAIU's Tensor Descriptor
+
+// Threshold of the product of dim[1..3] to switch to hardware stickify when
+// parmblock1 installed
+#define STICK_SW_THRESHOLD 2048
 
 /*
  * The following values are ranges for transformed data types

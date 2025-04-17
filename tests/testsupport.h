@@ -26,6 +26,7 @@
 #include <float.h>
 #include <stddef.h>
 
+#define ENVVAR_TEST_RANDOM_SEED "ZDNN_TEST_RANDOM_SEED"
 #define ENVVAR_TEST_ERROR_COUNT "ZDNN_TEST_ERROR_ELEMENT_COUNT"
 #define ERROR_ELEMENT_COUNT_MAX_DEFAULT 10
 
@@ -108,7 +109,7 @@ void generate_expected_output(float (*fn)(float), float input_values[],
 #define MAX_EPSILON_MULT_FLOAT (5120 * 8)
 #define MAX_EPSILON_MULT_DLFLOAT16 8
 
-// epsilon = 2 ^ (num_mantissa_bits - 1)
+// epsilon = 2 ^ (-num_mantissa_bits - 1)
 #define EPSILON_BFLOAT 0.00390625F                // 2 ^ -8
 #define EPSILON_FP16 0.00048828125F               // 2 ^ -11
 #define EPSILON_FLOAT 0.000000059604644775390625F // 2 ^ -24, FLT_EPSILON

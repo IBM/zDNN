@@ -73,6 +73,19 @@ static inline void cache_flush(const void *ptr, uintptr_t offset) {
 #endif
 }
 
+/// Calculate stride n size for the tensor. When stride n size >
+/// STICK_SW_THRESHOLD use hardware stickification otherwise stay in software
+/// stickification as this shows the greatest performance benefit.
+///
+/// \param[in] ztensor pointer to zdnn_ztensor_desc
+///
+/// \return true if stride n size > STICK_SW_THRESHOLD else false
+static inline bool
+n_stride_meets_hardware_limit(const zdnn_tensor_desc *tensor) {
+  return ((uint64_t)tensor->dim3 * (uint64_t)tensor->dim2 *
+          (uint64_t)tensor->dim1) > STICK_SW_THRESHOLD;
+}
+
 // resultant vector from vec_perm() is 16 bytes.  we're merging entries from 2
 // sticks so we grab max 8 entries from each when int8, or 4 entries when bfloat
 #define VECPERM_MAX_INT8_ENTRIES 8
@@ -401,6 +414,32 @@ zdnn_status handle_fp_errors(int fe) {
   return ZDNN_STATUS_OK;
 }
 
+zdnn_status handle_fp_errors_saturation(int fe, zdnn_data_types type) {
+  if (fe & FE_UNDERFLOW) {
+    LOG_WARN("Some tensor elements too small and forced to zero in "
+             "target.",
+             NO_ARG); // underflow (bit 11)
+                      // no error externalized
+  }
+  if ((fe & FE_INVALID) || (fe & FE_OVERFLOW)) {
+    if (type == FP16) {
+      return ZDNN_STATUS(ZDNN_CONVERT_FAILURE,
+                         "Some tensor elements too large. Consider model "
+                         "tuning.",
+                         NO_ARG);
+    }
+    return ZDNN_STATUS(ZDNN_ELEMENT_RANGE_VIOLATION,
+                       "Range violation on tensor data", NO_ARG);
+  }
+  if (fe & FE_INEXACT) {
+    return ZDNN_STATUS(ZDNN_CONVERT_FAILURE,
+                       "Internal error or Live migration happened"
+                       "(Target machine has different characteristics.)",
+                       NO_ARG); //  inexact (bit 12)
+  }
+
+  return ZDNN_STATUS_OK;
+}
 /// Call HW to transform from FP32 -> DLFLOAT16 only.
 ///
 /// \param[in] in_buf data buffer to be stickified
@@ -486,7 +525,8 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor,
     // If FP32 and NNPA_TRANSFORM is available, send to hardware
     if (ztensor->pre_transformed_desc->layout != ZDNN_NCHW &&
         ztensor->pre_transformed_desc->type == FP32 &&
-        zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
+        zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM) &&
+        n_stride_meets_hardware_limit(ztensor->transformed_desc)) {
       return hw_transform_ztensor(in_buf, saturation_control, ztensor);
     }
 
@@ -717,11 +757,22 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor,
   }
 
   /* handle any FP errors or return success */
-  zdnn_status fp_error = handle_fp_errors(
-      fetestexcept(FE_UNDERFLOW | FE_INVALID | FE_INEXACT | FE_OVERFLOW));
+  // Handle saturation vs no saturation differently to match the HW
+  zdnn_status fp_error;
+  if (saturation_control == true) {
+    fp_error = handle_fp_errors_saturation(
+        fetestexcept(FE_UNDERFLOW | FE_INVALID | FE_INEXACT | FE_OVERFLOW),
+        ztensor->pre_transformed_desc->type);
+    if (fp_error != ZDNN_OK) {
+      return fp_error;
+    }
 
-  if (fp_error != ZDNN_OK) {
-    return fp_error;
+  } else {
+    fp_error = handle_fp_errors(
+        fetestexcept(FE_UNDERFLOW | FE_INVALID | FE_INEXACT | FE_OVERFLOW));
+    if (fp_error != ZDNN_OK) {
+      return fp_error;
+    }
   }
   // Update the tensor's format to indicate it has been stickified
   ztensor->is_transformed = true;
@@ -830,12 +881,6 @@ zdnn_status transform_bidir_weight_ztensor(const void *in_buf,
 ///
 zdnn_status transform_ztensor_smalldim1(const void *in_buf,
                                         zdnn_ztensor *ztensor) {
-
-  // If FP32 and NNPA_TRANSFORM is available, send to hardware
-  if (ztensor->pre_transformed_desc->type == FP32 &&
-      zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
-    return hw_transform_ztensor(in_buf, false, ztensor);
-  }
 
   uint64_t output_offset =
       0; // moving position as the output is processed, in BYTES
@@ -1377,7 +1422,7 @@ zdnn_status zdnn_transform_ztensor_with_saturation(zdnn_ztensor *ztensor, ...) {
   va_start(argptr, ztensor);
   const void *data = va_arg(argptr, void *);
   status = transform_ztensor(data, ztensor, true);
-  if (status == ZDNN_OK) {
+  if (status == ZDNN_OK || status == ZDNN_ELEMENT_RANGE_VIOLATION) {
     // Set that the ztensor has completed transformation.
     ztensor->is_transformed = true;
   }
@@ -1966,7 +2011,8 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
 
     // If FP32 and NNPA_TRANSFORM is available, send to hardware
     if (ztensor->pre_transformed_desc->type == FP32 &&
-        zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
+        zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM) &&
+        n_stride_meets_hardware_limit(ztensor->transformed_desc)) {
       return hw_transform_origtensor(ztensor, out_buf);
     }
 
@@ -2120,12 +2166,6 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
 ///
 zdnn_status transform_origtensor_smalldim1(const zdnn_ztensor *ztensor,
                                            void *out_buf) {
-
-  // If FP32 and NNPA_TRANSFORM is available, send to hardware
-  if (ztensor->pre_transformed_desc->type == FP32 &&
-      zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM)) {
-    return hw_transform_origtensor(ztensor, out_buf);
-  }
 
   uint64_t input_offset =
       0; // moving position as the input is processed, in BYTES

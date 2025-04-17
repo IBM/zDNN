@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -33,7 +33,6 @@
  * "float"-types will immediately cast to one of the float_bitxx
  * types and use those from then on.
  */
-
 vec_char8 selection_vector = {0,  1,  4,  5,  8,  9,  12, 13,
                               16, 17, 20, 21, 24, 25, 28, 29};
 static vec_int16 zero_vector16 = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -44,6 +43,8 @@ static const vector float dlflt_min_vec = {
 static const vector float dlflt_max_vec = {
     DLF16_MAX_AS_FP32, DLF16_MAX_AS_FP32, DLF16_MAX_AS_FP32, DLF16_MAX_AS_FP32};
 
+static const vector float dlflt_inf_vec = {INFINITY, INFINITY, INFINITY,
+                                           INFINITY};
 /***********************************************************************
  * aiu_vec_round_from_fp32 routines
  *
@@ -133,7 +134,7 @@ static vec_int16 inline aiu_vec_convert_from_fp16_inline(vec_int16 a) {
                  [mask0] "i"(0),        /* 0 = NNP format                */
                  [in_vector] "m"(a)     /* data */
                  :  /* "%v0", "%v1"   Clobbered */
-                 // clang-format on
+                // clang-format on
   );
 #else
   // clang-format off
@@ -530,7 +531,8 @@ uint64_t dlf16_to_fp16(uint16_t *input_dflt16_data, uint16_t *output_fp16_data,
  * saturate_fp32_to_dlf16
  *
  * Performs MIN/MAX saturation of two vectors of FP32 to DLF16. Does not
- * perform any conversion, values remain in FP32 format
+ * perform any conversion, values remain in FP32 format. Any NaN and Infinity
+ * (NINF) values will stay in their respective place and not be saturated.
  *
  * Input: in_vector_left, in_vector_right: vector of four FP32 values
  *
@@ -543,19 +545,27 @@ void saturate_fp32_to_dlf16(const vec_float32 *in_vector_left,
                             vec_float32 *out_vector_left,
                             vec_float32 *out_vector_right) {
 
-  // Create temp vector for output and perform min and max saturation on left
-  // vector
-  vector float temp_left =
-      vec_max((vector float)(*in_vector_left), dlflt_min_vec);
-  temp_left = vec_min(temp_left, dlflt_max_vec);
-  *out_vector_left = (vec_float32)temp_left;
+  // Create temp vectors for output
+  vector float temp_left = (vector float)*in_vector_left;
+  vector float temp_right = (vector float)*in_vector_right;
 
-  // Create temp vector for output and perform min and max saturation on right
-  // vector
-  vector float temp_right =
-      vec_max((vector float)(*in_vector_right), dlflt_min_vec);
-  temp_right = vec_min(temp_right, dlflt_max_vec);
-  *out_vector_right = (vec_float32)temp_right;
+  // For each left and right vectors:
+  // 1. Perform a bitwise AND on the original input vector with dlflt_inf_vec to
+  // determine which elements are non-normal and create a mask where the
+  // bits are set if the respective element is a NINF
+  // 2. Perform min and max saturation on the normal values
+  // 3. Lastly (vec_sel) will select the saturated normal values and retain the
+  // non-normal elements in its respective place.
+  *out_vector_left = (vec_float32)vec_sel(
+      vec_min(vec_max(temp_left, dlflt_min_vec), dlflt_max_vec), temp_left,
+      (vec_float32)vec_cmpeq((vec_float32)temp_left &
+                                 (vec_float32)dlflt_inf_vec,
+                             (vec_float32)(dlflt_inf_vec)));
+  *out_vector_right = (vec_float32)vec_sel(
+      vec_min(vec_max(temp_right, dlflt_min_vec), dlflt_max_vec), temp_right,
+      (vec_float32)vec_cmpeq((vec_float32)temp_right &
+                                 (vec_float32)dlflt_inf_vec,
+                             (vec_float32)(dlflt_inf_vec)));
 }
 
 /***********************************************************************
@@ -727,7 +737,7 @@ uint64_t dlf16_to_fp32(uint16_t *input_data, float *output_data,
     cur_input_data++; /* bump ptr to start of next input vector (8 shorts) */
     cur_output_data += 2; /* bump ptr to start of next pair of vector (8
                           float32s = 32 bytes) */
-  }                       // End of for loop
+  } // End of for loop
 
   int curnbr_fields_to_convert =
       nbr_fields_to_convert %
@@ -819,7 +829,7 @@ uint64_t bfloat_to_dlf16(uint16_t *input_data, uint16_t *output_data,
 
     cur_input_data++;  /* bump ptr to start of next input vector (8 shorts) */
     cur_output_data++; /* bump ptr to start of next vector (8 short) */
-  }                    // End of for loop
+  } // End of for loop
 
   int curnbr_fields_to_convert =
       nbr_fields_to_convert %
@@ -918,7 +928,7 @@ uint64_t dlf16_to_bfloat(uint16_t *input_data, uint16_t *output_data,
     cur_input_data++;  /* bump ptr to start of next input vector (8 shorts) */
     cur_output_data++; /* bump ptr to start of next output vector (8
                             shorts) */
-  }                    // End of for loop
+  } // End of for loop
 
   int curnbr_fields_to_convert =
       nbr_fields_to_convert %

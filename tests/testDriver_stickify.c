@@ -1215,9 +1215,15 @@ void test_ztensor_bad_value_FP32(uint32_t bad_value) {
 
     zdnn_status expected_status;
     bool is_transformed_overflow_result, is_transformed_underflow_result;
-
+    // Calculate STRIDE_N_SIZE for the tensor. When STRIDE_N_SIZE >
+    // STICK_SW_THRESHOLD use hardware stickification otherwise stay in software
+    // stickification as this shows the greatest performance benefit.
+    uint64_t STRIDE_N_SIZE =
+        ((uint64_t)tfrmd_desc.dim3 * (uint64_t)tfrmd_desc.dim2 *
+         (uint64_t)tfrmd_desc.dim1);
     // Check if hardware will handle the transformation
-    if (zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM) == true) {
+    if ((zdnn_is_nnpa_function_installed(1, NNPA_TRANSFORM) == true) &&
+        (STRIDE_N_SIZE > STICK_SW_THRESHOLD)) {
       expected_status = ZDNN_ELEMENT_RANGE_VIOLATION;
       is_transformed_overflow_result = true;
       is_transformed_underflow_result = true;

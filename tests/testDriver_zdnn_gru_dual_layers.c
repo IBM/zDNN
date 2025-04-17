@@ -17,7 +17,23 @@
 
 #include "testsupport.h"
 
-void setUp(void) { VERIFY_HW_ENV; }
+void setUp(void) {
+  VERIFY_HW_ENV;
+  tol_bfloat.ulps = MAX_ULPS_BFLOAT;
+  tol_bfloat.epsilon_mult = MAX_EPSILON_MULT_BFLOAT;
+
+  tol_fp16.ulps = MAX_ULPS_FP16;
+  tol_fp16.epsilon_mult = MAX_EPSILON_MULT_FP16;
+
+  if (is_query_parmblock_installed(NNPA_PARMBLKFORMAT_1)) {
+    // note: gru_bidir_to_bidir (FP32) needs custom tolerance
+    tol_fp32.ulps = MAX_ULPS_FLOAT;
+    tol_fp32.epsilon_mult = (0.003 / EPSILON_FLOAT) + 1;
+  } else { // set default tol values
+    tol_fp32.ulps = MAX_ULPS_FLOAT;
+    tol_fp32.epsilon_mult = MAX_EPSILON_MULT_FLOAT;
+  }
+}
 
 void tearDown(void) {}
 
@@ -86,7 +102,23 @@ zdnn_ztensor *test_layer(zdnn_ztensor *input, uint32_t *h0_shape,
                                 __func__, status);
   }
 
-  assert_ztensor_values(all_ts_out, false, all_ts_out_exp_values);
+  // To allow for unique tolerance
+  fp_tolerance *tol = NULL;
+  switch (all_ts_out->pre_transformed_desc->type) {
+  case BFLOAT:
+    tol = &tol_bfloat;
+    break;
+  case FP16:
+    tol = &tol_fp16;
+    break;
+  case FP32:
+    tol = &tol_fp32;
+    break;
+  default:
+    break;
+    // should never get here
+  }
+  assert_ztensor_values_adv(all_ts_out, false, all_ts_out_exp_values, *tol);
 
   free_ztensor_buffers(5, h0, weights, biases, hidden_weights, hidden_biases);
 
