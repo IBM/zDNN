@@ -179,6 +179,13 @@ typedef enum nnpa_bfp_format {
 #define ZDNN_SOFTMAX_SAVEAREA_SIZE 8 * 1024
 #define ZDNN_8K_SAVEAREA_SIZE 8 * 1024
 
+// Convenience helper to query the required save-area size (in bytes) for
+// operations that accept a `save_area` pointer (e.g., softmax, reduce).
+//
+// Returns 0 when the operation does not require a save area or when the
+// function code is not recognized.
+uint64_t zdnn_get_save_area_size(nnpa_function_code function_code);
+
 // NNPA Hardware defined values for Function Specific Parameters
 typedef enum nnpa_matmul_operations {
   NNPA_MATMUL_OP_ADDITION = 0,
