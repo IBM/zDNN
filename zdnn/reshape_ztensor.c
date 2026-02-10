@@ -171,7 +171,10 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
   // NOTE: this will change when we have "no conversion stick/unstick"
   // for now, unstick to FP32 and restick to preserve precision.
 
-  char stack_tmpbuf[STACK_TMPBUF_SIZE] = {0};
+  // This buffer is fully overwritten by zdnn_transform_origtensor(), so it does
+  // not need to be zero-initialized. Avoiding the implicit memset reduces
+  // overhead on this slow-path.
+  char stack_tmpbuf[STACK_TMPBUF_SIZE];
   void *malloc_tmpbuf = NULL;
 
   zdnn_ztensor tmp_tensor_src, tmp_tensor_dest;
@@ -196,6 +199,12 @@ zdnn_status zdnn_reshape_ztensor(const zdnn_ztensor *src, zdnn_ztensor *dest) {
   uint64_t s = get_num_elements(src, ELEMENTS_PRE) * get_data_type_size(FP32);
   if (s > STACK_TMPBUF_SIZE) {
     malloc_tmpbuf = malloc(s);
+    if (!malloc_tmpbuf) {
+      return ZDNN_STATUS(ZDNN_ALLOCATION_FAILURE,
+                         "Unable to allocate %" PRIu64
+                         " bytes for reshape tmp buffer.",
+                         s);
+    }
   }
 
   // no need to log status, zdnn_transform_origtensor() and
