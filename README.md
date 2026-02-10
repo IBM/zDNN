@@ -5450,18 +5450,12 @@ the usage example section.
   - Amount of required storage can be determined given the LSTM timestep, batch,
     and num_hidden values.
 
-    - The sample code below creates a ztensor descriptor that is an equivalent
-      size of the required `work_area`. To use this sample code yourself,
-      replace the `num_timesteps`, `num_batches`, and `num_hidden` variables
-      with your own values.
+    - The required size can be obtained via `zdnn_get_lstm_work_area_size()`:
 
       ```C
-        zdnn_tensor_desc desc;
-        desc.dim4 = (4 * num_timesteps) + 6;
-        desc.dim3 = 1;
-        desc.dim2 = num_batches;
-        desc.dim1 = num_hidden;
-        uint64_t work_area_size = zdnn_getsize_ztensor(&desc);
+        uint64_t work_area_size =
+            zdnn_get_lstm_work_area_size(num_timesteps, num_batches, num_hidden,
+                                         direction);
       ```
 
   - For bidirectional, twice the amount of contiguous storage is required.
@@ -5738,18 +5732,12 @@ the usage example section.
   - Amount of required storage can be determined given the GRU timestep, batch,
     and num_hidden values.
 
-    - The sample code below creates a ztensor descriptor that is an equivalent
-      size of the required `work_area`. To use this sample code yourself,
-      replace the `num_timesteps`, `num_batches`, and `num_hidden` variables
-      with your own values.
+    - The required size can be obtained via `zdnn_get_gru_work_area_size()`:
 
       ```C
-        zdnn_tensor_desc desc;
-        desc.dim4 = (3 * num_timesteps) + 5;
-        desc.dim3 = 1;
-        desc.dim2 = num_batches;
-        desc.dim1 = num_hidden;
-        uint64_t work_area_size = zdnn_getsize_ztensor(&desc);
+        uint64_t work_area_size =
+            zdnn_get_gru_work_area_size(num_timesteps, num_batches, num_hidden,
+                                        direction);
       ```
 
   - For bidirectional, twice the amount of contiguous storage is required.
