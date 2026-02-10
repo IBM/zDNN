@@ -2441,6 +2441,18 @@ functions._
 zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...);
 ```
 
+For concatenated tensors, typed wrappers are provided to make call sites
+explicit and validate the expected transformed layout:
+
+```C
+zdnn_status zdnn_transform_ztensor_fico(zdnn_ztensor *ztensor, const void *f,
+                                        const void *i, const void *c,
+                                        const void *o);
+
+zdnn_status zdnn_transform_ztensor_zrh(zdnn_ztensor *ztensor, const void *z,
+                                       const void *r, const void *h);
+```
+
 #### Parameters
 
 - `zdnn_ztensor *tensor`
