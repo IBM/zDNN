@@ -175,7 +175,7 @@ typedef enum nnpa_bfp_format {
   NNPA_BFPFMT_SHORT = 2
 } nnpa_bfp_format;
 
-// NNPA_SOFTMAX, NNPA_REDUCE, and NNPA_TRANSFORM require 8K work area
+// NNPA_SOFTMAX, NNPA_REDUCE, and NNPA_TRANSFORM require 8K save area
 #define ZDNN_SOFTMAX_SAVEAREA_SIZE 8 * 1024
 #define ZDNN_8K_SAVEAREA_SIZE 8 * 1024
 

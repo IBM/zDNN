@@ -3894,7 +3894,7 @@ zdnn_status zdnn_softmax_mask(const zdnn_ztensor *input, void *save_area,
     operation processing.
   - The preallocate memory must be at least 8K bytes in size, aligned on a 4k
     boundary.
-    - Required size can be obtained via `zdnn_get_save_area_size(NNPA_REDUCE)`.
+    - Required size can be obtained via `zdnn_get_save_area_size(NNPA_SOFTMAX)`.
   - If set to NULL, the operation will determine, allocate and free storage
     automatically.
 
@@ -4520,6 +4520,7 @@ zdnn_status zdnn_reduce(const zdnn_ztensor *input, void *save_area,
     operation processing.
   - The preallocate memory must be at least 8K bytes in size, aligned on a 4k
     boundary.
+    - Required size can be obtained via `zdnn_get_save_area_size(NNPA_REDUCE)`.
   - If set to NULL, the operation will determine, allocate and free storage
     automatically.
 
