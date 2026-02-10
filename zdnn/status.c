@@ -298,11 +298,15 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
     va_list argptr;
     va_start(argptr, format);
 
-    // prepend status string "ZDNN_XXX: " to the incoming "format" string
+    // Prepend status string "ZDNN_XXX: " to the incoming format string.
+    //
+    // NOTE: `format` itself is a printf-style format string which will be
+    // consumed later by log_message()/vsnprintf using `argptr`. We must *not*
+    // interpret any '%' sequences here; we only want to build a new format
+    // string with a safe bounded write.
     char full_fmtstr[MAX_STATUS_FMTSTR_SIZE];
-    snprintf(full_fmtstr, MAX_STATUS_FMTSTR_SIZE,
-             "%s: ", get_status_str(status));
-    strncat(full_fmtstr, format, MAX_STATUS_FMTSTR_SIZE - 1);
+    (void)snprintf(full_fmtstr, sizeof(full_fmtstr), "%s: %s",
+                   get_status_str(status), format);
 
     // "full_fmtstr" is now concatenated
     log_message(lvl_to_use, func_name, file_name, line_no, full_fmtstr, argptr);
