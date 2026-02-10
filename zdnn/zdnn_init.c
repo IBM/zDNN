@@ -163,16 +163,19 @@ static inline int check_bitfield(const uint8_t *bitfield, int bitno) {
 bool zdnn_is_nnpa_installed() {
 #ifndef __MVS__
   int nnpa_supported;
-  unsigned char facilities[STFLE_LENGTH] = {0};
+  // invoke_stfle() requires the facility list to be 8-byte aligned when
+  // ZDNN_ENABLE_PRECHECK is enabled. Using a uint64_t array guarantees the
+  // required alignment regardless of compiler/stack placement decisions.
+  uint64_t facilities64[STFLE_LENGTH / 8] = {0};
   int cc;
-  cc = invoke_stfle(facilities);
+  cc = invoke_stfle((unsigned char *)facilities64);
 
   if (cc) {
     LOG_ERROR("STFLE failed with %d", cc);
     return false;
   }
 
-  nnpa_supported = check_bitfield(facilities, STFLE_NNPA);
+  nnpa_supported = check_bitfield((uint8_t *)facilities64, STFLE_NNPA);
 
   LOG_INFO("Hardware NNPA support available - %s",
            nnpa_supported ? "TRUE" : "FALSE");
