@@ -36,12 +36,15 @@ void malloc4k_zero() {
 }
 
 // test absolute hardware max + 1 byte allocation
-// SIZE_MAX is 18446744073709551615UL (2^64)
-void malloc4k_size_max_plus_one() {
-  void *ptr = malloc_aligned_4k(SIZE_MAX + 1);
-  TEST_ASSERT_MESSAGE(
-      ptr == NULL,
-      "malloc_aligned_4k() returned non-zero SIZE_MAX+1 bytes allocation");
+void malloc4k_overflow_guard() {
+  // malloc_aligned_4k() internally allocates `size + extra_allocation`.
+  // Verify we fail safely (return NULL) when `size + extra_allocation` would
+  // overflow size_t.
+  size_t extra_allocation = (AIU_PAGESIZE_IN_BYTES - 1) + sizeof(void *);
+  void *ptr = malloc_aligned_4k(SIZE_MAX - extra_allocation + 1);
+  TEST_ASSERT_MESSAGE(ptr == NULL,
+                      "malloc_aligned_4k() returned non-NULL for a size that "
+                      "would overflow internal calculations");
 }
 
 // test different happy-path allocation sizes and make sure the return address
@@ -84,10 +87,29 @@ void malloc4k_check_boundary() {
   TEST_PASS();
 }
 
+// test that allocation failures do not print from within malloc_aligned_4k()
+void malloc4k_failure_is_quiet() {
+  char buf_stderr[BUFSIZ] = {0};
+
+  stderr_to_pipe();
+  void *ptr = malloc_aligned_4k((size_t)1 << 63); // absurdly large, should fail
+  restore_stderr(buf_stderr, BUFSIZ);
+
+  TEST_ASSERT_MESSAGE(ptr == NULL,
+                      "malloc_aligned_4k() unexpectedly succeeded for a huge "
+                      "allocation");
+
+  TEST_ASSERT_MESSAGE(strstr(buf_stderr, "Error during malloc") == NULL,
+                      "malloc_aligned_4k() printed to stderr unexpectedly");
+  TEST_ASSERT_MESSAGE(strstr(buf_stderr, "errno") == NULL,
+                      "malloc_aligned_4k() printed errno to stderr unexpectedly");
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(malloc4k_zero);
-  RUN_TEST(malloc4k_size_max_plus_one);
+  RUN_TEST(malloc4k_overflow_guard);
   RUN_TEST(malloc4k_check_boundary);
+  RUN_TEST(malloc4k_failure_is_quiet);
   return UNITY_END();
 }
