@@ -5450,6 +5450,8 @@ the usage example section.
     operation processing.
   - If set to NULL, the operation will determine, allocate and free storage
     automatically.
+  - For best performance (and to avoid internal allocations), provide a non-NULL
+    preallocated `work_area`.
   - Amount of required storage can be determined given the LSTM timestep, batch,
     and num_hidden values.
 
@@ -5732,6 +5734,8 @@ the usage example section.
     operation processing.
   - If set to NULL, the operation will determine, allocate and free storage
     automatically.
+  - For best performance (and to avoid internal allocations), provide a non-NULL
+    preallocated `work_area`.
   - Amount of required storage can be determined given the GRU timestep, batch,
     and num_hidden values.
 
