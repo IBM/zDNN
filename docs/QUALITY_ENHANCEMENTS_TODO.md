@@ -16,6 +16,7 @@ Principles for this work:
 ## 1. Safety / Correctness (Highest Priority)
 
 ### 1.1 Fix Potential Buffer Overflow in Status Formatting
+- Status: DONE
 - Problem:
   - `set_zdnn_status()` builds a `full_fmtstr` by prefixing `ZDNN_...: ` then
     `strncat()` of caller format without accounting for the existing prefix.
@@ -23,15 +24,15 @@ Principles for this work:
 - Files:
   - `zdnn/status.c`
 - Tasks:
-  - Replace unsafe concat with a size-safe approach (`snprintf` or
-    `strncat` with remaining capacity).
-  - Add regression test that exercises long format strings and ensures:
-    - no crash
-    - output remains NUL-terminated
+  - [x] Replace unsafe concat with a size-safe approach (`snprintf`, or a bounded
+    append using remaining capacity).
+  - [x] Add regression test for long format strings (no crash; output remains
+    NUL-terminated).
 - Branch:
-  - `qe/status-safe-format`
+  - `qe/status-safe-format` (DONE)
 
 ### 1.2 Fix Possible Out-of-Bounds Write in `zdnn_reshape_ztensor()` Fallback
+- Status: DONE
 - Problem:
   - Fallback path allocates a 1MB stack buffer; if required size `s` is larger
     and `malloc(s)` fails, it still falls back to the 1MB stack buffer and can
@@ -39,17 +40,16 @@ Principles for this work:
 - Files:
   - `zdnn/reshape_ztensor.c`
 - Tasks:
-  - If `s > STACK_TMPBUF_SIZE` and heap allocation fails, return
+  - [x] If `s > STACK_TMPBUF_SIZE` and heap allocation fails, return
     `ZDNN_ALLOCATION_FAILURE`.
-  - Remove the expensive implicit 1MB memset (`= {0}`) where not needed.
-  - Add regression test:
-    - forces the fallback path
-    - forces malloc failure
-    - asserts clean error return (no stack-buffer fallback)
+  - [x] Remove the expensive implicit 1MB memset (`= {0}`) where not needed.
+  - [x] Add regression test that forces the fallback path, forces malloc failure,
+    and asserts a clean error return (no stack-buffer fallback).
 - Branch:
-  - `qe/reshape-fallback-alloc-safety`
+  - `qe/reshape-fallback-alloc-safety` (DONE)
 
 ### 1.3 Fix NNPA Detection Edge Case When `ZDNN_ENABLE_PRECHECK=true`
+- Status: DONE
 - Problem:
   - Linux STFLE path checks for doubleword alignment of a local `unsigned char`
     array. That array is not guaranteed 8-byte aligned; with precheck enabled it
@@ -57,56 +57,60 @@ Principles for this work:
 - Files:
   - `zdnn/zdnn_init.c`
 - Tasks:
-  - Make the STFLE facility list storage explicitly 8-byte aligned (e.g.
+  - [x] Make the STFLE facility list storage explicitly 8-byte aligned (e.g.
     `uint64_t facilities64[STFLE_LENGTH/8]`).
-  - (Optional) add a defensive comment explaining why.
-  - Add build-time assertions or tests where feasible.
+  - [x] Add a defensive comment explaining why the alignment is required.
+  - [x] Add regression coverage for the alignment requirement where feasible.
 - Branch:
-  - `qe/stfle-alignment-precheck`
+  - `qe/stfle-alignment-precheck` (DONE)
 
 ### 1.4 Ensure Logger Copy Path is Always NUL-Terminated
+- Status: DONE
 - Problem:
   - `log_message()` uses `strncpy()` for the "no formatting" path and may not
     NUL-terminate, then calls `strlen(msg_buf)`.
 - Files:
   - `zdnn/logger.c`
 - Tasks:
-  - Replace `strncpy` with a NUL-terminating write (`snprintf` or explicit
+  - [x] Replace `strncpy` with a NUL-terminating write (`snprintf` or explicit
     terminator).
-  - Add regression test covering the `arg == NULL` path with a long message.
+  - [x] Add regression test covering the `arg == NULL` path with a long message.
 - Branch:
-  - `qe/logger-nul-termination`
+  - `qe/logger-nul-termination` (DONE)
 
 ### 1.5 Fix Incorrect Field Used in `ztensor_slice_dim4()` Error Message
+- Status: DONE
 - Problem:
   - Error path reports `transformed_desc->layout` although the switch is on the
     *pre-transformed* layout.
 - Files:
   - `zdnn/tensor_desc.c`
 - Tasks:
-  - Fix the message to report the correct layout value.
-  - Add test that triggers this error path and asserts message contains the
+  - [x] Fix the message to report the correct layout value.
+  - [x] Add test that triggers this error path and asserts message contains the
     expected layout value.
 - Branch:
-  - `qe/slice-dim4-error-message`
+  - `qe/slice-dim4-error-message` (DONE)
 
 ### 1.6 Harden `malloc_aligned_4k()`
+- Status: DONE
 - Problems:
   - Overflow check is ineffective (`size > SIZE_MAX` is always false).
   - Allocator prints to stderr on failure, which is undesirable for a library.
 - Files:
   - `zdnn/malloc4k.c`
 - Tasks:
-  - Correct overflow guard (`size > SIZE_MAX - extra_allocation`).
-  - Remove unconditional stderr printing; let callers map NULL to
+  - [x] Correct overflow guard (`size > SIZE_MAX - extra_allocation`).
+  - [x] Remove unconditional stderr printing; let callers map NULL to
     `ZDNN_ALLOCATION_FAILURE`.
-  - Add tests for overflow and failure behavior.
+  - [x] Add tests for overflow and failure behavior.
 - Branch:
-  - `qe/malloc4k-hardening`
+  - `qe/malloc4k-hardening` (DONE)
 
 ## 2. Usability Improvements
 
 ### 2.1 Add Typed Transform Wrappers to Avoid Varargs Footguns
+- Status: DONE
 - Motivation:
   - `zdnn_transform_ztensor(ztensor, ...)` is easy to misuse for concatenated
     layouts (FICO/ZRH/BIDIR_*). Typed wrappers make call sites clearer and
@@ -114,58 +118,58 @@ Principles for this work:
 - Files:
   - `zdnn/zdnn.h`, `zdnn/zdnn.map`, `README.md`, implementation file
 - Tasks:
-  - Add wrappers (examples):
-    - `zdnn_transform_ztensor_fico(ztensor, f, i, c, o)`
-    - `zdnn_transform_ztensor_zrh(ztensor, z, r, h)`
-  - Implement as thin wrappers over existing varargs.
-  - Document usage and pointer ordering.
-  - Add tests validating wrappers pass through correctly.
+  - [x] Add typed wrappers (FICO and ZRH) to avoid varargs argument-order
+    mistakes.
+  - [x] Implement wrappers as thin shims over the existing varargs API.
+  - [x] Document usage and pointer ordering.
+  - [x] Add tests validating wrappers pass through correctly.
 - Branch:
-  - `qe/transform-typed-wrappers`
+  - `qe/transform-typed-wrappers` (DONE)
 
 ### 2.2 Provide First-Class Work-Area Size Helpers
+- Status: DONE
 - Motivation:
   - README documents formulas for `work_area` sizing (LSTM/GRU). Codifying these
     as APIs reduces integration errors and avoids repeated re-derivation.
 - Files:
   - `zdnn/zdnn.h`, `zdnn/zdnn.map`, `README.md`, new `*.c` implementation
 - Tasks:
-  - Add APIs like:
+  - [x] Add work-area sizing APIs:
     - `zdnn_get_lstm_work_area_size(num_timesteps, num_batches, num_hidden, direction)`
     - `zdnn_get_gru_work_area_size(num_timesteps, num_batches, num_hidden, direction)`
-  - Add tests matching README formulas.
-  - Update docs to recommend caller-managed work areas for performance.
+  - [x] Add tests matching the documented formulas.
+  - [x] Update docs to recommend caller-managed work areas for performance.
 - Branch:
-  - `qe/work-area-size-apis`
+  - `qe/work-area-size-apis` (DONE)
 
 ### 2.3 Provide Save-Area Size Helper for Softmax/Reduce
+- Status: DONE
 - Motivation:
   - Callers either need to know the constant or rely on implicit malloc/free.
   - A helper makes integration clearer and avoids hidden allocations.
 - Files:
   - `zdnn/zdnn.h`, `zdnn/zdnn.map`, `README.md`
 - Tasks:
-  - Add e.g. `zdnn_get_save_area_size(nnpa_function_code)` (or two explicit
-    helpers).
-  - Add tests.
+  - [x] Add `zdnn_get_save_area_size(nnpa_function_code)`.
+  - [x] Add tests.
 - Branch:
-  - `qe/save-area-size-apis`
+  - `qe/save-area-size-apis` (DONE)
 
 ## 3. Build/Integration Quality
 
 ### 3.1 Remove Unused C++ Include in Initializer
+- Status: DONE (optional follow-up remains)
 - Problem:
   - `zdnn/initializer.cpp` includes `<iostream>` but doesn’t use it.
 - Tasks:
-  - Remove include.
-  - (Optional follow-up) consider a C-only auto-init mechanism for Linux to
+  - [x] Remove include.
+  - [ ] (Optional follow-up) consider a C-only auto-init mechanism for Linux to
     remove the C++ toolchain dependency; keep behavior identical.
 - Branch:
-  - `qe/initializer-cleanup`
+  - `qe/initializer-cleanup` (DONE)
 
 ## 4. Test Coverage Additions
 
 Each enhancement branch is expected to add or extend a dedicated Unity test
 binary (new `tests/testDriver_*.c` where possible) so failures are easy to
 attribute to the enhancement.
-
