@@ -132,6 +132,9 @@ ZDNN_1.0 {
     zdnn_matmul_bcast_op;
     zdnn_matmul_transpose_op;
     zdnn_quantized_matmul_op;
+    zdnn_prepare_quantized_matmul_context;
+    zdnn_quantized_matmul_op_prepared;
+    zdnn_release_quantized_matmul_context;
     zdnn_batchnorm;
     zdnn_norm;
     zdnn_moments;

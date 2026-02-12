@@ -374,6 +374,31 @@ typedef struct zdnn_ztensor {
   char reserved2[20]; // not currently used, should contain zeros.
 } zdnn_ztensor;
 
+// Prepared context for repeated zdnn_quantized_matmul_op() execution with
+// stable tensor descriptors.
+//
+// Callers should:
+//  1) zero-initialize the struct
+//  2) call zdnn_prepare_quantized_matmul_context() once
+//  3) call zdnn_quantized_matmul_op_prepared() repeatedly
+//  4) call zdnn_release_quantized_matmul_context() when done
+//
+// Notes:
+// - Existing zdnn_quantized_matmul_op() remains fully supported.
+// - The prepared API is an optional performance helper for repeated shapes.
+typedef struct zdnn_quantized_matmul_prepared_context {
+  uint64_t reserved_internal; // library-managed marker
+  uint64_t required_work_area_size;
+  nnpa_function_code function_code;
+  bool pre_computed;
+  char reserved[3];
+  void *work_area_buffer;
+  uint64_t work_area_buffer_size;
+  zdnn_tensor_desc input_a_desc;
+  zdnn_tensor_desc input_b_desc;
+  zdnn_tensor_desc input_c_desc;
+} zdnn_quantized_matmul_prepared_context;
+
 #define ZDNN_VERSION "1.2.0"
 #define ZDNN_VERNUM 0x010200 // 0x[major][minor][patch]
 #define ZDNN_VER_MAJOR 1
@@ -563,6 +588,21 @@ zdnn_status zdnn_quantized_matmul_op(
     const zdnn_ztensor *input_c, zdnn_matmul_ops op_type, const int8_t clip_min,
     const int8_t clip_max, const bool disable_clipping, const bool dequantize,
     const bool pre_computed, void *work_area, zdnn_ztensor *output);
+
+zdnn_status zdnn_prepare_quantized_matmul_context(
+    const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
+    const zdnn_ztensor *input_c, bool pre_computed,
+    zdnn_quantized_matmul_prepared_context *context);
+
+zdnn_status zdnn_quantized_matmul_op_prepared(
+    const zdnn_quantized_matmul_prepared_context *context,
+    const zdnn_ztensor *input_a, const zdnn_ztensor *input_b,
+    const zdnn_ztensor *input_c, zdnn_matmul_ops op_type, const int8_t clip_min,
+    const int8_t clip_max, const bool disable_clipping, const bool dequantize,
+    zdnn_ztensor *output);
+
+void zdnn_release_quantized_matmul_context(
+    zdnn_quantized_matmul_prepared_context *context);
 
 // -----------------------------------------------------------------------------
 // External Norm Operations
