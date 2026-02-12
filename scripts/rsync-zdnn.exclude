@@ -1,0 +1,31 @@
+# VCS and local metadata
+.git/
+
+# Local build artifacts
+artifacts/
+autom4te.cache/
+config.log
+config.status
+config.make
+config.h
+
+# In-tree object/output dirs used by zDNN builds
+zdnn/obj/
+zdnn/lib/
+zdnn/lib32/
+zdnn/lib64/
+tests/obj/
+tests/bin/
+
+# Generic binary artifacts
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+*.gcno
+*.gcda
+*.profraw
+*.profdata
+*.dSYM/
