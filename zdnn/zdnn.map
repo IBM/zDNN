@@ -126,6 +126,8 @@ ZDNN_1.0 {
     zdnn_softmax;
     zdnn_softmax_mask;
     zdnn_gelu;
+    zdnn_get_lstm_work_area_size;
+    zdnn_get_gru_work_area_size;
     zdnn_lstm;
     zdnn_gru;
     zdnn_matmul_op;

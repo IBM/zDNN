@@ -525,6 +525,19 @@ zdnn_status zdnn_gelu(const zdnn_ztensor *input, zdnn_ztensor *output);
 
 typedef enum lstm_gru_direction { FWD, BWD, BIDIR } lstm_gru_direction;
 
+// Convenience helpers to compute the required 4K-aligned `work_area` size for
+// zdnn_lstm()/zdnn_gru().
+//
+// These return 0 when inputs are invalid (e.g., direction is not recognized or
+// any dimension is 0).
+uint64_t zdnn_get_lstm_work_area_size(uint32_t num_timesteps,
+                                      uint32_t num_batches, uint32_t num_hidden,
+                                      lstm_gru_direction direction);
+
+uint64_t zdnn_get_gru_work_area_size(uint32_t num_timesteps, uint32_t num_batches,
+                                     uint32_t num_hidden,
+                                     lstm_gru_direction direction);
+
 zdnn_status zdnn_lstm(const zdnn_ztensor *input, const zdnn_ztensor *h0,
                       const zdnn_ztensor *c0, const zdnn_ztensor *weights,
                       const zdnn_ztensor *biases,
