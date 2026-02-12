@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include <stddef.h>
 #include <string.h>
 
 #include "zdnn.h"
@@ -32,13 +33,48 @@ static bool has_valid_tfrmd_desc(const zdnn_ztensor *ztensor) {
   return ztensor && ztensor->transformed_desc;
 }
 
+static void release_internal_work_area(
+    zdnn_quantized_matmul_prepared_context *context) {
+  if (context->work_area_buffer) {
+    free_aligned_4k(context->work_area_buffer);
+  }
+  context->work_area_buffer = NULL;
+  context->work_area_buffer_size = 0;
+}
+
+static zdnn_status reserve_internal_work_area(
+    zdnn_quantized_matmul_prepared_context *context, uint64_t min_size) {
+  if (min_size == 0) {
+    return ZDNN_STATUS_OK;
+  }
+
+  if (context->work_area_buffer &&
+      context->work_area_buffer_size >= min_size) {
+    return ZDNN_STATUS_OK;
+  }
+
+  if (min_size > SIZE_MAX) {
+    return ZDNN_STATUS_NO_MSG(ZDNN_ALLOCATION_FAILURE);
+  }
+
+  void *new_buffer = malloc_aligned_4k((size_t)min_size);
+  if (!new_buffer) {
+    return ZDNN_STATUS_NO_MSG(ZDNN_ALLOCATION_FAILURE);
+  }
+
+  release_internal_work_area(context);
+  context->work_area_buffer = new_buffer;
+  context->work_area_buffer_size = min_size;
+  return ZDNN_STATUS_OK;
+}
+
 // Determine required work-area bytes for quantized matmul when pre_computed is
 // false.
 //
 // Notes:
 // - This intentionally does not rely on the separate work-area sizing helper
 //   API so the prepared context stays self-contained and only depends on the
-//   scratch-buffer infrastructure.
+//   prepared-context internals.
 // - The work area is used for qc_tilde, which reuses input_c's transformed
 //   dimensions/layout/format but promotes the element type to DLFLOAT16.
 static uint64_t get_required_qc_tilde_work_area_size(const zdnn_ztensor *input_c,
@@ -153,10 +189,10 @@ zdnn_status zdnn_prepare_quantized_matmul_context(
 
   if (context->required_work_area_size == 0) {
     // Precomputed path does not require internal work area.
-    zdnn_release_scratch_buffer(&context->work_area_scratch);
+    release_internal_work_area(context);
   } else {
-    zdnn_status reserve_status = zdnn_reserve_scratch_buffer(
-        &context->work_area_scratch, context->required_work_area_size);
+    zdnn_status reserve_status = reserve_internal_work_area(
+        context, context->required_work_area_size);
     if (reserve_status != ZDNN_OK) {
       return reserve_status;
     }
@@ -203,14 +239,14 @@ zdnn_status zdnn_quantized_matmul_op_prepared(
 
   void *work_area = NULL;
   if (!context->pre_computed) {
-    work_area = context->work_area_scratch.buffer;
+    work_area = context->work_area_buffer;
     if (!work_area ||
-        context->work_area_scratch.size < context->required_work_area_size) {
+        context->work_area_buffer_size < context->required_work_area_size) {
       return ZDNN_STATUS(
           ZDNN_INVALID_BUFFER,
           "prepared quantized matmul context work_area is invalid "
           "(buffer=%p, size=%" PRIu64 ", required=%" PRIu64 ")",
-          work_area, context->work_area_scratch.size,
+          work_area, context->work_area_buffer_size,
           context->required_work_area_size);
     }
   }
@@ -228,7 +264,7 @@ void zdnn_release_quantized_matmul_context(
   }
 
   if (context->reserved_internal == ZDNN_PREPARED_QMATMUL_CONTEXT_MAGIC) {
-    zdnn_release_scratch_buffer(&context->work_area_scratch);
+    release_internal_work_area(context);
   }
 
   memset(context, 0, sizeof(*context));

@@ -392,7 +392,8 @@ typedef struct zdnn_quantized_matmul_prepared_context {
   nnpa_function_code function_code;
   bool pre_computed;
   char reserved[3];
-  zdnn_scratch_buffer work_area_scratch;
+  void *work_area_buffer;
+  uint64_t work_area_buffer_size;
   zdnn_tensor_desc input_a_desc;
   zdnn_tensor_desc input_b_desc;
   zdnn_tensor_desc input_c_desc;

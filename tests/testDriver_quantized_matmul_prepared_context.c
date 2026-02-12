@@ -99,14 +99,14 @@ void test_prepare_context_allocates_required_work_area(void) {
 
   TEST_ASSERT_EQUAL_UINT32(NNPA_MATMUL_OP, context.function_code);
   TEST_ASSERT_EQUAL_UINT64(expected_work_area, context.required_work_area_size);
-  TEST_ASSERT_NOT_NULL(context.work_area_scratch.buffer);
-  TEST_ASSERT_EQUAL_UINT64(expected_work_area, context.work_area_scratch.size);
-  TEST_ASSERT_EQUAL_UINT64(0, (uintptr_t)context.work_area_scratch.buffer %
+  TEST_ASSERT_NOT_NULL(context.work_area_buffer);
+  TEST_ASSERT_EQUAL_UINT64(expected_work_area, context.work_area_buffer_size);
+  TEST_ASSERT_EQUAL_UINT64(0, (uintptr_t)context.work_area_buffer %
                                   AIU_PAGESIZE_IN_BYTES);
 
   zdnn_release_quantized_matmul_context(&context);
-  TEST_ASSERT_NULL(context.work_area_scratch.buffer);
-  TEST_ASSERT_EQUAL_UINT64(0, context.work_area_scratch.size);
+  TEST_ASSERT_NULL(context.work_area_buffer);
+  TEST_ASSERT_EQUAL_UINT64(0, context.work_area_buffer_size);
   TEST_ASSERT_EQUAL_UINT64(0, context.required_work_area_size);
 }
 
@@ -124,8 +124,8 @@ void test_prepare_context_precomputed_path_has_no_work_area(void) {
 
   TEST_ASSERT_TRUE(context.pre_computed);
   TEST_ASSERT_EQUAL_UINT64(0, context.required_work_area_size);
-  TEST_ASSERT_NULL(context.work_area_scratch.buffer);
-  TEST_ASSERT_EQUAL_UINT64(0, context.work_area_scratch.size);
+  TEST_ASSERT_NULL(context.work_area_buffer);
+  TEST_ASSERT_EQUAL_UINT64(0, context.work_area_buffer_size);
 
   zdnn_release_quantized_matmul_context(&context);
 }
