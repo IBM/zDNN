@@ -465,8 +465,11 @@ zdnn_status ztensor_slice_dim4(const zdnn_ztensor *input_ztensor,
       output_ztensor->pre_transformed_desc->dim4 = 1;
       break;
     default:
-      return ZDNN_STATUS(ZDNN_INVALID_LAYOUT, "Invalid layout for slicing: %d",
-                         input_ztensor->transformed_desc->layout);
+      return ZDNN_STATUS(ZDNN_INVALID_LAYOUT,
+                         "Invalid pre-transformed layout for slicing: %d (%s)",
+                         input_ztensor->pre_transformed_desc->layout,
+                         get_data_layout_str(
+                             input_ztensor->pre_transformed_desc->layout));
       break;
     }
   }
