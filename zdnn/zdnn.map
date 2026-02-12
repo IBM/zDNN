@@ -109,6 +109,7 @@ ZDNN_1.0 {
     zdnn_get_library_version_str;
     zdnn_get_library_version;
     zdnn_refresh_nnpa_query_result;
+    zdnn_get_save_area_size;
     zdnn_add;
     zdnn_sub;
     zdnn_mul;
