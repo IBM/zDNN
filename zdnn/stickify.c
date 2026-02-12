@@ -29,6 +29,8 @@
 
 #ifdef __MVS__
 #pragma export(zdnn_transform_ztensor)
+#pragma export(zdnn_transform_ztensor_fico)
+#pragma export(zdnn_transform_ztensor_zrh)
 #pragma export(zdnn_transform_origtensor)
 #pragma export(zdnn_transform_quantized_ztensor)
 #pragma export(zdnn_transform_ztensor_with_saturation)
@@ -1327,6 +1329,62 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
 
   va_end(argptr);
   return status;
+}
+
+/// Typed wrapper for transforming concatenated LSTM gate tensors (FICO order).
+///
+/// This is a convenience helper over the varargs zdnn_transform_ztensor() API
+/// to make call sites explicit and prevent argument ordering mistakes.
+///
+/// \param[in,out] ztensor Target ztensor to be transformed into. Must have a
+///                        transformed layout of ZDNN_FICO or ZDNN_BIDIR_FICO.
+/// \param[in] f Pointer to Forget gate data buffer
+/// \param[in] i Pointer to Input gate data buffer
+/// \param[in] c Pointer to Cell gate data buffer
+/// \param[in] o Pointer to Output gate data buffer
+///
+/// \return Same as zdnn_transform_ztensor()
+///
+zdnn_status zdnn_transform_ztensor_fico(zdnn_ztensor *ztensor, const void *f,
+                                        const void *i, const void *c,
+                                        const void *o) {
+  if (ztensor->transformed_desc->layout != ZDNN_FICO &&
+      ztensor->transformed_desc->layout != ZDNN_BIDIR_FICO) {
+    return ZDNN_STATUS(
+        ZDNN_INVALID_LAYOUT,
+        "zdnn_transform_ztensor_fico() expects transformed_desc->layout to be "
+        "ZDNN_FICO or ZDNN_BIDIR_FICO (found: %s)",
+        get_data_layout_str(ztensor->transformed_desc->layout));
+  }
+
+  return zdnn_transform_ztensor(ztensor, f, i, c, o);
+}
+
+/// Typed wrapper for transforming concatenated GRU gate tensors (ZRH order).
+///
+/// This is a convenience helper over the varargs zdnn_transform_ztensor() API
+/// to make call sites explicit and prevent argument ordering mistakes.
+///
+/// \param[in,out] ztensor Target ztensor to be transformed into. Must have a
+///                        transformed layout of ZDNN_ZRH or ZDNN_BIDIR_ZRH.
+/// \param[in] z Pointer to (Z)update gate data buffer
+/// \param[in] r Pointer to Reset gate data buffer
+/// \param[in] h Pointer to Hidden gate data buffer
+///
+/// \return Same as zdnn_transform_ztensor()
+///
+zdnn_status zdnn_transform_ztensor_zrh(zdnn_ztensor *ztensor, const void *z,
+                                       const void *r, const void *h) {
+  if (ztensor->transformed_desc->layout != ZDNN_ZRH &&
+      ztensor->transformed_desc->layout != ZDNN_BIDIR_ZRH) {
+    return ZDNN_STATUS(
+        ZDNN_INVALID_LAYOUT,
+        "zdnn_transform_ztensor_zrh() expects transformed_desc->layout to be "
+        "ZDNN_ZRH or ZDNN_BIDIR_ZRH (found: %s)",
+        get_data_layout_str(ztensor->transformed_desc->layout));
+  }
+
+  return zdnn_transform_ztensor(ztensor, z, r, h);
 }
 
 /// Converts the input tensor to the supported stick format for

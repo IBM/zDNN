@@ -616,7 +616,18 @@ zdnn_status zdnn_conv2d(const zdnn_ztensor *input, const zdnn_ztensor *kernel,
 // External Tensor Transform Operations
 // -----------------------------------------------------------------------------
 
+// NOTE: zdnn_transform_ztensor() is a varargs API. For concatenated tensors
+// (FICO/ZRH/BIDIR_*), typed wrappers are provided to make call sites explicit
+// and avoid argument ordering mistakes.
+
 zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...);
+
+zdnn_status zdnn_transform_ztensor_fico(zdnn_ztensor *ztensor, const void *f,
+                                        const void *i, const void *c,
+                                        const void *o);
+
+zdnn_status zdnn_transform_ztensor_zrh(zdnn_ztensor *ztensor, const void *z,
+                                       const void *r, const void *h);
 
 zdnn_status zdnn_transform_ztensor_with_saturation(zdnn_ztensor *ztensor, ...);
 

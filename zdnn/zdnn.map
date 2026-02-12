@@ -142,6 +142,8 @@ ZDNN_1.0 {
     zdnn_maxpool2d;
     zdnn_conv2d;
     zdnn_transform_ztensor;
+    zdnn_transform_ztensor_fico;
+    zdnn_transform_ztensor_zrh;
     zdnn_transform_ztensor_with_saturation;
     zdnn_transform_quantized_ztensor;
     zdnn_transform_origtensor;
