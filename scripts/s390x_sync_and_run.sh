@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<USAGE
-Usage: $(basename "$0") <user@host> <remote_dir> [--jobs N] [--run-id ID] [--no-delete]
+Usage: $(basename "$0") <user@host> <remote_dir> [--jobs N] [--run-id ID] [--no-delete] [--no-autoreconf] [--skip-distclean]
 
 Rsync the current repo to an s390x host, run the remote build/test battery,
 and sync result artifacts back locally.
@@ -16,6 +16,8 @@ Options:
   --jobs N       Parallel make jobs for remote battery script
   --run-id ID    Explicit artifact run id (default: UTC timestamp)
   --no-delete    Disable rsync --delete during sync
+  --no-autoreconf   Pass --no-autoreconf to remote battery script
+  --skip-distclean  Pass --skip-distclean to remote battery script
 USAGE
 }
 
@@ -38,6 +40,8 @@ fi
 RUN_ID="s390x-battery-$(date -u '+%Y%m%dT%H%M%SZ')"
 JOBS=""
 RSYNC_DELETE=1
+REMOTE_NO_AUTORECONF=0
+REMOTE_SKIP_DISTCLEAN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -51,6 +55,14 @@ while [[ $# -gt 0 ]]; do
     ;;
   --no-delete)
     RSYNC_DELETE=0
+    shift
+    ;;
+  --no-autoreconf)
+    REMOTE_NO_AUTORECONF=1
+    shift
+    ;;
+  --skip-distclean)
+    REMOTE_SKIP_DISTCLEAN=1
     shift
     ;;
   -h|--help)
@@ -91,6 +103,12 @@ REMOTE_RC=0
 REMOTE_CMD="cd '$REMOTE_DIR' && chmod +x scripts/s390x_run_battery.sh && scripts/s390x_run_battery.sh --results-dir '$REMOTE_RESULTS_DIR'"
 if [[ -n "$JOBS" ]]; then
   REMOTE_CMD+=" --jobs '$JOBS'"
+fi
+if [[ "$REMOTE_NO_AUTORECONF" -eq 1 ]]; then
+  REMOTE_CMD+=" --no-autoreconf"
+fi
+if [[ "$REMOTE_SKIP_DISTCLEAN" -eq 1 ]]; then
+  REMOTE_CMD+=" --skip-distclean"
 fi
 if ssh "$TARGET_HOST" "$REMOTE_CMD"; then
   REMOTE_RC=0
