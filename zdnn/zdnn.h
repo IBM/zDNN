@@ -179,6 +179,27 @@ typedef enum nnpa_bfp_format {
 #define ZDNN_SOFTMAX_SAVEAREA_SIZE 8 * 1024
 #define ZDNN_8K_SAVEAREA_SIZE 8 * 1024
 
+// Reusable caller-managed scratch buffer for operations that accept `save_area`
+// or `work_area` pointers.
+//
+// Typical usage:
+//  1) call zdnn_reserve_scratch_buffer() with required size helper output
+//  2) pass `scratch.buffer` into operation APIs
+//  3) call zdnn_release_scratch_buffer() once done
+typedef struct zdnn_scratch_buffer {
+  void *buffer;
+  uint64_t size;
+} zdnn_scratch_buffer;
+
+// Reserve at least `min_size` bytes in a reusable 4K-aligned scratch buffer.
+//
+// - If `scratch->size` is already >= `min_size`, this is a no-op.
+// - If `min_size` is 0, this is a no-op.
+zdnn_status zdnn_reserve_scratch_buffer(zdnn_scratch_buffer *scratch,
+                                        uint64_t min_size);
+
+// Release storage held by a reusable scratch buffer and reset its fields.
+void zdnn_release_scratch_buffer(zdnn_scratch_buffer *scratch);
 // NNPA Hardware defined values for Function Specific Parameters
 typedef enum nnpa_matmul_operations {
   NNPA_MATMUL_OP_ADDITION = 0,
