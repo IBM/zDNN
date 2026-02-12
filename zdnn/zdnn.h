@@ -238,6 +238,32 @@ typedef enum zdnn_query_bfpfmts {
   QUERY_BFPFMT_SHORT = MSB_BITMASK(16, NNPA_BFPFMT_SHORT)
 } zdnn_query_bfpfmts;
 
+// Snapshot of zDNN capability information derived from cached NNPA-QAF data.
+//
+// Notes:
+// - This is a read-only view of zDNN's cached query state.
+// - Bit vectors preserve NNPA-QAF bit numbering in 64-bit chunks:
+//   - installed_functions[0]    => bits 0..63
+//   - installed_functions[1]    => bits 64..127
+//   - installed_functions[2]    => bits 128..191
+//   - installed_functions[3]    => bits 192..255
+//   - installed_parmblk_fmts[0] => bits 0..63
+//   - installed_parmblk_fmts[1] => bits 64..127
+typedef struct zdnn_capability_matrix {
+  uint64_t installed_functions[4];
+  uint64_t installed_parmblk_fmts[2];
+  uint16_t installed_data_types;
+  uint16_t installed_dt1_conversions;
+  uint32_t installed_data_layout_formats;
+  uint32_t maximum_dimension_index_size;
+  uint32_t max_dim4_index_size;
+  uint32_t max_dim3_index_size;
+  uint32_t max_dim2_index_size;
+  uint32_t max_dim1_index_size;
+  uint64_t maximum_tensor_size;
+  uint32_t aiu_library_version;
+} zdnn_capability_matrix;
+
 // -----------------------------------------------------------------------------
 // ZDNN enums
 // -----------------------------------------------------------------------------
@@ -460,6 +486,10 @@ zdnn_status zdnn_getrange_ztensor(const zdnn_ztensor *ztensor, float *min,
 bool zdnn_is_nnpa_installed();
 bool zdnn_is_nnpa_function_installed(int count, ...);
 bool zdnn_is_nnpa_parmblk_fmt_installed(int count, ...);
+bool zdnn_is_nnpa_function_installed_list(const nnpa_function_code *functions,
+                                          uint32_t count);
+bool zdnn_is_nnpa_parmblk_fmt_installed_list(
+    const nnpa_parmblk_format *formats, uint32_t count);
 bool zdnn_is_nnpa_datatype_installed(uint16_t types_bitmask);
 bool zdnn_is_nnpa_layout_fmt_installed(uint32_t layout_bitmask);
 bool zdnn_is_nnpa_conversion_installed(nnpa_data_type type,
@@ -468,6 +498,7 @@ bool zdnn_is_nnpa_conversion_installed(nnpa_data_type type,
 uint32_t zdnn_get_nnpa_max_dim_idx_size();
 uint32_t zdnn_get_max_for_dim(uint8_t dimension);
 uint64_t zdnn_get_nnpa_max_tensor_size();
+zdnn_status zdnn_get_capability_matrix(zdnn_capability_matrix *capabilities);
 
 zdnn_status zdnn_refresh_nnpa_query_result();
 
