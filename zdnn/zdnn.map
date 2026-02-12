@@ -98,6 +98,8 @@ ZDNN_1.0 {
     zdnn_is_nnpa_installed;
     zdnn_is_nnpa_function_installed;
     zdnn_is_nnpa_parmblk_fmt_installed;
+    zdnn_is_nnpa_function_installed_list;
+    zdnn_is_nnpa_parmblk_fmt_installed_list;
     zdnn_is_nnpa_datatype_installed;
     zdnn_is_nnpa_layout_fmt_installed;
     zdnn_is_nnpa_conversion_installed;
@@ -106,6 +108,7 @@ ZDNN_1.0 {
     zdnn_get_nnpa_max_dim_idx_size;
     zdnn_get_max_for_dim;
     zdnn_get_nnpa_max_tensor_size;
+    zdnn_get_capability_matrix;
     zdnn_get_library_version_str;
     zdnn_get_library_version;
     zdnn_refresh_nnpa_query_result;
