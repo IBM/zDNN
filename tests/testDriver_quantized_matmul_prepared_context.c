@@ -84,8 +84,13 @@ void test_prepare_context_allocates_required_work_area(void) {
   init_quantized_matmul_tensors(&input_a, &input_b, &input_c, &output, &a_desc,
                                 &b_desc, &c_desc, &out_desc);
 
-  uint64_t expected_work_area =
-      zdnn_get_quantized_matmul_work_area_size(&input_c, false);
+  // qc_tilde uses input_c's transformed dims/layout/format but promotes the
+  // element type to DLFLOAT16.
+  zdnn_tensor_desc qc_tilde_desc = {0};
+  init_transformed_desc(c_desc.layout, ZDNN_DLFLOAT16, c_desc.format,
+                        &qc_tilde_desc, c_desc.dim4, c_desc.dim3, c_desc.dim2,
+                        c_desc.dim1);
+  uint64_t expected_work_area = zdnn_getsize_ztensor(&qc_tilde_desc);
   TEST_ASSERT_TRUE(expected_work_area > 0);
 
   TEST_ASSERT_EQUAL_UINT32(

@@ -32,6 +32,41 @@ static bool has_valid_tfrmd_desc(const zdnn_ztensor *ztensor) {
   return ztensor && ztensor->transformed_desc;
 }
 
+// Determine required work-area bytes for quantized matmul when pre_computed is
+// false.
+//
+// Notes:
+// - This intentionally does not rely on the separate work-area sizing helper
+//   API so the prepared context stays self-contained and only depends on the
+//   scratch-buffer infrastructure.
+// - The work area is used for qc_tilde, which reuses input_c's transformed
+//   dimensions/layout/format but promotes the element type to DLFLOAT16.
+static uint64_t get_required_qc_tilde_work_area_size(const zdnn_ztensor *input_c,
+                                                     bool pre_computed) {
+  if (pre_computed) {
+    return 0;
+  }
+
+  if (!has_valid_tfrmd_desc(input_c)) {
+    return 0;
+  }
+
+  // When pre_computed is false, aiu_quantized_matmul requires input_c
+  // transformed type to be int8.
+  if (input_c->transformed_desc->type != ZDNN_BINARY_INT8) {
+    return 0;
+  }
+
+  zdnn_tensor_desc qc_tilde_desc;
+  init_transformed_desc(
+      input_c->transformed_desc->layout, ZDNN_DLFLOAT16,
+      input_c->transformed_desc->format, &qc_tilde_desc,
+      input_c->transformed_desc->dim4, input_c->transformed_desc->dim3,
+      input_c->transformed_desc->dim2, input_c->transformed_desc->dim1);
+
+  return zdnn_getsize_ztensor(&qc_tilde_desc);
+}
+
 static zdnn_status verify_prepared_desc_match(
     const char *tensor_name, const zdnn_tensor_desc *expected,
     const zdnn_ztensor *actual_tensor) {
@@ -100,8 +135,6 @@ zdnn_status zdnn_prepare_quantized_matmul_context(
   context->input_a_desc = *input_a->transformed_desc;
   context->input_b_desc = *input_b->transformed_desc;
   context->input_c_desc = *input_c->transformed_desc;
-  context->required_work_area_size =
-      zdnn_get_quantized_matmul_work_area_size(input_c, pre_computed);
 
   // In non-precomputed mode input_c must be transformed int8 for qc_tilde
   // scratch sizing and later execution.
@@ -114,6 +147,9 @@ zdnn_status zdnn_prepare_quantized_matmul_context(
         get_data_type_str(input_c->transformed_desc->type),
         input_c->transformed_desc->type);
   }
+
+  context->required_work_area_size =
+      get_required_qc_tilde_work_area_size(input_c, pre_computed);
 
   if (context->required_work_area_size == 0) {
     // Precomputed path does not require internal work area.
