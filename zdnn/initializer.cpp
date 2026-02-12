@@ -18,7 +18,6 @@
 extern "C" {
 #include "zdnn.h"
 }
-#include <iostream>
 
 /// Invoke initializer routine(s) at DLL-load time.
 ///
