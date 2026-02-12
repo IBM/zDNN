@@ -172,7 +172,12 @@ void test_nnpa_reduce() {
 }
 
 void test_nnpa_conv2d() {
-  bool expected_status = !isTelumI();
+  // Conv2D availability follows NNPA_CONVOLUTION + PARMBLKFORMAT_0 mapping.
+  // Do not gate this on Telum generation; derive expected support directly
+  // from currently installed function/parmblock capabilities.
+  bool expected_status =
+      (zdnn_is_nnpa_function_installed(1, NNPA_CONVOLUTION) &&
+       zdnn_is_nnpa_parmblk_fmt_installed(1, NNPA_PARMBLKFORMAT_0));
   bool status = is_operation_available(ZDNN_CONV2D);
   TEST_ASSERT_MESSAGE_FORMATTED(
       status == expected_status,
