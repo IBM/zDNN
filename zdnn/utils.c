@@ -433,7 +433,9 @@ bool query_nnpa_op(zdnn_operation_apis api) {
     break;
   case ZDNN_CONV2D:
     function_code = NNPA_CONVOLUTION;
-    parmblock_format = NNPA_PARMBLKFORMAT_1;
+    // Keep availability mapping consistent with zdnn_conv2d(), which invokes
+    // NNPA_CONVOLUTION with PARMBLKFORMAT_0.
+    parmblock_format = NNPA_PARMBLKFORMAT_0;
     break;
   case ZDNN_GELU:
     function_code = NNPA_GELU;
