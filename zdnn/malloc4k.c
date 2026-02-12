@@ -17,9 +17,7 @@
 
 #include "zdnn.h"
 #include "zdnn_private.h"
-#include <errno.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 /// malloc() that does 4k-alignment
@@ -31,19 +29,23 @@
 void *malloc_aligned_4k(size_t size) {
 
   // request one more page + size of a pointer from the OS
-  unsigned short extra_allocation =
-      (AIU_PAGESIZE_IN_BYTES - 1) + sizeof(void *);
+  size_t extra_allocation = (AIU_PAGESIZE_IN_BYTES - 1) + sizeof(void *);
 
   // make sure size is reasonable
-  if (!size || size > SIZE_MAX) {
+  if (!size) {
+    return NULL;
+  }
+
+  // Guard against overflow in `size + extra_allocation`.
+  if (size > (SIZE_MAX - extra_allocation)) {
     return NULL;
   }
 
   void *ptr = malloc(size + extra_allocation);
   if (!ptr) {
-    perror("Error during malloc");
-    fprintf(stderr, "errno = %d\n", errno);
-    return ptr;
+    // Do not print from within the library allocator. Callers are expected to
+    // map NULL to ZDNN_ALLOCATION_FAILURE and decide how/where to surface it.
+    return NULL;
   }
 
   // find the 4k boundary after ptr
