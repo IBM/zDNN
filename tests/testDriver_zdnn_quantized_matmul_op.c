@@ -490,7 +490,9 @@ void test_zdnn_api_quantized_matmul(
 
     // Set work_area during second pass
     if (work_area_pass == 1) {
-      work_area = alloc_quantized_matmul_work_area(biases->buffer_size);
+      size_t work_area_size =
+          zdnn_get_quantized_matmul_work_area_size(biases, false);
+      work_area = alloc_quantized_matmul_work_area(work_area_size);
     }
 
     zdnn_status status;

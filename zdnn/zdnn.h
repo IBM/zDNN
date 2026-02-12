@@ -564,6 +564,14 @@ zdnn_status zdnn_quantized_matmul_op(
     const int8_t clip_max, const bool disable_clipping, const bool dequantize,
     const bool pre_computed, void *work_area, zdnn_ztensor *output);
 
+// Convenience helper to compute the required 4K-aligned `work_area` size for
+// zdnn_quantized_matmul_op().
+//
+// Returns 0 when no work area is required (`pre_computed == true`) or when
+// inputs are invalid.
+uint64_t zdnn_get_quantized_matmul_work_area_size(const zdnn_ztensor *input_c,
+                                                  bool pre_computed);
+
 // -----------------------------------------------------------------------------
 // External Norm Operations
 // -----------------------------------------------------------------------------

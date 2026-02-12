@@ -132,6 +132,7 @@ ZDNN_1.0 {
     zdnn_matmul_bcast_op;
     zdnn_matmul_transpose_op;
     zdnn_quantized_matmul_op;
+    zdnn_get_quantized_matmul_work_area_size;
     zdnn_batchnorm;
     zdnn_norm;
     zdnn_moments;
