@@ -4,7 +4,7 @@ set -o pipefail
 
 usage() {
   cat <<USAGE
-Usage: $(basename "$0") [--results-dir DIR] [--jobs N] [--no-autoreconf] [--skip-distclean]
+Usage: $(basename "$0") [--results-dir DIR] [--jobs N] [--no-autoreconf] [--skip-distclean] [--perf-regression] [--perf-iterations N] [--perf-thresholds FILE]
 
 Run a repeatable zDNN build+test battery on an s390x host and write all logs
 under an artifacts directory.
@@ -15,6 +15,10 @@ Options:
   --jobs N            Parallel jobs for make. Default: detected CPU count.
   --no-autoreconf     Skip autoreconf step.
   --skip-distclean    Skip make distclean before configure.
+  --perf-regression   Run perf regression battery after correctness tests.
+  --perf-iterations N Iterations per perf benchmark.
+  --perf-thresholds FILE
+                      Threshold file for perf regression script.
 USAGE
 }
 
@@ -24,6 +28,9 @@ cd "$ROOT_DIR"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 4)"
 DO_AUTORECONF=1
 DO_DISTCLEAN=1
+DO_PERF_REGRESSION=0
+PERF_ITERATIONS=""
+PERF_THRESHOLDS=""
 RESULTS_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -44,6 +51,18 @@ while [[ $# -gt 0 ]]; do
     DO_DISTCLEAN=0
     shift
     ;;
+  --perf-regression)
+    DO_PERF_REGRESSION=1
+    shift
+    ;;
+  --perf-iterations)
+    PERF_ITERATIONS="$2"
+    shift 2
+    ;;
+  --perf-thresholds)
+    PERF_THRESHOLDS="$2"
+    shift 2
+    ;;
   -h|--help)
     usage
     exit 0
@@ -58,6 +77,12 @@ done
 
 if ! [[ "$JOBS" =~ ^[0-9]+$ ]] || [[ "$JOBS" -lt 1 ]]; then
   echo "--jobs must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ -n "$PERF_ITERATIONS" ]] &&
+  { ! [[ "$PERF_ITERATIONS" =~ ^[0-9]+$ ]] || [[ "$PERF_ITERATIONS" -lt 1 ]]; }; then
+  echo "--perf-iterations must be a positive integer" >&2
   exit 2
 fi
 
@@ -132,6 +157,18 @@ run_step test_precheck env ZDNN_ENABLE_PRECHECK=true make -j"$JOBS" test
 # Battery run #3: precheck + full status diagnostics.
 run_step test_precheck_statusdiag env ZDNN_ENABLE_PRECHECK=true ZDNN_STATUS_DIAG=0xFFFFFFFF make -j"$JOBS" test
 
+if [[ "$DO_PERF_REGRESSION" -eq 1 ]]; then
+  PERF_CMD=(scripts/s390x_perf_regression.sh --results-dir "$RESULTS_DIR/perf")
+  if [[ -n "$PERF_ITERATIONS" ]]; then
+    PERF_CMD+=(--iterations "$PERF_ITERATIONS")
+  fi
+  if [[ -n "$PERF_THRESHOLDS" ]]; then
+    PERF_CMD+=(--thresholds-file "$PERF_THRESHOLDS")
+  fi
+
+  run_step perf_regression "${PERF_CMD[@]}"
+fi
+
 run_step collect_artifacts bash -lc '
   mkdir -p "'$RESULTS_DIR'/config"
   cp -f config.log config.status config.make config.h "'$RESULTS_DIR'/config" 2>/dev/null || true
@@ -141,6 +178,10 @@ run_step collect_artifacts bash -lc '
     ls -1 tests/bin/*.txt > "'$RESULTS_DIR'/test-bin-files.txt"
   else
     echo "No tests/bin/*.txt files found" > "'$RESULTS_DIR'/test-bin-files.txt"
+  fi
+
+  if [[ -d "'$RESULTS_DIR'/perf" ]]; then
+    tar -czf "'$RESULTS_DIR'/perf-logs.tgz" "'$RESULTS_DIR'/perf"/*.log 2>/dev/null || true
   fi
 '
 

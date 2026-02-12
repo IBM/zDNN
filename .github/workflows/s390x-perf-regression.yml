@@ -1,0 +1,51 @@
+name: s390x Perf Regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: Parallel jobs for make build/test
+        required: false
+        default: "8"
+      perf_iterations:
+        description: Iterations per perf benchmark
+        required: false
+        default: "5"
+  schedule:
+    - cron: "0 6 * * *"
+
+jobs:
+  s390x-perf-regression:
+    name: s390x build + test + perf battery
+    runs-on: [self-hosted, linux, s390x]
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Ensure scripts are executable
+        run: chmod +x scripts/s390x_run_battery.sh scripts/s390x_perf_regression.sh
+
+      - name: Run battery with perf regression gates
+        env:
+          JOBS: ${{ github.event.inputs.jobs || '8' }}
+          PERF_ITERATIONS: ${{ github.event.inputs.perf_iterations || '5' }}
+          RESULTS_DIR: artifacts/s390x-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          scripts/s390x_run_battery.sh \
+            --results-dir "${RESULTS_DIR}" \
+            --jobs "${JOBS}" \
+            --perf-regression \
+            --perf-iterations "${PERF_ITERATIONS}" \
+            --perf-thresholds scripts/s390x_perf_thresholds.env
+
+      - name: Upload battery artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s390x-perf-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/s390x-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
