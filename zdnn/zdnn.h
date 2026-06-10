@@ -53,6 +53,7 @@ void zdnn_init();
 #define ZDNN_PARAMETER_ERROR 0x00040000
 #define ZDNN_DATA_ERROR 0x00100000
 #define ZDNN_HW_ERROR 0x000c0000
+#define ZDNN_STATUS_CATEGORY_BITMASK 0xFFFF0000
 
 // clang-format off
 typedef enum zdnn_status {
