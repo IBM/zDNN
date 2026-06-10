@@ -1284,7 +1284,7 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
           }
 
           if (status != ZDNN_OK) {
-            if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+            if ((status & ZDNN_STATUS_CATEGORY_BITMASK) == ZDNN_WARNING) {
               LOG_WARN("transform_ztensor() returned a warning, status = "
                        "%08x (%s)\n",
                        status, zdnn_get_status_message(status));
@@ -1313,7 +1313,7 @@ zdnn_status zdnn_transform_ztensor(zdnn_ztensor *ztensor, ...) {
       }
 
       if ((status == ZDNN_OK) ||
-          ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING)) {
+          ((status & ZDNN_STATUS_CATEGORY_BITMASK) == ZDNN_WARNING)) {
         // Set that the output ztensor has completed transforma
         ztensor->is_transformed = true;
       }
@@ -2517,7 +2517,7 @@ zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor,
         ztensor->transformed_desc->dim1 <= 2) {
       if ((status = transform_origtensor_smalldim1(ztensor, out_buf)) !=
           ZDNN_OK) {
-        if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+        if ((status & ZDNN_STATUS_CATEGORY_BITMASK) == ZDNN_WARNING) {
           LOG_WARN(
               "transform_origtensor_smalldim1() returned a warning, status = "
               "%08x (%s)\n",
@@ -2588,7 +2588,7 @@ zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor,
       temp_trans_desc.layout = ZDNN_NHWC;
 
       if ((status = transform_origtensor(&temp_ztensor, out_buf)) != ZDNN_OK) {
-        if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+        if ((status & ZDNN_STATUS_CATEGORY_BITMASK) == ZDNN_WARNING) {
           LOG_WARN("transform_origtensor() returned a warning, status = "
                    "%08x (%s)\n",
                    status, zdnn_get_status_message(status));
@@ -2600,7 +2600,7 @@ zdnn_status zdnn_transform_origtensor(const zdnn_ztensor *ztensor,
       }
     } else {
       if ((status = transform_origtensor(ztensor, out_buf)) != ZDNN_OK) {
-        if ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) {
+        if ((status & ZDNN_STATUS_CATEGORY_BITMASK) == ZDNN_WARNING) {
           LOG_WARN("zdnn_transform_origtensor() returned a warning, status = "
                    "%08x (%s)\n",
                    status, zdnn_get_status_message(status));

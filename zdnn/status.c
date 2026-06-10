@@ -291,8 +291,8 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
 #ifdef ZDNN_CONFIG_DEBUG
       (status == ZDNN_OK) ? LOGLEVEL_INFO :
 #endif
-      ((status & WARNING_STATUS_BITMASK) == ZDNN_WARNING) ? LOGLEVEL_WARN
-                                                          : LOGLEVEL_ERROR;
+      ((status & ZDNN_STATUS_CATEGORY_BITMASK) == ZDNN_WARNING) ? LOGLEVEL_WARN
+                                                                : LOGLEVEL_ERROR;
 
   if (format) {
     va_list argptr;
