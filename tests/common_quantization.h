@@ -28,7 +28,8 @@
  * undefined dimension's index and 1 its size.
  */
 #define GET_FLAT_IDX(stack, row, col, row_size, col_size)                      \
-  (uint64_t)(stack) * (row_size) * (col_size) + (row) * (col_size) + (col)
+  (uint64_t)(stack) * (uint64_t)(row_size) * (uint64_t)(col_size) +            \
+      (uint64_t)(row) * (uint64_t)(col_size) + (uint64_t)(col)
 
 /**
  * Helper macro that given a real value, a scale, and an offset, will produce
@@ -56,13 +57,10 @@ zdnn_ztensor *alloc_quantized_ztensor_with_values(
     const float scale, const float offset);
 
 void assert_quantized_ztensor_values(zdnn_ztensor *ztensor,
-                                     bool repeat_first_expected_value,
                                      const float *expected_vals);
 
 void assert_dequantized_ztensor_values(zdnn_ztensor *ztensor,
-                                       bool repeat_first_expected_value,
                                        const float *expected_vals);
 
 void assert_quantized_ztensor_compare_values(zdnn_ztensor *ztensor,
-                                             bool repeat_first_expected_value,
                                              const float *expected_vals);

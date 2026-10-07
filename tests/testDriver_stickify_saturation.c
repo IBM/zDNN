@@ -100,7 +100,7 @@ void test_stickify_with_saturation_dims(zdnn_data_layouts layout,
                                         zdnn_status unstick_expected_status) {
   zdnn_tensor_desc pre_tfrmd_desc, tfrmd_desc;
   zdnn_ztensor ztensor;
-  zdnn_status stick_status, unstick_status;
+  zdnn_status init_status, stick_status, unstick_status;
 
   switch (layout) {
   case (ZDNN_1D):
@@ -129,7 +129,18 @@ void test_stickify_with_saturation_dims(zdnn_data_layouts layout,
 
   zdnn_generate_transformed_desc(&pre_tfrmd_desc, &tfrmd_desc);
 
-  zdnn_init_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
+  init_status =
+      zdnn_init_ztensor_with_malloc(&pre_tfrmd_desc, &tfrmd_desc, &ztensor);
+  if (init_status != ZDNN_OK) {
+    TEST_FAIL_MESSAGE_FORMATTED("Unable to allocate required ztensor as "
+                                "zdnn_init_ztensor_with_malloc failed with "
+                                "status = %08x",
+                                init_status);
+    // If zdnn_init_ztensor_with_malloc fails with ZDNN_INVALID_*, then buffer
+    // was not yet allocated. With ZDNN_ALLOCATION_FAILURE, there was not
+    // enough memory to allocate. Stop here.
+    return;
+  }
 
   uint64_t num_elements = get_num_elements(&ztensor, ELEMENTS_AIU);
   uint64_t element_size = (FP32) ? 4 : 2; // FP32 = 4 bytes, BFLOAT = 2 bytes
@@ -144,6 +155,8 @@ void test_stickify_with_saturation_dims(zdnn_data_layouts layout,
     free(saturated_data);
     free(out_data);
     TEST_FAIL_MESSAGE("Unable to allocate required data");
+    // Stop here to prevent segfaults and double-free.
+    return;
   }
 
   for (uint64_t i = 0; i < num_elements; i++) {

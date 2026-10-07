@@ -170,15 +170,15 @@ void verify_ztensor_slicing(uint32_t num_slices, uint32_t *shape,
     num_elements = shape[0];
     break;
   case (ZDNN_2DS):
-    num_elements = shape[0] * shape[1];
+    num_elements = (uint64_t)shape[0] * shape[1];
     break;
   case (ZDNN_3DS):
-    num_elements = shape[0] * shape[1] * shape[2];
+    num_elements = (uint64_t)shape[0] * shape[1] * shape[2];
     break;
   case (ZDNN_4D):
   case (ZDNN_NHWC):
   case (ZDNN_NCHW):
-    num_elements = shape[0] * shape[1] * shape[2] * shape[3];
+    num_elements = (uint64_t)shape[0] * shape[1] * shape[2] * shape[3];
     break;
   default:
     TEST_FAIL_MESSAGE_FORMATTED(

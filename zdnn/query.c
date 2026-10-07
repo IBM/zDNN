@@ -60,13 +60,15 @@ bool zdnn_is_nnpa_function_installed(int count, ...) {
   va_start(ap, count);
   bool result = true;
 
-  uint16_t max_func = BIT_SIZEOF(nnpa_query_result.installed_functions_vector);
+  int max_func = BIT_SIZEOF(nnpa_query_result.installed_functions_vector);
 
-  for (uint16_t i = 0; i < count; i++) {
-    uint16_t func_num = va_arg(ap, int);
-    if (func_num >= max_func || // protect ourselves from out-of-range input
+  for (int i = 0; i < count; i++) {
+    // Iterate over count arguments of type int
+    int func_num = va_arg(ap, int);
+    if ( // Protect ourselves from out-of-range input
+        func_num < 0 || func_num >= max_func ||
         !is_bitset_256(nnpa_query_result.installed_functions_vector,
-                       func_num)) {
+                       (uint16_t)func_num)) {
       result = false;
       break;
     }
@@ -88,14 +90,16 @@ bool zdnn_is_nnpa_parmblk_fmt_installed(int count, ...) {
   va_start(ap, count);
   bool result = true;
 
-  uint8_t max_format =
+  int max_format =
       BIT_SIZEOF(nnpa_query_result.installed_parameter_block_formats);
 
-  for (uint8_t i = 0; i < count; i++) {
-    uint8_t func_num = va_arg(ap, int);
-    if (func_num >= max_format || // protect ourselves from out-of-range input
+  for (int i = 0; i < count; i++) {
+    // Iterate over count arguments of type int
+    int format_num = va_arg(ap, int);
+    if ( // Protect ourselves from out-of-range input
+        format_num < 0 || format_num >= max_format ||
         !is_bitset_128(nnpa_query_result.installed_parameter_block_formats,
-                       func_num)) {
+                       (uint8_t)format_num)) {
       result = false;
       break;
     }

@@ -471,7 +471,7 @@ void test_zdnn_api_quantized_matmul(
   uint32_t n = input->transformed_desc->dim1;
   uint32_t p = out_shape[2];
 
-  float *exp_out_values = malloc(s * m * p * sizeof(float));
+  float *exp_out_values = malloc((size_t)s * m * p * sizeof(float));
   float y_scale, y_offset;
   gen_test_expected_fp32_array(s, m, n, p, input_values, input_weights_values,
                                input_biases_values, a_scale, a_offset, b_scale,
@@ -508,9 +508,9 @@ void test_zdnn_api_quantized_matmul(
     // Confirm output tensor values match expected values
     if (exp_status == ZDNN_OK) {
       if (op_type == MATMUL_OP_ADDITION) {
-        assert_quantized_ztensor_values(out, false, exp_out_values);
+        assert_quantized_ztensor_values(out, exp_out_values);
       } else {
-        assert_quantized_ztensor_compare_values(out, false, exp_out_values);
+        assert_quantized_ztensor_compare_values(out, exp_out_values);
       }
     }
 
@@ -532,9 +532,9 @@ void test_zdnn_api_quantized_matmul(
     // Confirm output tensor values match expected values
     if (exp_status == ZDNN_OK) {
       if (op_type == MATMUL_OP_ADDITION) {
-        assert_dequantized_ztensor_values(out, false, exp_out_values);
+        assert_dequantized_ztensor_values(out, exp_out_values);
       } else {
-        assert_quantized_ztensor_compare_values(out, false, exp_out_values);
+        assert_quantized_ztensor_compare_values(out, exp_out_values);
       }
     }
 
@@ -599,7 +599,7 @@ void test_zdnn_api_quantized_matmul_pre_computed(
   uint32_t n = input->transformed_desc->dim1;
   uint32_t p = out_shape[2];
 
-  float *exp_out_values = malloc(s * m * p * sizeof(float));
+  float *exp_out_values = malloc((size_t)s * m * p * sizeof(float));
   float y_scale, y_offset;
   gen_test_expected_fp32_array(s, m, n, p, input_values, input_weights_values,
                                input_biases_values, a_scale, a_offset, b_scale,
@@ -650,9 +650,9 @@ void test_zdnn_api_quantized_matmul_pre_computed(
   // Confirm output tensor values match expected values
   if (exp_status == ZDNN_OK) {
     if (op_type == MATMUL_OP_ADDITION) {
-      assert_quantized_ztensor_values(out, false, exp_out_values);
+      assert_quantized_ztensor_values(out, exp_out_values);
     } else {
-      assert_quantized_ztensor_compare_values(out, false, exp_out_values);
+      assert_quantized_ztensor_compare_values(out, exp_out_values);
     }
   }
 
@@ -672,9 +672,9 @@ void test_zdnn_api_quantized_matmul_pre_computed(
   // Confirm output tensor values match expected values
   if (exp_status == ZDNN_OK) {
     if (op_type == MATMUL_OP_ADDITION) {
-      assert_dequantized_ztensor_values(out, false, exp_out_values);
+      assert_dequantized_ztensor_values(out, exp_out_values);
     } else {
-      assert_quantized_ztensor_compare_values(out, false, exp_out_values);
+      assert_quantized_ztensor_compare_values(out, exp_out_values);
     }
   }
 

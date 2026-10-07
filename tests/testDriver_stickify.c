@@ -869,9 +869,10 @@ void nhwc_nchw_comp(uint32_t n, uint32_t h, uint32_t w, uint32_t c) {
   // create NHWC data stream, then matrix-rotate it to NCHW to another data
   // stream
   data_nhwc = create_and_fill_random_fp_data(&ztensor_nhwc);
-  data_nchw = malloc(pre_tfrmd_desc_nhwc.dim4 * pre_tfrmd_desc_nhwc.dim3 *
-                     pre_tfrmd_desc_nhwc.dim2 * pre_tfrmd_desc_nhwc.dim1 *
-                     get_data_type_size(pre_tfrmd_desc_nhwc.type));
+  data_nchw =
+      malloc((size_t)pre_tfrmd_desc_nhwc.dim4 * pre_tfrmd_desc_nhwc.dim3 *
+             pre_tfrmd_desc_nhwc.dim2 * pre_tfrmd_desc_nhwc.dim1 *
+             get_data_type_size(pre_tfrmd_desc_nhwc.type));
   nhwc_2_nchw(data_nhwc, n, h, w, c,
               get_data_type_size(pre_tfrmd_desc_nhwc.type), data_nchw);
 

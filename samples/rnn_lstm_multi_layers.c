@@ -35,7 +35,7 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
       input->pre_transformed_desc->dim1 * (is_prev_layer_bidir ? 2 : 1);
 
   zdnn_data_types type = FP32;
-  short element_size = 4; // size of each element in bytes
+  unsigned short element_size = 4; // size of each element in bytes
 
   lstm_gru_direction dir = BIDIR;
   uint8_t num_dirs = 2;
@@ -60,7 +60,7 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
                                          &c0);
   assert(status == ZDNN_OK);
 
-  uint64_t h0c0_data_size = num_batches * num_hidden * element_size;
+  uint64_t h0c0_data_size = (uint64_t)num_batches * num_hidden * element_size;
   void *hidden_state_data = malloc(h0c0_data_size);
   void *cell_state_data = malloc(h0c0_data_size);
 
@@ -92,7 +92,8 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
                                          &weights_tfrmd_desc, &weights);
   assert(status == ZDNN_OK);
 
-  uint64_t weights_data_size = num_features * num_hidden * element_size;
+  uint64_t weights_data_size =
+      (uint64_t)num_features * num_hidden * element_size;
   void *weights_data_f = malloc(weights_data_size);
   void *weights_data_i = malloc(weights_data_size);
   void *weights_data_c = malloc(weights_data_size);
@@ -154,7 +155,8 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
                                          &hidden_weights);
   assert(status == ZDNN_OK);
 
-  uint64_t hidden_weights_data_size = num_hidden * num_hidden * element_size;
+  uint64_t hidden_weights_data_size =
+      (uint64_t)num_hidden * num_hidden * element_size;
   void *hidden_weights_data_f = malloc(hidden_weights_data_size);
   void *hidden_weights_data_i = malloc(hidden_weights_data_size);
   void *hidden_weights_data_c = malloc(hidden_weights_data_size);
@@ -266,7 +268,8 @@ void do_bidir_layer(zdnn_ztensor *input, uint32_t num_hidden,
 }
 
 // Sample: LSTM multi-layer BIDIR
-int main(int argc, char *argv[]) {
+int main(int argc __attribute__((unused)),
+         char *argv[] __attribute__((unused))) {
   zdnn_status status;
 
 #ifdef STATIC_LIB
@@ -287,7 +290,7 @@ int main(int argc, char *argv[]) {
   uint32_t num_features = 32;
 
   zdnn_data_types type = FP32;
-  short element_size = 4; // size of each element in bytes
+  unsigned short element_size = 4; // size of each element in bytes
 
   zdnn_init_pre_transformed_desc(ZDNN_3DS, type, &input_pre_tfrmd_desc,
                                  num_timesteps, num_batches, num_features);
@@ -299,7 +302,7 @@ int main(int argc, char *argv[]) {
   assert(status == ZDNN_OK);
 
   uint64_t input_data_size =
-      num_timesteps * num_batches * num_features * element_size;
+      (uint64_t)num_timesteps * num_batches * num_features * element_size;
   void *input_data = malloc(input_data_size);
 
   status = zdnn_transform_ztensor(&input, input_data);

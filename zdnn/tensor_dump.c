@@ -277,10 +277,10 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
     zdnn_data_types tfrmd_type = tfrmd_desc->type;
     data_type_properties props =
         get_data_type_properties(tfrmd_type, ztensor->buffer_size);
-    int bytes_cells_per_stick = props.bytes_cells_per_stick;
-    int max_elements = props.max_elements;
-    int elem_size = props.elem_size;
-    int byte_cell_size = props.byte_cell_size;
+    size_t bytes_cells_per_stick = props.bytes_cells_per_stick;
+    size_t max_elements = props.max_elements;
+    size_t elem_size = props.elem_size;
+    size_t byte_cell_size = props.byte_cell_size;
 
     if (tfrmd_desc->layout != ZDNN_HWCK) {
 
@@ -339,10 +339,10 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
         // print a whole stick if w is within valid range, otherwise print out
         // a bunch of blanks
         if (current_w < tfrmd_desc->dim2 || print_all) {
-          printf("     (+%08x) |  |  %*u  |  ",
+          printf("     (+%08lx) |  |  %*u  |  ",
                  accum_w * bytes_cells_per_stick * byte_cell_size, 5,
                  current_w);
-          for (int j = 0; j < bytes_cells_per_stick; j++) {
+          for (size_t j = 0; j < bytes_cells_per_stick; j++) {
             switch (tfrmd_type) {
             case ZDNN_DLFLOAT16:
               if (mode == AS_HEX) {
@@ -376,7 +376,7 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
             }
           }
         } else {
-          printf("     (+%08x) |  |         |  ",
+          printf("     (+%08lx) |  |         |  ",
                  accum_w * bytes_cells_per_stick * byte_cell_size);
         }
         printf("\n");
@@ -389,7 +389,7 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
           current_h++;
           if (current_h == tfrmd_desc->dim3) {
             current_h = 0;
-            current_c += bytes_cells_per_stick;
+            current_c += (uint32_t)bytes_cells_per_stick;
             if (current_c >= tfrmd_desc->dim1) {
               current_c = 0;
             }
@@ -455,10 +455,10 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
         // print a whole stick if k is within valid range, otherwise print out
         // a bunch of blanks
         if (current_c < tfrmd_desc->dim2 || print_all) {
-          printf("     (+%08x) |  |  %*u  |  ",
+          printf("     (+%08lx) |  |  %*u  |  ",
                  accum_c * bytes_cells_per_stick * byte_cell_size, 5,
                  current_c);
-          for (int j = 0; j < bytes_cells_per_stick; j++) {
+          for (size_t j = 0; j < bytes_cells_per_stick; j++) {
             switch (tfrmd_desc->type) {
             case ZDNN_DLFLOAT16:
               if (mode == AS_HEX) {
@@ -491,7 +491,7 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
             }
           }
         } else {
-          printf("     (+%08x) |  |         |  ",
+          printf("     (+%08lx) |  |         |  ",
                  accum_c * bytes_cells_per_stick * byte_cell_size);
         }
         printf("\n");
@@ -507,7 +507,7 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
             current_h++;
             if (current_h == tfrmd_desc->dim4) {
               current_h = 0;
-              current_k += bytes_cells_per_stick;
+              current_k += (uint32_t)bytes_cells_per_stick;
             }
           }
         }
