@@ -340,8 +340,9 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
         // a bunch of blanks
         if (current_w < tfrmd_desc->dim2 || print_all) {
           printf("     (+%08lx) |  |  %*u  |  ",
-                 accum_w * bytes_cells_per_stick * byte_cell_size, 5,
-                 current_w);
+                 (unsigned long)accum_w * bytes_cells_per_stick *
+                     byte_cell_size,
+                 5, current_w);
           for (size_t j = 0; j < bytes_cells_per_stick; j++) {
             switch (tfrmd_type) {
             case ZDNN_DLFLOAT16:
@@ -376,8 +377,9 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
             }
           }
         } else {
-          printf("     (+%08lx) |  |         |  ",
-                 accum_w * bytes_cells_per_stick * byte_cell_size);
+          printf("     (+%08lx) |  |         |  ", (unsigned long)accum_w *
+                                                       bytes_cells_per_stick *
+                                                       byte_cell_size);
         }
         printf("\n");
 
@@ -456,8 +458,9 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
         // a bunch of blanks
         if (current_c < tfrmd_desc->dim2 || print_all) {
           printf("     (+%08lx) |  |  %*u  |  ",
-                 accum_c * bytes_cells_per_stick * byte_cell_size, 5,
-                 current_c);
+                 (unsigned long)accum_c * bytes_cells_per_stick *
+                     byte_cell_size,
+                 5, current_c);
           for (size_t j = 0; j < bytes_cells_per_stick; j++) {
             switch (tfrmd_desc->type) {
             case ZDNN_DLFLOAT16:
@@ -491,8 +494,9 @@ void dumpdata_ztensor(const zdnn_ztensor *ztensor, dump_mode mode,
             }
           }
         } else {
-          printf("     (+%08lx) |  |         |  ",
-                 accum_c * bytes_cells_per_stick * byte_cell_size);
+          printf("     (+%08lx) |  |         |  ", (unsigned long)accum_c *
+                                                       bytes_cells_per_stick *
+                                                       byte_cell_size);
         }
         printf("\n");
 
