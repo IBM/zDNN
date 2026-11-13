@@ -171,7 +171,7 @@ static const char *UNDEFINED_STR = "UNDEFINED";
 ///
 /// \return number of dimensions, or 0 if concatenated or no such layout exists
 ///
-short get_data_layout_dims(zdnn_data_layouts layout) {
+uint8_t get_data_layout_dims(zdnn_data_layouts layout) {
 
 #define CASE_RTN_DIM(a, b)                                                     \
   case a:                                                                      \
@@ -201,7 +201,7 @@ short get_data_layout_dims(zdnn_data_layouts layout) {
 ///
 /// \return number of gates, or 0 if not concatenated or no such layout exists
 ///
-short get_data_layout_num_gates(zdnn_data_layouts layout) {
+uint8_t get_data_layout_num_gates(zdnn_data_layouts layout) {
 
 #define CASE_RTN_GATES(a, b)                                                   \
   case a:                                                                      \
@@ -260,7 +260,7 @@ uint32_t get_rnn_concatenated_dim2(uint32_t val, zdnn_concat_info info) {
 ///
 /// \return number of gates, or 0 if function code is not RNN related
 ///
-short get_func_code_num_gates(nnpa_function_code func_code) {
+uint8_t get_func_code_num_gates(nnpa_function_code func_code) {
 
 #define CASE_RTN_GATES(a, b)                                                   \
   case a:                                                                      \
@@ -379,7 +379,7 @@ const char *get_data_format_str(zdnn_data_formats format) {
 ///
 /// \return size in number of bytes, or 0 if no such data type exists
 ///
-short get_data_type_size(zdnn_data_types type) {
+uint8_t get_data_type_size(zdnn_data_types type) {
 
 #define CASE_RTN_SIZE(a, b)                                                    \
   case a:                                                                      \

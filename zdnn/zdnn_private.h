@@ -1454,14 +1454,14 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
 // Misc get_*() Functions
 // -----------------------------------------------------------------------------
 
-short get_func_code_num_gates(nnpa_function_code func_code);
-short get_data_layout_num_gates(zdnn_data_layouts layout);
-short get_data_layout_dims(zdnn_data_layouts layout);
+uint8_t get_func_code_num_gates(nnpa_function_code func_code);
+uint8_t get_data_layout_num_gates(zdnn_data_layouts layout);
+uint8_t get_data_layout_dims(zdnn_data_layouts layout);
 nnpa_function_code get_matmul_function(uint32_t input_a_dim4,
                                        uint32_t input_b_dim4);
 const char *get_data_layout_str(zdnn_data_layouts layout);
 const char *get_data_format_str(zdnn_data_formats format);
-short get_data_type_size(zdnn_data_types type);
+uint8_t get_data_type_size(zdnn_data_types type);
 const char *get_data_type_str(zdnn_data_types type);
 const char *get_rnn_direction_str(lstm_gru_direction dir);
 const char *get_function_code_str(nnpa_function_code func);

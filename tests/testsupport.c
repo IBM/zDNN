@@ -104,16 +104,16 @@ size_t *alloc_offsets(zdnn_ztensor *ztensor) {
           for (uint32_t e1x = 0; e1x < e1; e1x++) {
             offsets[c] =
                 ( // get to the correct N = e4x
-                    (e3 * e2_limit * e1_limit * e4x) +
+                    ((size_t)e3 * e2_limit * e1_limit * e4x) +
                     // get to the currect H = e3x, assuming e1x = 0
-                    (e2_limit * e3x * eps) +
+                    ((size_t)e2_limit * e3x * eps) +
                     // get to the correct stick (e2x), still assuming e1x = 0
-                    (e2x * eps) +
+                    ((size_t)e2x * eps) +
                     // jump to the correct e1x = [0..63] [64..127] of that stick
-                    ((uint32_t)(e1x / eps) * e2_limit * e3 * eps) +
+                    ((size_t)(e1x / eps) * e2_limit * e3 * eps) +
                     // jump to correct element within the stick
-                    (e1x % eps)) *
-                (128 / eps);
+                    (size_t)(e1x % eps)) *
+                ((size_t)128 / eps);
             c++;
           }
         }
@@ -136,16 +136,16 @@ size_t *alloc_offsets(zdnn_ztensor *ztensor) {
           for (uint32_t e1x = 0; e1x < e1; e1x++) {
             offsets[c] =
                 ( // jump to the correct e1x = [0..63] [64..127] of that stick
-                    ((uint32_t)(e1x / eps) * e4 * e3 * e2_limit * eps) +
+                    ((size_t)(e1x / eps) * e4 * e3 * e2_limit * eps) +
                     // get to the correct W = e3x, assuming e1x = 0
-                    (e2_limit * e3x * eps) +
+                    ((size_t)e2_limit * e3x * eps) +
                     // get to the correct stick (e2x), still assuming e1x = 0
-                    (e2x * eps) +
+                    ((size_t)e2x * eps) +
                     // get to the correct H
-                    (e4x * e3 * e2_limit * eps) +
+                    ((size_t)e4x * e3 * e2_limit * eps) +
                     // jump to correct element within the stick
-                    (e1x % eps)) *
-                (128 / eps);
+                    (size_t)(e1x % eps)) *
+                ((size_t)128 / eps);
             c++;
           }
         }
@@ -218,7 +218,7 @@ size_t *alloc_rnn_offsets(const zdnn_ztensor *ztensor) {
         get_num_elements(&slice_ztensor, ELEMENTS_PRE);
     uint64_t slice_size = zdnn_getsize_ztensor(slice_ztensor.transformed_desc);
 
-    short num_slices =
+    uint8_t num_slices =
         get_data_layout_num_gates(ztensor->transformed_desc->layout);
     offsets = malloc(num_slices * slice_total_elements * sizeof(size_t));
 
@@ -255,8 +255,9 @@ size_t *alloc_rnn_offsets(const zdnn_ztensor *ztensor) {
 
     // we generated (2 * PADDED(dim2 / 2) * dim1) number of offsets, but we
     // actually only care (dim2 / 2 * dim1) of those
-    uint64_t slice_total_elements = ztensor->pre_transformed_desc->dim2 *
-                                    ztensor->pre_transformed_desc->dim1;
+    uint64_t slice_total_elements =
+        (uint64_t)ztensor->pre_transformed_desc->dim2 *
+        ztensor->pre_transformed_desc->dim1;
 
     // in the generated offsets array, only the first (slice_total_elements / 2)
     // entries are valid because the entries follow are simply for the vertical
@@ -270,10 +271,10 @@ size_t *alloc_rnn_offsets(const zdnn_ztensor *ztensor) {
                             AIU_BYTES_PER_STICK);
     }
 
-    short num_slices =
+    uint8_t num_slices =
         get_data_layout_num_gates(ztensor->transformed_desc->layout);
 
-    offsets = malloc(ztensor->pre_transformed_desc->dim3 * num_slices *
+    offsets = malloc((size_t)ztensor->pre_transformed_desc->dim3 * num_slices *
                      slice_total_elements * sizeof(size_t));
 
     // make num_slices * num_dirs copies of those offsets, each set is seperated

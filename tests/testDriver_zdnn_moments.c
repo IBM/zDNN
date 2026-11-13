@@ -80,8 +80,8 @@ void generate_moments_output(const float input_values[],
                              float expected_values_a[],
                              float expected_values_b[]) {
 
-  uint64_t l =
-      input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
+  uint64_t l = (uint64_t)input_shape[0] * input_shape[1] * input_shape[2] *
+               input_shape[3];
 
   float summation = 0.0;
   float summation_sq = 0.0;

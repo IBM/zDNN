@@ -233,12 +233,13 @@ size_t get_stick_offset(uint32_t e4x, uint32_t e3x, uint32_t e2x, uint32_t e1x,
 
     uint16_t pages_height_per_w = CEIL(c, AIU_STICKS_PER_PAGE);
     uint32_t pages_height_per_h = pages_height_per_w * w;
-    uint64_t pages_height_all_h = pages_height_per_h * h;
+    uint64_t pages_height_all_h = (uint64_t)pages_height_per_h * h;
 
     // traverse to k = kx section of the stick area, then h = hx, then w = wx
     // it's slightly different from NHWC due to the E1/E2 arrangement
     uint64_t page = pages_height_all_h * (kx / AIU_2BYTE_CELLS_PER_STICK) +
-                    hx * pages_height_per_h + wx * pages_height_per_w;
+                    (uint64_t)hx * pages_height_per_h +
+                    (uint64_t)wx * pages_height_per_w;
 
     // traverse this number of cells to get to the element
     uint16_t cell = kx % AIU_2BYTE_CELLS_PER_STICK;
@@ -498,9 +499,9 @@ zdnn_status transform_ztensor(const void *in_buf, zdnn_ztensor *ztensor,
   uint64_t output_offset =
       0; // moving position as the output is processed, in BYTES
 
-  short input_cell_size =
+  uint8_t input_cell_size =
       get_data_type_size(ztensor->pre_transformed_desc->type);
-  short input_cell_shift = input_cell_size / 2;
+  uint8_t input_cell_shift = input_cell_size / 2;
 
   /*
    * Stores the vector operation output directly into the stick_area.  This
@@ -808,9 +809,9 @@ zdnn_status transform_bidir_weight_ztensor(const void *in_buf,
   uint64_t input_offset = 0;
   uint64_t output_offset = 0;
 
-  short input_cell_size =
+  uint8_t input_cell_size =
       get_data_type_size(ztensor->pre_transformed_desc->type);
-  short input_cell_shift = input_cell_size / 2;
+  uint8_t input_cell_shift = input_cell_size / 2;
 
   uint32_t fields_to_convert;
   uint32_t nbr_fields_converted;
@@ -1623,7 +1624,8 @@ zdnn_status transform_quantized_weights_ztensor(const void *in_buf,
         }
 
         // move on to the next set
-        input_offset += output->transformed_desc->dim1 * (no_stick2 ? 1 : 2);
+        input_offset +=
+            (uint64_t)output->transformed_desc->dim1 * (no_stick2 ? 1 : 2);
         // output_offset was pushed around in dim1 loops, so reset it to
         // the next w
         output_offset = out_offset_w + AIU_BYTES_PER_STICK;
@@ -1982,9 +1984,9 @@ zdnn_status transform_origtensor(const zdnn_ztensor *ztensor, void *out_buf) {
   uint64_t input_offset =
       0; // moving position as the input is processed, in BYTES
 
-  short output_cell_size =
+  uint8_t output_cell_size =
       get_data_type_size(ztensor->pre_transformed_desc->type);
-  short output_cell_shift = output_cell_size / 2;
+  uint8_t output_cell_shift = output_cell_size / 2;
 
   uint32_t fields_to_convert;    // number of fields to actually convert
   uint32_t nbr_fields_converted; // number of fields converted
