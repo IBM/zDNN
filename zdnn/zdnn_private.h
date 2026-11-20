@@ -1448,8 +1448,6 @@ zdnn_status set_zdnn_status(zdnn_status status, const char *func_name,
 #define ZDNN_STATUS_OK ZDNN_STATUS_NO_MSG(ZDNN_OK)
 #endif
 
-#define WARNING_STATUS_BITMASK 0xFFFF0000
-
 // -----------------------------------------------------------------------------
 // Misc get_*() Functions
 // -----------------------------------------------------------------------------
