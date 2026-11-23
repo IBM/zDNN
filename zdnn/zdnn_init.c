@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2021, 2024
+ * Copyright IBM Corp. 2021, 2026
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -163,7 +163,9 @@ static inline int check_bitfield(const uint8_t *bitfield, int bitno) {
 bool zdnn_is_nnpa_installed() {
 #ifndef __MVS__
   int nnpa_supported;
-  unsigned char facilities[STFLE_LENGTH] = {0};
+  // STFLE operand must be doubleword aligned (checked in invoke_stfle() when
+  // precheck is enabled), so guarantee it rather than rely on stack layout.
+  unsigned char facilities[STFLE_LENGTH] __attribute__((aligned(8))) = {0};
   int cc;
   cc = invoke_stfle(facilities);
 
