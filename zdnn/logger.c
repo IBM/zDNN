@@ -130,12 +130,27 @@ void log_message(log_levels lvl, const char *func_name, const char *file_name,
         snprintf(msg_buf, LOG_BUFFER_LEN, LOG_HEADER, log_levels_str[lvl_real],
                  func_name, file_name, line_no);
 
-    if (arg) {
-      vsnprintf(msg_buf + header_len, LOG_BUFFER_LEN - header_len, format, arg);
-    } else {
-      // nothing to format, copy it as-is
-      strncpy(msg_buf + header_len, format, LOG_BUFFER_LEN - header_len);
+    // snprintf/vsnprintf return the number of chars that *would* have been
+    // written (excluding the terminator). Clamp to keep all following pointer
+    // arithmetic and length calculations in-bounds even when the header is
+    // truncated.
+    if (header_len < 0) {
+      header_len = 0;
+    } else if (header_len >= LOG_BUFFER_LEN) {
+      header_len = LOG_BUFFER_LEN - 1;
     }
+
+    size_t remaining = LOG_BUFFER_LEN - (size_t)header_len;
+
+    if (arg) {
+      (void)vsnprintf(msg_buf + header_len, remaining, format, arg);
+    } else {
+      // Nothing to format, copy it as-is but ensure NUL termination.
+      (void)snprintf(msg_buf + header_len, remaining, "%s", format);
+    }
+
+    // Defensively ensure termination even if remaining == 0.
+    msg_buf[LOG_BUFFER_LEN - 1] = '\0';
 
     if (lvl_real == LOGLEVEL_ERROR || lvl_real == LOGLEVEL_FATAL) {
       stream = stderr;
