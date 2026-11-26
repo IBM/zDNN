@@ -25,6 +25,7 @@
 #include "zdnn.h"
 #include "zdnn_private.h"
 #include <assert.h>
+#include <errno.h>
 #include <float.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -1376,10 +1377,10 @@ void generate_expected_output(float (*fn)(float), float input_values[],
   }
 }
 
-int stdout_pipe[2];
-int stderr_pipe[2];
-int saved_stdout;
-int saved_stderr;
+int stdout_pipe[2] = {-1, -1};
+int stderr_pipe[2] = {-1, -1};
+int saved_stdout = -1;
+int saved_stderr = -1;
 
 void stdout_to_pipe() {
   // save stream for display later
@@ -1394,6 +1395,7 @@ void stdout_to_pipe() {
   // redirect to pipe
   dup2(stdout_pipe[1], STDOUT_FILENO);
   close(stdout_pipe[1]);
+  stdout_pipe[1] = -1;
 
   return;
 }
@@ -1411,36 +1413,97 @@ void stderr_to_pipe() {
   // redirect to pipe
   dup2(stderr_pipe[1], STDERR_FILENO);
   close(stderr_pipe[1]);
+  stderr_pipe[1] = -1;
 
   return;
 }
 
-void restore_stdout(char *buf, int buf_size) {
-  // the read() below blocks if nothing to read, so printf something
-  fprintf(stdout, " ");
-
+ssize_t restore_stdout(char *buf, int buf_size) {
   fflush(stdout);
 
-  // read from pipe into buffer
-  read(stdout_pipe[0], buf, buf_size);
-  close(stdout_pipe[0]);
+  // restore stream to display before reading so write end of pipe is closed
+  if (saved_stdout >= 0) {
+    dup2(saved_stdout, STDOUT_FILENO);
+    close(saved_stdout);
+    saved_stdout = -1;
+  }
 
-  // restore stream to display
-  dup2(saved_stdout, STDOUT_FILENO);
+  ssize_t total_read = 0;
+  if (buf && buf_size > 0) {
+    buf[0] = '\0';
+    if (stdout_pipe[0] >= 0) {
+      while (total_read < buf_size - 1) {
+        ssize_t n = read(stdout_pipe[0], buf + total_read,
+                         (size_t)(buf_size - 1 - total_read));
+        if (n > 0) {
+          total_read += n;
+        } else if (n == 0) {
+          break; // EOF
+        } else if (errno == EINTR) {
+          continue;
+        } else {
+          if (total_read == 0) {
+            total_read = -1;
+          }
+          break;
+        }
+      }
+      if (total_read >= 0) {
+        buf[total_read] = '\0';
+      }
+    }
+  }
+
+  if (stdout_pipe[0] >= 0) {
+    close(stdout_pipe[0]);
+    stdout_pipe[0] = -1;
+  }
+
+  return total_read;
 }
 
-void restore_stderr(char *buf, int buf_size) {
-  // the read() below blocks if nothing to read, so printf something
-  fprintf(stderr, "x");
-
+ssize_t restore_stderr(char *buf, int buf_size) {
   fflush(stderr);
 
-  // read from pipe into buffer
-  read(stderr_pipe[0], buf, buf_size);
-  close(stderr_pipe[0]);
+  // restore stream to display before reading so write end of pipe is closed
+  if (saved_stderr >= 0) {
+    dup2(saved_stderr, STDERR_FILENO);
+    close(saved_stderr);
+    saved_stderr = -1;
+  }
 
-  // restore stream to display
-  dup2(saved_stderr, STDERR_FILENO);
+  ssize_t total_read = 0;
+  if (buf && buf_size > 0) {
+    buf[0] = '\0';
+    if (stderr_pipe[0] >= 0) {
+      while (total_read < buf_size - 1) {
+        ssize_t n = read(stderr_pipe[0], buf + total_read,
+                         (size_t)(buf_size - 1 - total_read));
+        if (n > 0) {
+          total_read += n;
+        } else if (n == 0) {
+          break; // EOF
+        } else if (errno == EINTR) {
+          continue;
+        } else {
+          if (total_read == 0) {
+            total_read = -1;
+          }
+          break;
+        }
+      }
+      if (total_read >= 0) {
+        buf[total_read] = '\0';
+      }
+    }
+  }
+
+  if (stderr_pipe[0] >= 0) {
+    close(stderr_pipe[0]);
+    stderr_pipe[0] = -1;
+  }
+
+  return total_read;
 }
 
 /**********************************************************

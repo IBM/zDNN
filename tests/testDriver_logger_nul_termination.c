@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright IBM Corp. 2024
+ * Copyright IBM Corp. 2026
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,13 +65,12 @@ void test_log_message_arg_null_truncation(void) {
 
   stderr_to_pipe();
   log_message(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__, long_msg, NULL);
-  restore_stderr(buf_stderr, BUFSIZ);
+  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
 
   // Buffer must contain payload, be NUL-terminated, and have auto-newline appended
+  TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
   TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf_stderr, "BBB"),
                                "Expected payload not found in stderr");
-  size_t len = strlen(buf_stderr);
-  TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty");
   TEST_ASSERT_EQUAL_CHAR('\n', buf_stderr[len - 1]);
 }
 
@@ -85,10 +84,12 @@ void test_log_message_arg_null_fits_preserved(void) {
 
   stderr_to_pipe();
   log_message(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__, short_msg, NULL);
-  restore_stderr(buf_stderr, BUFSIZ);
+  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
 
+  TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
   TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf_stderr, short_msg),
                                "Short message not preserved in stderr");
+  TEST_ASSERT_EQUAL_CHAR('\n', buf_stderr[len - 1]);
 }
 
 // 3. A message near the buffer boundary is handled safely.
@@ -105,12 +106,11 @@ void test_log_message_arg_null_near_boundary(void) {
 
   stderr_to_pipe();
   log_message(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__, boundary_msg, NULL);
-  restore_stderr(buf_stderr, BUFSIZ);
+  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
 
+  TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
   TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf_stderr, "NNN"),
                                "Near-boundary payload not found in stderr");
-  size_t len = strlen(buf_stderr);
-  TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty");
   TEST_ASSERT_EQUAL_CHAR('\n', buf_stderr[len - 1]);
 }
 
@@ -124,10 +124,12 @@ void test_log_message_formatted_preserved(void) {
   stderr_to_pipe();
   call_log_message_formatted(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__,
                              "Formatted value: %d, string: %s", 12345, "hello");
-  restore_stderr(buf_stderr, BUFSIZ);
+  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
 
+  TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
   TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf_stderr, "Formatted value: 12345, string: hello"),
                                "Formatted message not preserved in stderr");
+  TEST_ASSERT_EQUAL_CHAR('\n', buf_stderr[len - 1]);
 }
 
 int main(void) {

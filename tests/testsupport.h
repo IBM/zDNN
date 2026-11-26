@@ -25,6 +25,8 @@
 
 #include <float.h>
 #include <stddef.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define ENVVAR_TEST_RANDOM_SEED "ZDNN_TEST_RANDOM_SEED"
 #define ENVVAR_TEST_ERROR_COUNT "ZDNN_TEST_ERROR_ELEMENT_COUNT"
@@ -176,8 +178,8 @@ extern zdnn_concat_info no_vconcat_infos[NUM_NO_VCONCAT_INFOS];
 
 void stdout_to_pipe();
 void stderr_to_pipe();
-void restore_stdout(char *buf, int buf_size);
-void restore_stderr(char *buf, int buf_size);
+ssize_t restore_stdout(char *buf, int buf_size);
+ssize_t restore_stderr(char *buf, int buf_size);
 
 bool isTelumI();
 
