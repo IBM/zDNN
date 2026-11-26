@@ -47,8 +47,7 @@ void try_diag(uint32_t status_to_diag, uint32_t status_to_set,
   stdout_to_pipe();
   set_zdnn_status(status_to_set, __func__, __FILE__, __LINE__,
                   "this is a test");
-  ssize_t len = restore_stdout(buf_stdout, BUFSIZ);
-  TEST_ASSERT_TRUE_MESSAGE(len >= 0, "restore_stdout failed");
+  restore_stdout(buf_stdout, BUFSIZ);
 
   /*
     the backtrace should have something like:

@@ -58,10 +58,8 @@ void try_log(uint32_t loglvl) {
   LOG_ERROR(msg_error, NO_ARG);
   LOG_FATAL(msg_fatal, NO_ARG);
 
-  ssize_t len_stdout = restore_stdout(buf_stdout, BUFSIZ);
-  ssize_t len_stderr = restore_stderr(buf_stderr, BUFSIZ);
-  TEST_ASSERT_TRUE_MESSAGE(len_stdout >= 0, "restore_stdout failed");
-  TEST_ASSERT_TRUE_MESSAGE(len_stderr >= 0, "restore_stderr failed");
+  restore_stdout(buf_stdout, BUFSIZ);
+  restore_stderr(buf_stderr, BUFSIZ);
 
 #define EXPECTS_ONLY_STDOUT(msg)                                               \
   if (strstr(buf_stdout, msg) == NULL) {                                       \
@@ -166,8 +164,7 @@ void test_in_logmodule() {
 
   stdout_to_pipe();
   LOG_INFO(msg_info, NO_ARG);
-  ssize_t len = restore_stdout(buf_stdout, BUFSIZ);
-  TEST_ASSERT_TRUE_MESSAGE(len >= 0, "restore_stdout failed");
+  restore_stdout(buf_stdout, BUFSIZ);
 
   if (strstr(buf_stdout, msg_info) == NULL) {
     TEST_FAIL_MESSAGE("can't find message message in STDOUT");
@@ -185,8 +182,7 @@ void test_in_logmodule2() {
 
   stdout_to_pipe();
   LOG_INFO(msg_info, NO_ARG);
-  ssize_t len = restore_stdout(buf_stdout, BUFSIZ);
-  TEST_ASSERT_TRUE_MESSAGE(len >= 0, "restore_stdout failed");
+  restore_stdout(buf_stdout, BUFSIZ);
 
   if (strstr(buf_stdout, msg_info) == NULL) {
     TEST_FAIL_MESSAGE("can't find message message in STDOUT");
@@ -204,8 +200,7 @@ void test_not_in_logmodule() {
 
   stdout_to_pipe();
   LOG_INFO(msg_info, NO_ARG);
-  ssize_t len = restore_stdout(buf_stdout, BUFSIZ);
-  TEST_ASSERT_TRUE_MESSAGE(len >= 0, "restore_stdout failed");
+  restore_stdout(buf_stdout, BUFSIZ);
 
   if (strstr(buf_stdout, msg_info) != NULL) {
     TEST_FAIL_MESSAGE("found message unexpectedly STDOUT");

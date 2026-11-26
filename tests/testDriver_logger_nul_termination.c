@@ -65,7 +65,7 @@ void test_log_message_arg_null_truncation(void) {
 
   stderr_to_pipe();
   log_message(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__, long_msg, NULL);
-  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
+  int len = restore_stderr(buf_stderr, BUFSIZ);
 
   // Buffer must contain payload, be NUL-terminated, and have auto-newline appended
   TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
@@ -84,7 +84,7 @@ void test_log_message_arg_null_fits_preserved(void) {
 
   stderr_to_pipe();
   log_message(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__, short_msg, NULL);
-  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
+  int len = restore_stderr(buf_stderr, BUFSIZ);
 
   TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
   TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf_stderr, short_msg),
@@ -106,7 +106,7 @@ void test_log_message_arg_null_near_boundary(void) {
 
   stderr_to_pipe();
   log_message(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__, boundary_msg, NULL);
-  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
+  int len = restore_stderr(buf_stderr, BUFSIZ);
 
   TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
   TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf_stderr, "NNN"),
@@ -124,7 +124,7 @@ void test_log_message_formatted_preserved(void) {
   stderr_to_pipe();
   call_log_message_formatted(LOGLEVEL_ERROR, __func__, __FILE__, __LINE__,
                              "Formatted value: %d, string: %s", 12345, "hello");
-  ssize_t len = restore_stderr(buf_stderr, BUFSIZ);
+  int len = restore_stderr(buf_stderr, BUFSIZ);
 
   TEST_ASSERT_TRUE_MESSAGE(len > 0, "stderr output is empty or read failed");
   TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf_stderr, "Formatted value: 12345, string: hello"),
