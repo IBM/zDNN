@@ -176,8 +176,8 @@ extern zdnn_concat_info no_vconcat_infos[NUM_NO_VCONCAT_INFOS];
 
 void stdout_to_pipe();
 void stderr_to_pipe();
-void restore_stdout(char *buf, int buf_size);
-void restore_stderr(char *buf, int buf_size);
+int restore_stdout(char *buf, int buf_size);
+int restore_stderr(char *buf, int buf_size);
 
 bool isTelumI();
 

@@ -1415,32 +1415,46 @@ void stderr_to_pipe() {
   return;
 }
 
-void restore_stdout(char *buf, int buf_size) {
-  // the read() below blocks if nothing to read, so printf something
-  fprintf(stdout, " ");
-
+int restore_stdout(char *buf, int buf_size) {
   fflush(stdout);
+  dup2(saved_stdout, STDOUT_FILENO);
 
-  // read from pipe into buffer
-  read(stdout_pipe[0], buf, buf_size);
+  if (!buf || buf_size <= 0) {
+    close(stdout_pipe[0]);
+    return 0;
+  }
+
+  ssize_t bytes_read = read(stdout_pipe[0], buf, buf_size - 1);
   close(stdout_pipe[0]);
 
-  // restore stream to display
-  dup2(saved_stdout, STDOUT_FILENO);
+  if (bytes_read < 0) {
+    bytes_read = 0;
+  }
+
+  buf[bytes_read] = '\0';
+  return (int)bytes_read;
 }
 
-void restore_stderr(char *buf, int buf_size) {
-  // the read() below blocks if nothing to read, so printf something
-  fprintf(stderr, "x");
-
+int restore_stderr(char *buf, int buf_size) {
   fflush(stderr);
 
-  // read from pipe into buffer
-  read(stderr_pipe[0], buf, buf_size);
+  // Restore stderr first so the pipe's write end is closed before reading.
+  dup2(saved_stderr, STDERR_FILENO);
+
+  if (!buf || buf_size <= 0) {
+    close(stderr_pipe[0]);
+    return 0;
+  }
+
+  ssize_t bytes_read = read(stderr_pipe[0], buf, buf_size - 1);
   close(stderr_pipe[0]);
 
-  // restore stream to display
-  dup2(saved_stderr, STDERR_FILENO);
+  if (bytes_read < 0) {
+    bytes_read = 0;
+  }
+
+  buf[bytes_read] = '\0';
+  return (int)bytes_read;
 }
 
 /**********************************************************
